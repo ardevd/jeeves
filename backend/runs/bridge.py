@@ -344,7 +344,7 @@ def op_attach(params):
     spawn = params.get("spawn", False)
     hooks = params.get("hooks", [])         # [{hookId, signature}]
     if params.get("coldBroadcast"):
-        raise RuntimeError("Automatic force-stop/broadcast was retired; perform explicit student actions and mark them")
+        raise RuntimeError("Automatic force-stop/broadcast was retired; perform the actions explicitly and mark them")
     if any(s["device"] == serial for s in _sessions.values()):
         raise RuntimeError("This device already has an owned controller session; stop it before attaching again")
     row = _owned(serial)

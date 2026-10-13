@@ -79,7 +79,7 @@ tasks.withType(JavaExec).configureEach {
     // the suites written before the review switch exercise the proposal QUEUE: they run under
     // manual review; m7IT owns the switch itself (default auto, then toggles)
     if (name.endsWith('IT') && name != 'm7IT') environment 'WORKBENCH_REVIEW_MODE', 'manual'
-    if (name in ['keysIT', 'packetIT'] && System.getenv('WORKBENCH_QUALIFY_FIXTURE')) {
+    if (name == 'keysIT' && System.getenv('WORKBENCH_QUALIFY_FIXTURE')) {
         args System.getenv('WORKBENCH_QUALIFY_FIXTURE')
     }
 }
@@ -193,7 +193,7 @@ tasks.register('m7IT', JavaExec) {
 }
 
 // M10a integration test: multi-LLM — providers, keys, http agent loop on fixture
-// Provider-conversation IT (course integration P0.1, 2026-10-07): the http agent loop against the fixture
+// Provider-conversation IT: the http agent loop against the fixture
 // provider's recorded-shape scenarios — a thinking provider's reasoning field kept or stripped per the
 // provider's policy, tool-call pairing across compaction, reasoning-only answers, malformed bodies, an
 // upstream failure, cancellation mid-request, the SSE parser. Hermetic home + port, no network, no key.
@@ -207,57 +207,6 @@ tasks.register('providerLoopIT', JavaExec) {
     doFirst { delete(plHome); plHome.mkdirs() }
     environment 'WORKBENCH_HOME', plHome.absolutePath
     environment 'WORKBENCH_PORT', '7818'
-    environment 'WORKBENCH_QA', '1'
-    environment 'WORKBENCH_REVIEW_MODE', 'auto'
-    dependsOn 'compileTestJava'
-    if (hasEngine) {
-        classpath += engineJars
-        jvmArgs jebJvmArgs
-    }
-}
-
-// Course integration IT (P0.2–P0.6, 2026-10-07): the workbench in course mode against an in-process
-// fixture class server (auth grant, store events with dedup / 409 / 503 / lost acks, board posts) —
-// identity gate, private capture journal + export, strict admission, target manifest, the Day 1
-// mission preset and its report, reset, share, the evidence packet route and the export seam.
-// Hermetic home + port; the fixture server picks a free loopback port; no network, no key.
-tasks.register('courseIT', JavaExec) {
-    group = 'verification'
-    description = 'Course integration IT: identity gate, capture, manifest, Day 1 mission, share, evidence packet'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'dev.workbench.it.CourseIT'
-    workingDir = repoRoot
-    def courseHome = new File(buildDir, 'tmp/courseit-home')
-    doFirst { delete(courseHome); courseHome.mkdirs() }
-    environment 'WORKBENCH_HOME', courseHome.absolutePath
-    environment 'WORKBENCH_PORT', '7819'
-    environment 'WORKBENCH_QA', '1'
-    environment 'WORKBENCH_REVIEW_MODE', 'auto'
-    dependsOn 'compileTestJava'
-    if (hasEngine) {
-        classpath += engineJars
-        jvmArgs jebJvmArgs
-    }
-}
-
-// Evidence-packet IT on the REAL engine (course integration P0.4, 2026-10-07): evidence.packet over
-// ~/jeb/test_visionocr.apk — whole method, CFG branch selection (shared tail kept, the irrelevant
-// branch and the selector omitted), exception edge, loop, truncation, a neutral rename keeping the
-// original descriptor, the stale snapshot visible, the student block through the course's
-// packet_builder.py; in course mode against CourseIT's fixture class server (manifest MATCH on real
-// bytes, share with the original descriptor, the capture on real tool results). Needs the engine and
-// the fixture apk; hermetic home + port.
-tasks.register('packetIT', JavaExec) {
-    group = 'verification'
-    description = 'Evidence-packet IT on the JEB engine: CFG selection, provenance, student block, course share/capture on real symbols'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'dev.workbench.it.PacketIT'
-    workingDir = repoRoot
-    def packetHome = new File(buildDir, 'tmp/packetit-home')
-    doFirst { delete(packetHome); packetHome.mkdirs() }
-    environment 'WORKBENCH_HOME', packetHome.absolutePath
-    environment 'WORKBENCH_PORT', '7820'
-    environment 'WORKBENCH_MOCK', '0'
     environment 'WORKBENCH_QA', '1'
     environment 'WORKBENCH_REVIEW_MODE', 'auto'
     dependsOn 'compileTestJava'

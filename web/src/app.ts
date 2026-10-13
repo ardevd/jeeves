@@ -15,7 +15,6 @@ import { initBookmarks, loadBookmarks } from './ui/bookmarks.js';
 import { initLauncher } from './ui/launcher.js';
 import { initOpenStatus, trackOpen } from './ui/openstatus.js';
 import { initJumpStatus } from './ui/jumpstatus.js';
-import { initCourse } from './ui/course.js';
 import { initParams } from './ui/params.js';
 import { initLayouts } from './ui/layouts.js';
 import { initNavigation, setNavTarget } from './ui/navigation.js';
@@ -836,9 +835,6 @@ async function boot(){
      + clock while a strings jump's loadSymbol runs (segU, 2026-09-08). After
      initOpenStatus only for the reading order — it binds the same host. */
   initJumpStatus();
-  /* the COURSE ribbon item (course.ts): one course.status at boot — hidden on a standalone
-     workbench, the room's verdict and the classroom actions in a room */
-  void initCourse();
   /* retained MethodParameters in the inspector + the analyst's mapping dialogs (ui/params.ts) */
   initParams();
   syncTabs();

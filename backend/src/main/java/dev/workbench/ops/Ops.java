@@ -28,7 +28,6 @@ public final class Ops {
 
     public static Registry registerAll(Workspace ws) {
         Registry r = new Registry();
-        r.register(new Op("research.status", "", false, Cost.cheap, req -> ws.localCaptureStatus()));
 
         // ---- §2 capability discovery
         r.register(new Op("caps", "", false, Cost.cheap, req -> {
@@ -74,28 +73,9 @@ public final class Ops {
             Map<String, Object> res;
             String client = req.str("client");              // the bridge names the client it serves (the audit trail)
             if (client != null && client.length() > 80) client = client.substring(0, 80);
-            /* a course room: the call runs on the COURSE's target (the one open target the manifest names —
-               pinned before dispatch, so the provenance names the target the call ran on, not the page's
-               active one read afterwards), an external assistant's tool traffic is captured (the call, not
-               its private model transcript — that is the gateway's, where it goes through the gateway at
-               all), and the answer carries the evidence's provenance when the bridge asks (student MCP addendum) */
-            dev.workbench.course.CourseRuntime crt = dev.workbench.course.CourseRuntime.current();
-            dev.workbench.course.CourseIdentity.Principal p = dev.workbench.course.CourseIdentity.CURRENT.get();
-            String pinned = crt == null ? null : crt.pinTarget(args, p != null && p.machine());
             if (client != null) dev.workbench.registry.Dispatcher.CLIENT.set(client);
-            long t0 = System.nanoTime();
             try { res = dev.workbench.llm.ToolFacade.call(d, tool, args, req.actor(), true); }
             finally { dev.workbench.registry.Dispatcher.CLIENT.remove(); }
-            if (crt != null) {
-                Map<String, Object> prov = crt.provenanceFor(tool, args, res, client, req.str("callId"), pinned);
-                if (p != null && p.machine()) crt.captureAssistantCall(p, client, tool, args, res, prov, (System.nanoTime() - t0) / 1_000_000);
-                if (req.bool("provenance", false) && Boolean.TRUE.equals(res.get("ok"))) {
-                    Map<String, Object> wrapped = new LinkedHashMap<>();
-                    wrapped.put("result", res.get("data"));
-                    wrapped.put("provenance", prov);
-                    return wrapped;
-                }
-            }
             if (Boolean.TRUE.equals(res.get("ok"))) return res.get("data");
             Object err = res.get("error");
             if (err instanceof Map<?, ?> em) {
@@ -318,8 +298,7 @@ public final class Ops {
         r.register(new Op("code.classinfo", "", false, Cost.cheap,
                 req -> engine(ws, req).classinfo(req.require("class"))));
         /* evidence.packet {symbol, question?, entry?, maxInstructions?, java?, student?} — a bounded, read-only
-           packet for one method (Engine.evidencePacket; the MCP `code` tool's view "packet"; course
-           integration P0.4): original identity, complete code, stable instruction references, the
+           packet for one method (Engine.evidencePacket; the MCP `code` tool's view "packet"): original identity, complete code, stable instruction references, the
            calls/fields/types/strings touched, annotation provenance, explicit omissions; a CFG
            branch selection when the engine has a CFG and the caller names an entry */
         r.register(new Op("evidence.packet", "decompile", false, Cost.scan, req -> {
@@ -335,7 +314,7 @@ public final class Ops {
                 mp.put("mappings", ws.parameterMappings(tid, String.valueOf(mp.get("method")), String.valueOf(mp.get("original_method"))));
             }
             /* the three identities, APART (2026-10-09): the executable's bytes with the STATE of that knowledge, the
-               analysis database, this room's revision, the running build — and `artifactSha256` only when the
+               analysis database, this workbench's revision, the running build — and `artifactSha256` only when the
                executable was MEASURED (a packet from a reopened .jdb2 used to omit it while the note still said it
                identified the bytes) */
             Map<String, Object> identity = ws.targetIdentity(tid);
@@ -348,21 +327,11 @@ public final class Ops {
             if ("measured".equals(idState)) snap.put("artifactSha256", exe.get("sha256"));
             snap.put("historyRevision", ws.historyRevision(tid));
             if (identity != null) { snap.put("executable", identity.get("executable")); snap.put("database", identity.get("database")); snap.put("revision", identity.get("revision")); snap.put("runtime", identity.get("runtime")); }
-            /* in a course room: the course's target id and manifest digest — what a peer in another
-               room compares; the target id and revision above are THIS room's */
-            dev.workbench.course.CourseRuntime crt = dev.workbench.course.CourseRuntime.current();
-            if (crt != null) {
-                snap.put("room", dev.workbench.course.Course.room());
-                Map<String, Object> mr = crt.manifest().resolveDigest(ws.executableSha(tid), ws.targetNameOf(tid));
-                snap.put("manifestMatch", mr.get("match"));
-                if ("match".equals(mr.get("match")) && crt.manifest().targetId() != null) snap.put("courseTargetId", crt.manifest().targetId());   // the course's id only when these ARE its bytes
-                if (crt.manifest().manifestSha256() != null) snap.put("manifestSha256", crt.manifest().manifestSha256());
-            }
             snap.put("note", switch (idState) {
-                case "measured" -> "artifactSha256 identifies the executable's bytes for anyone (" + exe.get("basis") + "); target, storeKey and historyRevision are this room's own (the revision moves with every edit here)";
-                case "recorded" -> "NO measured executable identity: executable.sha256 was RECORDED by a device pull and not re-measured here — cite it as recorded, never as verified; target, storeKey and historyRevision are this room's own";
-                case "conflict" -> "the file beside the database is NOT the database's input: executable.sha256 is the database input's (measured), sibling_sha256 the file's — say which bytes a claim is about; target, storeKey and historyRevision are this room's own";
-                default -> "NO executable identity: this database was opened without its APK/DEX and nothing measured or recorded the bytes — a claim from this packet is about the database (" + (identity != null && identity.get("database") instanceof Map<?, ?> dbm ? dbm.get("file") : "?") + "), not about identified executable bytes; target, storeKey and historyRevision are this room's own";
+                case "measured" -> "artifactSha256 identifies the executable's bytes for anyone (" + exe.get("basis") + "); target, storeKey and historyRevision are this workbench's own (the revision moves with every edit here)";
+                case "recorded" -> "NO measured executable identity: executable.sha256 was RECORDED by a device pull and not re-measured here — cite it as recorded, never as verified; target, storeKey and historyRevision are this workbench's own";
+                case "conflict" -> "the file beside the database is NOT the database's input: executable.sha256 is the database input's (measured), sibling_sha256 the file's — say which bytes a claim is about; target, storeKey and historyRevision are this workbench's own";
+                default -> "NO executable identity: this database was opened without its APK/DEX and nothing measured or recorded the bytes — a claim from this packet is about the database (" + (identity != null && identity.get("database") instanceof Map<?, ?> dbm ? dbm.get("file") : "?") + "), not about identified executable bytes; target, storeKey and historyRevision are this workbench's own";
             });
             packet.put("snapshot", snap);
             return packet;
@@ -429,13 +398,9 @@ public final class Ops {
         // ---- §4.6 edit ops (rename/comment live; llm actors get proposals per MCP_SPEC §3)
         // rename / comment / tag.add also take items:[{…}] — see enableBatch below
         /* The analyst's own decisions (a parameter mapping, a restored original name): a browser session —
-           never a machine client whatever actor it names (in a room the bearer path's MCP bridge or a
-           script says human:<room> for attribution, not for consent; CourseIdentity marks it machine), and
            never an agent (fix-review 2026-10-08 M4). */
         interface AnalystGate { void check(Op.Request req, String what, String how) throws OpException; }
         AnalystGate analystOnly = (req, what, how) -> {
-            dev.workbench.course.CourseIdentity.Principal p = dev.workbench.course.CourseIdentity.CURRENT.get();
-            if (p != null && p.machine()) throw OpException.scope(what + " is the analyst's own decision, taken from the page — a machine client (the MCP bridge, a script) cannot take it for them", "principal=machine");
             if (!"human".equals(EventBus.actorKind(req.actor()))) throw OpException.scope(what + " is the analyst's decision — " + how, "actor=" + req.actor());
         };
         r.register(new Op("rename", "rename", true, Cost.cheap, req -> {
@@ -901,7 +866,7 @@ public final class Ops {
                 req -> ws.agents().spawn(req.require("goal"), req.str("scope"), req.str("model"),
                         req.num("budget", 0), req.str("mode"), req.str("depth"), req.str("target"),
                         req.str("effort"), Math.max(0, numOrAbsent(req, "turns")),   // junk → E_SYNTAX, absent → 0 (settings r3 L2)
-                        Math.max(0, numOrAbsent(req, "maxOutput")))));                 // the cap on one answer's tokens (Day 1 preset: bounded output)
+                        Math.max(0, numOrAbsent(req, "maxOutput")))));                 // the cap on one answer's tokens (bounded output)
         // ---- review gate or direct apply: the application-side switch (ReviewPolicy)
         r.register(new Op("review.policy", "", false, Cost.cheap, req -> ws.agents().reviewPolicy().toMap()));
         r.register(new Op("review.configure", "", true, Cost.cheap, req ->
@@ -1232,11 +1197,6 @@ public final class Ops {
         r.register(new Op("op.cancel", "", true, Cost.cheap,
                 req -> ws.cancelTask(req.require("ticket"), req.str("target"))));
 
-        // ---- course integration (dev.workbench.course): present whether or not the switch is on —
-        //      off, every op answers E_UNSUPPORTED with the switch's name, nothing else changes
-        // Application-specific reference execution was retired by the local architecture.
-        dev.workbench.course.CourseOps.register(r, ws);
-
         enableBatch(r, ws);   // rename / comment / tag.add also take items:[…]
         return r;
     }
@@ -1278,7 +1238,6 @@ public final class Ops {
      * directly usable by target.open. Capped at 2000 entries with truncated:true.
      */
     private static Map<String, Object> fsList(String dir) throws OpException {
-        if (dev.workbench.course.Course.on()) return fsListCourse(dir);
         String defDir = System.getProperty("workbench.cwd");
         if (defDir == null || defDir.isBlank()) defDir = System.getenv("WORKBENCH_CWD");
         if (defDir == null || defDir.isBlank()) defDir = System.getProperty("user.dir");
@@ -1318,39 +1277,6 @@ public final class Ops {
         return m;
     }
 
-    /** fs.list in a course room: the room's own workspace and the approved read-only course roots, and
-     *  nothing above or beside them (CourseFiles). No dir = the workspace; a root's parent is "" (no
-     *  way up); an entry whose canonical path leaves the roots (a symlink out) is not listed, counted. */
-    private static Map<String, Object> fsListCourse(String dir) throws OpException {
-        File d = dev.workbench.course.CourseFiles.browsable(dir == null || dir.isBlank() ? dev.workbench.course.CourseFiles.workspace() : new File(Workspace.expandHome(dir)));
-        if (!d.exists()) throw OpException.notFound("no such directory: " + d.getPath(), "");
-        if (!d.isDirectory()) throw OpException.syntax("not a directory: " + d.getPath(), "a FILE path goes straight into the launcher input");
-        File[] kids = d.listFiles();
-        if (kids == null) throw OpException.io("cannot list " + d.getPath(), "denied or vanished mid-list");
-        Arrays.sort(kids, (a, b) -> a.isDirectory() != b.isDirectory() ? (a.isDirectory() ? -1 : 1) : a.getName().compareToIgnoreCase(b.getName()));
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("dir", d.getPath());
-        m.put("parent", dev.workbench.course.CourseFiles.isRoot(d) ? "" : d.getParentFile().getPath());
-        List<Object> roots = new ArrayList<>();
-        for (File r : dev.workbench.course.CourseFiles.browsableRoots()) roots.add(r.getPath());
-        m.put("roots", roots);   // the places the browser may start from: the workspace first, then the course folders
-        m.put("confined", true);
-        List<Object> entries = new ArrayList<>();
-        int hidden = 0;
-        for (File k : kids) {
-            if (entries.size() >= 2000) { m.put("truncated", true); break; }
-            if (!dev.workbench.course.CourseFiles.listable(k)) { hidden++; continue; }
-            Map<String, Object> e = new LinkedHashMap<>();
-            e.put("name", k.getName());
-            e.put("path", k.getAbsolutePath());
-            e.put("dir", k.isDirectory());
-            e.put("size", k.isFile() ? k.length() : 0);
-            entries.add(e);
-        }
-        if (hidden > 0) m.put("hidden", hidden);
-        m.put("entries", entries);
-        return m;
-    }
 
     /** param.rename's expectCurrent: [{index, name}] — what the analyst saw when choosing (a stale
      *  preview must not rename a different argument); null when absent. */

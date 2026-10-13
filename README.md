@@ -40,14 +40,14 @@ target with the **+** chip in the target strip: an APK, a DEX or a `.jdb2`.
 
 `mcp/workbench_mcp.py` exposes the workbench's tool facade to an assistant over
 stdio (Claude Code, Kimi Code, OpenCode, Codex, …); `MANUAL.md` has the client
-configuration. `deploy/bridge/` packages it as a dependency-free kit.
+configuration.
 
 ## Documentation
 
 - `MANUAL.md` — the user manual: concepts, configuration, every view, agents, MCP, troubleshooting
 - `PROVISIONING.md` — setting up a machine, written for a person or their assistant
 - `docs/local-jeb.md` — using your own JEB install: the two start-up routes and the edition each needs
-- `design/*_SPEC.md` — the specifications: workbench, views, graphs, agents, device, MCP; `design/COURSE_HANDOFF.md` for classroom rooms
+- `design/*_SPEC.md` — the specifications: workbench, views, graphs, agents, device, MCP
 - `AGENTS.md` and `CONTRIBUTING.md` — build, test and contribution notes
 
 ## Tests
@@ -57,12 +57,6 @@ checks the op registry against the MCP spec on the mock engine (its current
 state is noted in `AGENTS.md`). The integration suites
 (`gradle -p backend m7IT`, `keysIT`, `paramsIT`, …) need a JEB install and APK
 fixtures that are not in the repository (`WORKBENCH_QUALIFY_FIXTURE=<apk>`).
-
-## Course mode
-
-`WORKBENCH_COURSE=1` turns a workbench into one student's room of a classroom
-served by a class server. The server side is not part of this repository;
-`design/COURSE_HANDOFF.md` documents the contract a room speaks.
 
 ## Licence
 

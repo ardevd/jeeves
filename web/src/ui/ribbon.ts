@@ -53,12 +53,6 @@ export function paintDev(devs: Device[] | null, err: string | null): void {
   const led = document.getElementById('dev-led-ribbon');
   const item = document.getElementById('dev-item');
   if (err){
-    /* a course room has no devices by design (the refusal names course=host-only): the item goes
-       away instead of glowing orange "adb unavailable" for the whole class */
-    if (/course=host-only|class server/.test(err)){
-      if (item) (item as HTMLElement).hidden = true;
-      return;
-    }
     if (n) n.textContent = '—';
     if (led) led.className = 'led o';
     if (item) item.setAttribute('data-tip', 'adb unavailable — ' + err);
@@ -453,8 +447,7 @@ export function initRibbon(): void {
       }
       return;
     }
-    /* the live stream's own state (api.ts): a stream the server ended (a course room's access
-       closing, the class edge's denial, an auth outage) is re-created with backoff — until then
+    /* the live stream's own state (api.ts): a stream the server ended is re-created with backoff — until then
        the page gets no progress, no presence, no proposals, and the STATE item must say so
        instead of a calm READY (persona pass 2026-10-09 C2) */
     if (channel === 'connection'){

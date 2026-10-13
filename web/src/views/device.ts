@@ -226,20 +226,12 @@ function fillSelect(sel: HTMLSelectElement, devs: Device[], cur: string){
    devices. The panel says so rather than claiming a state the view cannot see. */
 function noDeviceReason(err: OpError | null){
   if (!err) return 'none';
-  /* a course room has no devices by design (CourseOps: the refusal's detail is course=host-only) —
-     not an adb problem to troubleshoot (persona pass 2026-10-09 H5) */
-  if (/course=host-only|class server/.test((err.payload?.error?.detail || '') + ' ' + (err.message || ''))) return 'course';
   return /Cannot run program|No such file|error=2/i.test(err.message || '') ? 'noadb' : 'adbfail';
 }
 
 interface NoDevSpec { title: string; lines: string[]; cmd: string }
 
 const NODEV: Record<string, NoDevSpec> = {
-  course: {
-    title: 'no phones in a course room',
-    lines: ['this room runs on the class server; it has no phone, adb or device bridge of yours',
-            'the course target is already open in CODE (⌃1) — the morning\'s phone exercise is on your own laptop\'s JEB'],
-    cmd: '' },
   noadb: {
     title: 'adb not found',
     lines: ['the backend found no adb binary on PATH, at ~/Library/Android/sdk/platform-tools, or in WORKBENCH_ADB',
@@ -268,13 +260,12 @@ function renderNoDevice(){
       (noDev!.note ? '<span class="dvnd-note">' + esc(noDev!.note) + '</span>' : '') +
       '<b>' + esc(spec.title) + '</b>' +
       spec.lines.map(l => '<span>' + esc(l) + '</span>').join('') +
-      (detail && noDev!.reason !== 'course' ? '<span class="dvnd-err">' + esc(detail) + '</span>' : '') +
+      (detail ? '<span class="dvnd-err">' + esc(detail) + '</span>' : '') +
       (spec.cmd ? '<span class="xv cpy dvnd-cmd" data-copy="' + esc(spec.cmd) + '" title="click to copy">' + esc(spec.cmd) + '</span>' : '') +
-      (noDev!.reason === 'course' ? '' : '<span class="dvnd-dim">re-checked every ' + (POLL_MS / 1000) + ' s while this view is open</span>') +
+      '<span class="dvnd-dim">re-checked every ' + (POLL_MS / 1000) + ' s while this view is open</span>' +
       '</div>';
-    document.getElementById('dev-count')!.textContent = noDev!.reason === 'none' ? 'no device' : noDev!.reason === 'course' ? 'course room' : 'adb unavailable';
+    document.getElementById('dev-count')!.textContent = noDev!.reason === 'none' ? 'no device' : 'adb unavailable';
   }
-  if (noDev!.reason === 'course') stopPoll();   // a refusal that never changes is not re-asked every 10 s
   syncTabs();                 /* honest zeros under the panel — rows is [] */
 }
 

@@ -224,29 +224,6 @@ export function initLauncher(onOpened: (tid: string, info: TargetInfo) => unknow
     if (scroll !== false) row.scrollIntoView({ block: 'nearest' });
   }
 
-  /* a course room's browsable ROOTS (its own files and the course folders): chips above the list,
-     each a jump — from an empty workspace there is otherwise no way to the course folder, since UP
-     stops at a root (persona pass 2026-10-09 M8). Standalone: fs.list sends none, nothing is shown. */
-  let rootsRow: HTMLDivElement | null = null;
-  function paintRoots(roots: string[] | undefined){
-    if (!roots || roots.length < 2){ if (rootsRow){ rootsRow.remove(); rootsRow = null; } return; }
-    if (!rootsRow){
-      rootsRow = document.createElement('div');
-      rootsRow.className = 'ln-roots';
-      fsList.parentElement?.insertBefore(rootsRow, fsList);
-    }
-    rootsRow.textContent = '';
-    roots.forEach((root, i) => {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'btn ln-root' + (fsCur === root || fsCur.startsWith(root + '/') ? ' on' : '');
-      chip.textContent = i === 0 ? 'YOUR FILES' : 'COURSE · ' + (root.split('/').pop() || root);
-      chip.setAttribute('data-tip', root);
-      chip.addEventListener('click', () => { void fsNav(root, true); });
-      rootsRow!.appendChild(chip);
-    });
-  }
-
   /* hilite: path of the entry to land the cursor on (the dir we just left on
      ↑ UP, the typed file on BROWSE, the row under the cursor on a · toggle) */
   function render(hilite?: string | null){
@@ -309,7 +286,7 @@ export function initLauncher(onOpened: (tid: string, info: TargetInfo) => unknow
         return fsNav(parentOf(dir) || null, focusList, dir.replace(/\/+$/, ''));
       /* B3: the remembered dir vanished (ejected, deleted) → forget it, land at the default (cwd) */
       if (dir && dir === lastDir){ lastDir = null; return fsNav(null, focusList); }
-      /* the message AND the detail: a course room's refusal says where one may browse in the detail */
+      /* the message AND the detail */
       err.textContent = r.error.message + (r.error.payload?.error?.detail ? ' — ' + r.error.payload.error.detail : '');
       return;
     }
@@ -319,7 +296,6 @@ export function initLauncher(onOpened: (tid: string, info: TargetInfo) => unknow
     fsCur = r.data.dir;
     fsParent = r.data.parent || '';
     upBtn.disabled = !fsParent;
-    paintRoots(r.data.roots as string[] | undefined);
     fsEntries = r.data.entries;
     fsTrunc = !!r.data.truncated;
     lastDir = fsCur;                              // B3: any navigation is remembered

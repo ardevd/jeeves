@@ -36,7 +36,7 @@ public final class Doctor {
     public Map<String, Object> run() throws OpException { return run(null); }
 
     static final java.util.Set<String> ROW_IDS = java.util.Set.of("os", "jdk21", "jeb-engine", "web-build", "python3", "frida",
-            "adb", "devices", "claude-cli", "llm-providers", "reversing-agent", "course");
+            "adb", "devices", "claude-cli", "llm-providers", "reversing-agent");
 
     /** rowsCsv: only these row ids (null = all) — the Runs preflight asks for adb,devices,frida,
         jeb-engine and pays for nothing else (r2 M2: the full set spawns the claude CLI twice). */
@@ -61,10 +61,7 @@ public final class Doctor {
         if (on.test("web-build")) rows.add(web());
         if (on.test("python3")) rows.add(python());
         if (on.test("frida")) rows.add(frida());
-        if (dev.workbench.course.Course.on()) {
-            if (on.test("adb")) rows.add(row("adb", "warn", false, "Room phone transport is separately authorized", "Runs → Message Lab", "Enroll the room phone with the instructor", false));
-            if (on.test("devices")) rows.add(row("devices", "warn", false, "Host device enumeration is disabled in rooms", "Runs → Message Lab", "Inspect this room's phone capability", false));
-        } else if (on.test("adb") || on.test("devices")) {
+        if (on.test("adb") || on.test("devices")) {
             Map<String, Object> adb = adb();
             if (on.test("adb")) rows.add(adb);
             if (on.test("devices"))
@@ -77,19 +74,6 @@ public final class Doctor {
         }
         if (on.test("llm-providers")) rows.add(providers());
         if (on.test("reversing-agent")) rows.add(reversing());
-        if (on.test("course")) {
-            /* the course integration's own health contract (course.status), folded into one row:
-               off = not required and says so; on = ready | loading | degraded | target-mismatch |
-               unavailable — never "ok" merely because this process answers HTTP */
-            dev.workbench.course.CourseRuntime rt = dev.workbench.course.CourseRuntime.current();
-            if (rt == null) rows.add(row("course", "ok", false, "off (WORKBENCH_COURSE unset) — standalone workbench", "", "", false));
-            else {
-                Map<String, Object> st = rt.status();
-                String state = String.valueOf(st.get("state"));
-                rows.add(row("course", "ready".equals(state) ? "ok" : "unavailable".equals(state) || "target-mismatch".equals(state) ? "missing" : "warn", true,
-                        state + " — " + st.get("summary"), "ready: identity, capture store, manifest match", String.valueOf(st.getOrDefault("fix", "")), false));
-            }
-        }
 
         boolean ok = true;
         for (Object o : rows) {

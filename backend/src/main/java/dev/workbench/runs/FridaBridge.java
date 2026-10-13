@@ -304,8 +304,6 @@ public final class FridaBridge {
     /** The sidecar command: backend/runs/venv/bin/python + runs/bridge.py. */
     private static List<String> sidecarCommand() {
         String configured = System.getenv("WORKBENCH_RUNS_PYTHON");
-        if (dev.workbench.course.Course.on() && (configured == null || configured.isBlank()))
-            throw new IllegalStateException("Course Runs requires explicit WORKBENCH_RUNS_PYTHON; run bin/room-doctor.py to diagnose the pinned environment");
         if (configured != null && (!new File(configured).isAbsolute() || !new File(configured).canExecute()))
             throw new IllegalStateException("WORKBENCH_RUNS_PYTHON must be an absolute executable path");
         File py = configured == null || configured.isBlank() ? locate("runs/venv/bin/python") : new File(configured);

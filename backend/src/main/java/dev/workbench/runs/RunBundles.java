@@ -14,7 +14,6 @@ public final class RunBundles {
     private RunBundles() {}
 
     public static Map<String,Object> copy(Path source, Path destination) throws Exception {
-        if (dev.workbench.course.Course.on()) throw new IllegalStateException("Local bundle paths are available only in standalone Jeeves");
         File runner = FridaBridge.locate("runs/local_run.py");
         if (runner == null) throw new IllegalStateException("Local run adapter is not installed");
         String python = System.getenv("WORKBENCH_RUNS_PYTHON");

@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Provider-conversation integration test (course integration P0.1; plain main-class like the other
+ * Provider-conversation integration test (plain main-class like the other
  * suites; hermetic home, port 7818). The http agent loop runs against the fixture provider's
  * recorded-shape scenarios (AgentLoop.fixtureClient), which answer the way DeepSeek thinking mode
  * and Kimi K3 do and CHECK each request the way they would:

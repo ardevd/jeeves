@@ -370,9 +370,9 @@ async function openSingle(d0: MethodParams, annotationIndex?: number, preselectL
     etb.appendChild(tr);
   });
   entryTable.appendChild(etb);
-  const h1 = document.createElement('div'); h1.className = 'crs-sec'; h1.textContent = 'RETAINED NAME (annotation entry — its number is not an argument position)';
-  const h2 = document.createElement('div'); h2.className = 'crs-sec'; h2.textContent = 'DESTINATION ARGUMENT (by position; any position)';
-  const preview_ = document.createElement('div'); preview_.className = 'crs-note';
+  const h1 = document.createElement('div'); h1.className = 'mp-sec'; h1.textContent = 'RETAINED NAME (annotation entry — its number is not an argument position)';
+  const h2 = document.createElement('div'); h2.className = 'mp-sec'; h2.textContent = 'DESTINATION ARGUMENT (by position; any position)';
+  const preview_ = document.createElement('div'); preview_.className = 'mp-note';
   const swapBtn = document.createElement('button'); swapBtn.className = 'mbtn mp-swap'; swapBtn.hidden = true;
   entryBox.appendChild(h1); entryBox.appendChild(entryTable); entryBox.appendChild(h2);
   entryBox.appendChild(argumentTable(ps, pickedArg, i => { pickedArg = i; void preview(); }));
@@ -475,7 +475,7 @@ async function openBulk(d0: MethodParams, choice0?: number[]): Promise<void> {
   });
   t.appendChild(tb);
   m.body.appendChild(t);
-  const foot = document.createElement('div'); foot.className = 'crs-note';
+  const foot = document.createElement('div'); foot.className = 'mp-note';
   m.body.appendChild(foot);
   m.ok.textContent = 'ACCEPT AND APPLY';
   let seq = 0;

@@ -154,7 +154,7 @@ public interface Engine {
     }
 
     /** A bounded, read-only evidence packet for one method (evidence.packet; the MCP `code` tool's
-     *  view "packet" — course integration P0.4): the method's original identity beside its display
+     *  view "packet"): the method's original identity beside its display
      *  names, its complete code, stable instruction references (method + offset), the calls, fields,
      *  types and strings it touches, annotation provenance, and explicit omissions. With a CFG and
      *  an `entry` (an instruction offset or a block id) the selection is the blocks reachable from

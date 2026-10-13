@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script>window.__WB_COURSE_ROOM="";</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Workbench</title>
@@ -780,8 +779,6 @@
     <span class="sitem" id="engine-item" data-tip="follows the viewed target"><span class="lbl">ENGINE</span><b id="engine-n">—</b></span>
     <span class="sitem" id="dev-item" data-tip="Attached devices — DEVICE ⌃6"><span class="lbl">DEV</span><b id="dev-n">—</b><span class="led b" id="dev-led-ribbon"></span></span>
     <span class="sitem" id="heap-item" data-tip="follows the viewed target"><span class="lbl">HEAP</span><b id="heap-n">—</b><span class="gauge" id="heap-gauge" data-fill="0" data-segs="12"></span></span>
-    <!-- course room (classroom integration): shown only when the backend runs in course mode — ui/course.ts -->
-    <span class="sitem" id="course-item" hidden role="button" tabindex="0" style="cursor:pointer" data-tip-wrap data-tip="Course room"><span class="lbl">COURSE</span><b id="course-room">—</b><span class="led b" id="course-led"></span><b id="course-v">CODE —</b><span class="led b" id="course-led2"></span><b id="course-v2">AGENT —</b></span>
     <span class="sitem spacer" style="border:none"></span>
     <span class="sitem" id="hints-item" role="button" tabindex="0" style="cursor:pointer" data-tip="Keyboard shortcuts — press ?"><span class="lbl">?</span><b>HINTS</b></span>
     <span class="sitem" data-tip="Okabe–Ito CVD-safe palette — blue #0072B2 selection · vermillion #D55E00 markup · bluish-green #009E73 live · orange #E69F00 caution · reddish-purple #CC79A7 agent"><span class="lbl">👁</span><b>OKABE–ITO</b></span>
@@ -964,37 +961,6 @@
         <button class="btn" id="mpm-cancel">CANCEL <kbd>Esc</kbd></button>
         <button class="btn live" id="mpm-ok" disabled>APPLY <kbd>⏎</kbd></button>
       </div>
-    </div>
-  </div>
-
-  <!-- ============ COURSE ROOM card (classroom integration — ui/course.ts; only in course mode) ============ -->
-  <div class="wbmodal" id="coursemodal" hidden>
-    <div class="wbm-card course-card">
-      <div class="wbm-title"><span id="crs-title">COURSE</span><span class="kh-esc">Esc closes</span></div>
-      <div class="wbm-sym" id="crs-sym">the classroom room this workbench serves — its health, a finding for the board, a word to the instructor</div>
-      <div class="crs-status">
-        <div class="crs-line"><span class="led b" id="crs-led"></span><b id="crs-state">—</b><span id="crs-summary"></span></div>
-        <div class="crs-fix" id="crs-fix"></div>
-        <div class="crs-deps" id="crs-deps"></div>
-      </div>
-      <div class="crs-sec">SHARE A FINDING <span class="crs-h">composed here with its provenance (the classroom's activity, the target's bytes, the symbol's ORIGINAL descriptor) · YOU publish it on the classroom's Findings page, under your own account — the room never posts for you</span></div>
-      <div class="crs-grid">
-        <select id="crs-kind" aria-label="card type"><option value="finding">finding</option><option value="tool">tool</option><option value="comparison">comparison</option><option value="workflow">workflow</option><option value="image">image</option></select>
-        <input id="crs-title-in" placeholder="title" spellcheck="false" autocomplete="off">
-      </div>
-      <input id="crs-symbol" placeholder="symbol — prefilled with the open class or method; its ORIGINAL descriptor goes with the finding" spellcheck="false" autocomplete="off">
-      <textarea id="crs-body" rows="3" spellcheck="false" placeholder="what you found, in your words — this becomes the finding's Details; the provenance (activity, target bytes, original symbol, revision) travels beside it as fields"></textarea>
-      <div class="crs-fields" id="crs-fields" hidden></div>
-      <div class="crs-note" id="crs-share-note" aria-live="polite"></div>
-      <div class="wbm-row"><span class="spring"></span><button class="btn" id="crs-preview">PREVIEW</button><a class="btn live" id="crs-publish" href="#" target="_blank" rel="noopener">TO FINDINGS PAGE ↗</a></div>
-      <div class="crs-sec">ASK THE INSTRUCTOR <span class="crs-h">private · your words go to the clipboard and the classroom's Messages page opens — you send it there; nothing is sent from here</span></div>
-      <textarea id="crs-help" rows="2" spellcheck="false" placeholder="where you are stuck — the activity and the symbol above are added as one context line"></textarea>
-      <div class="crs-note" id="crs-help-note" aria-live="polite"></div>
-      <div class="wbm-row"><span class="spring"></span><button class="btn" id="crs-copy" hidden>COPY TEXT</button><a class="btn live" id="crs-send" href="#" target="_blank" rel="noopener">TO MESSAGES ↗</a></div>
-      <div class="crs-sec" id="crs-ready-sec">READINESS <span class="crs-h">I'm ready · I need help · Not ready yet — on the Today page; your instructor sees it there. Nothing here marks it.</span></div>
-      <div class="wbm-row" id="crs-ready-row"><span class="spring"></span><a class="btn" id="crs-ready-link" href="#" target="_blank" rel="noopener">MARK READINESS ON TODAY ↗</a></div>
-      <div class="wbm-err" id="crs-err"></div>
-      <div class="wbm-row"><button class="btn" id="crs-close">CLOSE <kbd>Esc</kbd></button></div>
     </div>
   </div>
 

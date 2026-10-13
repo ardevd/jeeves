@@ -62,10 +62,10 @@ public final class AgentManager {
         public volatile boolean dismissed;  /* removed from the view by the user (agent.dismiss) — the record stays */
         /** WHY the run ended or stands where it does, in words the card shows: "final answer after 6
          *  turns", "stopped by the user", "provider failure: …", "two reasoning-only answers in a
-         *  row …" (course integration P0.5: a visible stop reason; AgentLoop sets it). */
+         *  row …" (AgentLoop sets it). */
         public volatile String stopReason;
-        /** The mission's own cap on one answer's tokens (0 = the loop's default) — a Day 1 preset
-         *  bounds output explicitly; the endpoint's cap (Provider.maxOutputTokens) applies too. */
+        /** The mission's own cap on one answer's tokens (0 = the loop's default); the endpoint's cap
+         *  (Provider.maxOutputTokens) applies too. */
         public int maxOutputTokens;
         public long startedAt;
         public final List<Object> progress = new ArrayList<>();
@@ -73,11 +73,9 @@ public final class AgentManager {
          *  digest; in-memory like the mission itself. Capped so a runaway mission stays bounded. */
         public final List<Map<String, Object>> turns = new ArrayList<>();
         public volatile boolean pauseRequested, stopRequested;
-        /** Course mode (A10): the mission was stopped by the ACCESS FENCE (the instructor closed Jeeves,
-         *  the auth service went away, the room was reassigned), not by its owner — re-enabling never
-         *  restarts it. cancellationUnconfirmed stays true until the loop's thread has actually
-         *  returned: an upstream request may still be in flight, and "stopped" is not said before. */
-        public volatile boolean fenced, cancellationUnconfirmed;
+        /** cancellationUnconfirmed stays true until the loop's thread has actually returned: an
+         *  upstream request may still be in flight, and "stopped" is not said before. */
+        public volatile boolean cancellationUnconfirmed;
 
         static Mission fromMap(Map<?, ?> r) {
             Mission m = new Mission();
@@ -123,14 +121,13 @@ public final class AgentManager {
             if (turnsNeeded > 0) m.put("turnsNeeded", turnsNeeded);
             if (stopReason != null) m.put("stopReason", stopReason);
             if (maxOutputTokens > 0) m.put("maxOutputTokens", maxOutputTokens);
-            /* the state as the Day 1 workflow names it (queued/running/paused/cancelled/failed/completed);
+            /* the state as a workflow names it (queued/running/paused/cancelled/failed/completed);
                `state` keeps the workbench's own vocabulary that every client and record key on */
-            /* a fenced mission whose thread has not returned is DRAINING (cancellation_unconfirmed), never
+            /* a stopped mission whose thread has not returned is DRAINING (cancellation_unconfirmed), never
                "cancelled": the upstream may still be answering, and the capture records whatever comes */
             m.put("displayState", "stopped".equals(state) && cancellationUnconfirmed ? "draining" : switch (String.valueOf(state)) {
                 case "done" -> "completed"; case "stopped" -> "cancelled"; case "blocked", "interrupted" -> "failed"; default -> String.valueOf(state);
             });
-            if (fenced) m.put("fenced", true);
             if (cancellationUnconfirmed) m.put("cancellationUnconfirmed", true);
             if (dismissed) m.put("dismissed", true);
             m.put("startedAt", startedAt);
@@ -740,13 +737,6 @@ public final class AgentManager {
                         ? " · " + m.providerLabel + " (" + resolved[1] + ")" : ""));
 
         if ("scripted".equals(m.mode)) startScripted(m);
-        else if (("cli".equals(m.mode) || "claude".equals(m.mode)) && dev.workbench.course.Course.on()) {
-            /* a course room has no claude CLI of the student's, and a CLI mission has no wire the room
-               can capture — refused, said plainly, instead of an uncaptured run on the class server */
-            m.state = "blocked";
-            m.stopReason = "cli missions do not run in a course room: there is no claude CLI here and nothing of such a run could be captured — use the class model, or your own DeepSeek route enrolled on the classroom's Provider page (a key is never typed into Jeeves)";
-            act(m.agentId, "blocked", m.stopReason);
-        }
         else if ("cli".equals(m.mode) || "claude".equals(m.mode)) startClaude(m);   // "claude" = the legacy mode name, still accepted (B1)
         else if ("http".equals(m.mode)) startHttp(m, resolved);
         else {
@@ -798,36 +788,9 @@ public final class AgentManager {
         return m.toMap();
     }
 
-    /** The http loops' threads, by mission id — what a fence interrupts (a request in flight returns
+    /** The http loops' threads, by mission id — the loop a stop waits for (a request in flight returns
      *  at once with the interruption recorded as its failure) and what confirms a stop when it ends. */
     private final Map<String, Thread> loopThreads = new java.util.concurrent.ConcurrentHashMap<>();
-
-    /**
-     * Course mode (A10, CoursePolicy.Fencer): the room's access closed — every running, paused or
-     * queued mission is asked to stop NOW and said to be draining until its thread has returned.
-     * Partial answers, pending capture and errors stay where the loop wrote them; nothing is reset;
-     * re-enabling restarts nothing. Returns the missions fenced, each with cancellationUnconfirmed.
-     */
-    public synchronized List<Map<String, Object>> fence(String reason) {
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Mission m : missions.values()) {
-            if (!List.of("running", "paused", "queued").contains(String.valueOf(m.state))) continue;
-            m.fenced = true;
-            m.stopRequested = true;
-            m.pauseRequested = false;
-            m.state = "stopped";
-            m.stopReason = reason;
-            Thread t = loopThreads.get(m.id);
-            m.cancellationUnconfirmed = t != null && t.isAlive();
-            if (t != null && t.isAlive()) t.interrupt();   // a request in flight comes back as an interrupted attempt, recorded
-            Process p = procs.remove(m.id);
-            if (p != null) { p.destroy(); m.cancellationUnconfirmed = true; }
-            releaseFollowIfTerminal(m);
-            act(m.agentId, "blocked", "agent run " + m.id + " stopped by the room — " + reason.replaceFirst("^fenced: ", "") + (m.cancellationUnconfirmed ? " · stopping: the model's last reply may still arrive; it is recorded, not applied" : ""));
-            out.add(m.toMap());
-        }
-        return out;
-    }
 
     /** A mission outside the running/paused set never emits presence again, so a
         follow on it must be RELEASED and the flip broadcast — otherwise clients
@@ -1818,8 +1781,8 @@ public final class AgentManager {
 
     // ------------------------------------------------------------ http mode (multi-LLM agent loop)
 
-    /** Who records a mission's requests, answers and tool results exactly (AgentLoop.Capture) — the
-     *  course integration sets it; standalone the loop records nothing beyond its transcripts. */
+    /** Who records a mission's requests, answers and tool results exactly (AgentLoop.Capture) — an
+     *  integration may set it; by default the loop records nothing beyond its transcripts. */
     private volatile java.util.function.Function<Mission, dev.workbench.llm.AgentLoop.Capture> captureFactory;
     public void captureFactory(java.util.function.Function<Mission, dev.workbench.llm.AgentLoop.Capture> f) { this.captureFactory = f; }
 
@@ -1828,7 +1791,7 @@ public final class AgentManager {
      *  `fixture` provider plays canned responses — no network, no key. */
     private void startHttp(Mission m, String[] resolved) throws OpException {
         /* a mission blocked before its first request carries its stopReason like one blocked in the
-           loop — the Day 1 report shows stopReason, not the activity row (persona pass 2026-10-07) */
+           loop — a mission report shows stopReason, not the activity row (persona pass 2026-10-07) */
         if (resolved == null) {
             m.state = "blocked";
             m.stopReason = "http mode needs --model <provider:model> — see llm.providers";
@@ -1870,9 +1833,8 @@ public final class AgentManager {
                     @Override public void record(Map<String, Object> rec) { recordTurn(m, rec); }
                 },
                 m.maxTurns > 0 ? m.maxTurns : dev.workbench.llm.Depth.loopTurns(m.depth, 14), extras, pr.contextTokens, wire);
-        /* a configured capture that cannot attach blocks the mission: a classroom run never
-           dispatches uncaptured because a factory threw (strict or not — the operator asked for
-           capture) */
+        /* a configured capture that cannot attach blocks the mission: nothing dispatches uncaptured
+           because a factory threw (the operator asked for capture) */
         if (captureFactory != null) {
             try { loop.capture(captureFactory.apply(m)); }
             catch (Exception e) {
@@ -1891,7 +1853,7 @@ public final class AgentManager {
             try { loop.run(); }
             finally {
                 /* the thread's return is the one confirmation that nothing of this mission is in flight
-                   any more — a fenced mission stops being "draining" here, nowhere earlier */
+                   any more — a stopped mission stops being "draining" here, nowhere earlier */
                 loopThreads.remove(m.id);
                 if (m.cancellationUnconfirmed) { m.cancellationUnconfirmed = false; act(m.agentId, "note", "mission " + m.id + " stop confirmed — its loop has returned"); }
                 releaseFollowIfTerminal(m);

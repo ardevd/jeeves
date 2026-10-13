@@ -56,7 +56,7 @@ public final class LlmRegistry {
          *  current models; an overestimate costs one retried request, an underestimate throws away
          *  context the agent needs; ollama/fixture 128k; llm.configure sets it. */
         public int contextTokens = 1_000_000;
-        /** The wire contract beyond OpenAI's (course integration P0.1, 2026-10-07). A thinking
+        /** The wire contract beyond OpenAI's. A thinking
          *  model returns its trace on the assistant message under {@code reasoningField}
          *  ("reasoning_content"; "" = none expected). {@code reasoningReplay} says what the
          *  provider wants done with it when the history is sent back:
@@ -69,10 +69,10 @@ public final class LlmRegistry {
          *  The agent loop serialises per policy; nothing is sent to a provider that does not want
          *  it, nothing a provider needs is dropped. */
         public String reasoningField = "", reasoningReplay = "never";
-        /** The endpoint answers chat completions as an SSE stream only (the course gateway requires
+        /** The endpoint answers chat completions as an SSE stream only (some gateways require
          *  stream:true): the client collects the deltas into one message. */
         public boolean streamOnly;
-        /** The endpoint's own cap on max_tokens (0 = none; the course gateway: 8192). */
+        /** The endpoint's own cap on max_tokens (0 = none). */
         public int maxOutputTokens;
         /** Defined by the operator through the environment (WORKBENCH_LLM_&lt;ID&gt;_URL …): read,
          *  usable, not editable from the UI or the ops. */
@@ -168,8 +168,8 @@ public final class LlmRegistry {
            message returned by the API back to messages as-is (including reasoning_content)" for
            kimi-k3; K2.x keeps it within one tool-call loop unless preserved thinking is on
            (platform.kimi.ai/docs/guide/use-kimi-k2-thinking-model, read 2026-10-07). Model ids are
-           the doc's and await live qualification; the class's own K3 is reached through the
-           course gateway, defined by the operator (WORKBENCH_LLM_<ID>_URL), not this entry. */
+           the doc's and await live qualification; a deployment's own K3 is reached through the
+           gateway, defined by the operator (WORKBENCH_LLM_<ID>_URL), not this entry. */
         Provider kimi = p("moonshot", "Moonshot (Kimi)", "http", "https://api.moonshot.ai/v1",
                 false, true, "kimi-k3", "kimi-k2.7-code", "kimi-k2.6");
         kimi.reasoningField = "reasoning_content";
@@ -186,14 +186,14 @@ public final class LlmRegistry {
         providers.get("fixture").contextTokens = 128_000;
         /* the fixture provider's scenarios (AgentLoop.fixtureClient): recorded-shape answers of a
            thinking provider with tools, reasoning-only answers, malformed bodies, an upstream
-           failure, a slow endpoint — the course integration's tests run the loop against them */
+           failure, a slow endpoint — the provider-loop tests run the loop against them */
         providers.get("fixture").models = new ArrayList<>(List.of("fixture-1", "ds-tools", "ds-long", "plain-strips", "reasoning-only",
                 "malformed", "upstream-500", "slow-tools", "big-results", "stream-tools"));
         envProviders();
     }
 
-    /** Providers the operator defines in the environment — the class's inference gateway, a
-     *  course-paid route: WORKBENCH_LLM_&lt;ID&gt;_URL (required), _MODELS (comma-separated, the first
+    /** Providers the operator defines in the environment — an inference gateway, an
+     *  operator-defined route: WORKBENCH_LLM_&lt;ID&gt;_URL (required), _MODELS (comma-separated, the first
      *  is the default), _LABEL, _REASONING ("reasoning_content:all" — field and replay policy),
      *  _STREAM (1: SSE only), _MAXOUT (the endpoint's max_tokens cap), and _KEY (KeyStore). Such
      *  a provider is MANAGED: listed and usable, never edited or removed through the ops, and
@@ -224,19 +224,6 @@ public final class LlmRegistry {
             pr.managed = true;
             providers.put(id, pr);   // the environment wins over a shipped entry of the same id
         }
-    }
-
-    /** A MANAGED provider the deployment defines in code rather than in the environment — a course
-     *  room's class inference gateway (CourseRuntime): listed and usable, never edited or removed
-     *  through the ops, nothing a user saved under its id read; its key is file-backed (KeyStore). */
-    public synchronized Provider registerManaged(String id, String label, String url, List<String> models, String reasoningField, String replay, boolean streamOnly, int maxOutputTokens) {
-        Provider pr = p(id, label, "http", url, false, true, models.toArray(new String[0]));
-        if (reasoningField != null && !reasoningField.isBlank()) { pr.reasoningField = reasoningField; pr.reasoningReplay = REPLAY_POLICIES.contains(replay) ? replay : "all"; }
-        pr.streamOnly = streamOnly;
-        pr.maxOutputTokens = maxOutputTokens;
-        pr.managed = true;
-        providers.put(id, pr);
-        return pr;
     }
 
     private static Provider customSeed() {

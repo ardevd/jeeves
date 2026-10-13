@@ -587,34 +587,16 @@ public final class ToolFacade {
 
     /** The `ops.tools` rows: every tool with its schema, the ops it routes to and whether the
      *  loop may call it — the bridge's tools/list and the descriptor page read this. */
-    /** In a course room the catalogue IS the classroom's subset (Course.toolSubset): a client that filters
-     *  is a convenience; the room refuses what is not listed (call) and lists only what it allows. */
-    static boolean allowedInRoom(String tool) {
-        return !dev.workbench.course.Course.on() || dev.workbench.course.Course.toolSubset().contains(tool);
-    }
-
     public static List<Object> catalogue() {
         List<Object> out = new ArrayList<>();
         for (Tool t : TOOLS.values()) {
-            if (!allowedInRoom(t.name())) continue;
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("tool", t.name());
             row.put("op", t.ops().isEmpty() ? null : t.ops().get(0));
             row.put("ops", t.ops());
             row.put("loop", t.loop());
             row.put("description", t.description());
-            /* in a room the schema offers only the actions the room will route (fix-review addendum L1):
-               a model reading `enum: [open, …]` and then refused learns nothing */
-            List<String> allowed = dev.workbench.course.Course.on() ? dev.workbench.course.Course.allowedActions(t.name()) : null;
-            if (allowed != null && t.properties().get("action") instanceof Map<?, ?> ap) {
-                Map<String, Object> props = new LinkedHashMap<>(t.properties());
-                Map<String, Object> a2 = new LinkedHashMap<>();
-                for (Map.Entry<?, ?> e : ap.entrySet()) a2.put(String.valueOf(e.getKey()), e.getValue());
-                a2.put("enum", allowed);
-                a2.put("description", "in this classroom: " + String.join(" | ", allowed));
-                props.put("action", a2);
-                row.put("parameters", schemaOf(props, t.required()));
-            } else row.put("parameters", schema(t));
+            row.put("parameters", schema(t));
             out.add(row);
         }
         return out;
@@ -706,7 +688,7 @@ public final class ToolFacade {
                     case "smali": return new Route("code.smali", pass(args, Set.of("view", "window", "scope", "at", "context", "lines")));
                     case "outline": return new Route("code.outline", pass(args, Set.of("view", "window", "scope"), "symbol", "class"));
                     case "packet": {
-                        /* an agent reads the packet through the loop's result cap: the exercise's student
+                        /* an agent reads the packet through the loop's result cap: the optional student
                            block (every line again) stays out unless asked for */
                         Map<String, Object> p = pass(args, Set.of("view", "window", "scope"));
                         p.putIfAbsent("student", false);
@@ -959,25 +941,11 @@ public final class ToolFacade {
      *  kind, review policy) happens inside. Returns the dispatcher envelope {ok, data | error}. */
     public static Map<String, Object> call(Dispatcher d, String tool, Map<String, Object> args, String actor) { return call(d, tool, args, actor, false); }
 
-    /** `external`: the call came through the `tool.call` op — an assistant outside the room. In a course
-     *  room that path is bounded to the classroom's subset and its allowed actions; the room's OWN
-     *  reversing agent (AgentLoop) keeps its loop tools (map_verdict …) — the subset is the student
-     *  assistant's bound, not the mission's (fix-review addendum L2). */
+    /** `external`: the call came through the `tool.call` op — an assistant outside the workbench's own loop. */
     public static Map<String, Object> call(Dispatcher d, String tool, Map<String, Object> args, String actor, boolean external) {
         if (args == null) args = new LinkedHashMap<>();
-        boolean room = external && dev.workbench.course.Course.on();
         if (!TOOLS.containsKey(tool))
-            return err("E_UNSUPPORTED", "unknown tool: " + tool, "call one of: " + String.join(", ", room ? dev.workbench.course.Course.toolSubset() : TOOLS.keySet()));
-        if (room) {
-            if (!allowedInRoom(tool))
-                return err("E_SCOPE", "'" + tool + "' is not available to your assistant in this classroom — it can read code, symbols, cross-references, strings, search results and annotations (" + String.join(", ", dev.workbench.course.Course.toolSubset()) + "); questions, help and findings go through the classroom's own tools",
-                        "course=tool-subset");
-            List<String> actions = dev.workbench.course.Course.allowedActions(tool);
-            String action = s(args, "action");
-            if (actions != null && action != null && !actions.contains(action))
-                return err("E_SCOPE", "'" + tool + " " + action + "' is not available to your assistant here — the course set this room's target, and the student's page is where targets open and close and history is undone; your assistant can: " + String.join(", ", actions),
-                        "course=tool-subset");
-        }
+            return err("E_UNSUPPORTED", "unknown tool: " + tool, "call one of: " + String.join(", ", TOOLS.keySet()));
         String missing = missingRequired(tool, args);
         if (missing != null)
             return err("E_SYNTAX", "missing required param '" + missing + "' for " + tool, "call " + tool + " with " + exampleFor(tool));

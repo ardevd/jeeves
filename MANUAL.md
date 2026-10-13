@@ -183,8 +183,8 @@ python3 mcp/workbench_mcp.py            # stdio MCP server "jeeves", 25 tools
 python3 mcp/workbench_mcp.py --selftest # smoke test
 ```
 
-Register it in the client. Claude Code (the backend must be up on :7800 first —
-the bridge reads the catalogue at startup and exits if it cannot reach it):
+Register it in the client. Claude Code (the bridge fetches the tool catalogue lazily and keeps
+retrying, so the backend may come up later; its `jeeves_status` tool says what is missing):
 
 ```bash
 claude mcp add jeeves -e WORKBENCH_ACTOR=human:alice -- python3 /absolute/path/to/jeeves/mcp/workbench_mcp.py
@@ -552,92 +552,11 @@ verdicts arrive as proposals). `map.export` renders md/json posters.
   llm config. **All gitignored; safe to delete for a clean slate**
   (maps seed regenerates).
 
-## 10b. Course mode (a classroom room)
-
-Off by default — nothing in this section exists on a standalone workbench. With `WORKBENCH_COURSE=1`
-the backend is one student's **room** of a class served by the training server (the contract and the
-deployment variables: `design/COURSE_HANDOFF.md`):
-
-- **Identity is the server's.** Every request reaches the room through the class's nginx, which
-  authenticated the student or the room's machine client and hands over `X-WB-Principal`, an opaque
-  `X-WB-Grant` (browser AND machine — a request without one is not served) and the edge's own
-  credential; the room validates the grant with the auth service (every second on a stream) and
-  derives the actor (`human:<handle>`; a machine grant may name its kind, `llm:<name>`). A session of
-  another account or of an earlier workspace generation is refused. A browser's own actor string
-  never counts. A copied room URL or another room's session answers 404. Machine clients are served
-  for reads and missions, but the student's own actions — **share, reset, help, readiness** — are
-  refused to them.
-- **Access is the instructor's.** The room asks the auth service every second whether Jeeves is
-  released for this room and holds the answer for 5 s. Not released, withdrawn, the credential fenced
-  (the room reassigned) or the auth service away for 5 s: new requests are refused with the reason
-  (only `course.status` answers), open streams close, running missions are **fenced** — stopped,
-  `draining` until their thread returns, then `cancelled`; a request about to leave is not sent.
-  Re-enabling restarts nothing. What the student's page shows depends on who answered: the class
-  edge answers a locked room or an auth outage itself (its 404/503 pages, no reason), so the COURSE
-  item says `NO ACCESS` (the classroom closed Jeeves or the session ended — the course home says
-  which) or `NO ANSWER` (retrying every 5 s); the room's own words — "The instructor closed Jeeves
-  at 10:42", "The class sign-in service has not answered for 5 s" — reach the page through the
-  live stream's `closed` event while the session still validates, and in the instructor's room. A
-  stream the server ended is re-created by the page with backoff (STATE says `LIVE PAUSED` meanwhile).
-  A run the room stopped reads `STOPPING` while its last request may still answer, then
-  `STOPPED BY ROOM` with the reason on its card.
-- **The room is confined.** The file browser shows the room's own files (`<home>/files`) and the
-  approved course folders only; `target.open` takes nothing outside them; the device/phone ops and
-  cli missions are refused (the room runs on the class server, not on the student's laptop).
-- **Everything a mission does is captured**, privately, under `<home>/capture/`: the exact
-  requests after compaction, the answers (or the SSE segments and failures), every tool result as
-  the model consumed it, every rename/comment/undo/redo, how the run ended — and exported to the
-  class store with durable acknowledgement. In `strict` mode (the default) a request is dispatched
-  only once its record is durable at the store; a store that stays away blocks the mission with the
-  reason (nothing runs uncaptured). cli (claude-code) and scripted missions are NOT captured.
-- **The course target** is checked against the published manifest (`WORKBENCH_COURSE_MANIFEST`):
-  the opened apk's sha256 must be listed. A mismatch refuses `course.mission`; a target opened from a
-  database (no artifact file) cannot be checked and the status says so.
-- **The COURSE ribbon item** (bottom bar, only in a room) shows THREE verdicts apart: the access
-  (`enabled` or why not), the ANALYSIS verdict — `ready` · `loading` · `degraded` · `target-mismatch`
-  · `unavailable`, never "ok" because the web process answers — and the class MODEL route
-  (`ready` only with a qualified route; a fixture or an unconfigured route is said so, never
-  "verified" from the room). Click it for the card: the health (access, model route, the classroom's
-  activity with its revision, auth/store/gateway/classroom, capture with `home durable` and
-  `exports acknowledged`, target), **SHARE A FINDING** (PREVIEW shows the destination, the body as
-  it would go, the symbol's ORIGINAL descriptor as the reference, the classroom's activity identity
-  and the provenance; TO FINDINGS PAGE puts the composed text on the clipboard and opens the
-  classroom's Findings page — the student publishes there, under their own account; the room never
-  posts for them), **ASK THE INSTRUCTOR** (TO MESSAGES: the words + one context line to the clipboard, the Messages
-  page opens) and **READINESS** (one link to the Today page — I'm ready · I need help · Not ready yet
-  live there; nothing in the room marks it) — every one of them a handoff, as links that work even
-  while the room refuses everything else: nothing is sent from Jeeves, ever. The share hands over
-  the Findings form's fields one by one (type, claim, details, original symbol, target bytes, project
-  revision — chips to copy; the small ones in the page's URL fragment). The current activity is the
-  classroom's (`course.activity` reads it; nothing in a room sets it).
-- **The Day 1 mission** (`course.mission {symbol, question}`): the course preset (provider:model,
-  turns, output, TOKEN budget) pinned to the open target, with a snapshot of the edit revision;
-  `course.mission.report {id}` gives the stop reason, the annotation diff since the snapshot (this
-  run's vs others'), the receipts (requested/returned model, request id, usage) and a one-line
-  summary; `course.reset` goes back to the FIRST course snapshot on the target (stopping a mission
-  still running there), lists what it undid and names what it does not reset (tags, map verdicts,
-  bookmarks, flows, cached decompilations).
-- **The evidence packet** — `code {view: "packet"}` from an agent or MCP client, `evidence.packet`
-  over HTTP — is the E3 exercise's input: one method, in the dex's original names, with the CFG
-  blocks, a reachability selection from an `entry`, references, provenance and omissions, and the
-  `student` block the course's `packet_builder.py` consumes (§4.3 of `design/MCP_SPEC.md`).
-- Ops: `course.status`, `course.manifest`, `course.activity` (read-only), `course.mission`,
-  `course.mission.report`, `course.reset` (an edit rollback — never the capture), `course.share`,
-  `course.help`, `course.progress`, `course.thread`, `course.events`, `course.receipt` (the operator's
-  cleanup receipt, also written to `<capture>/receipt.json` at shutdown),
-  `course.export.reconstruction`; `GET /healthz` is the operator's readiness probe (no session);
-  `system.doctor` has a `course` row. Tests: `gradle courseIT` (mock scene + an in-process fixture
-  class server speaking the A10 contract), `gradle packetIT` (the JEB engine on
-  `~/jeb/test_visionocr.apk`). The class server and the room package are not part of this repository.
-
 ## 11. Troubleshooting
 
 | Symptom | Fix |
 |---|---|
 | `7800 in use` | another instance is running; use it, or `-Dworkbench.port=7901` |
-| The room refuses to boot: "course settings are set (…) but WORKBENCH_COURSE is not" | set `WORKBENCH_COURSE=1` for a classroom room (or `=0` to run standalone on purpose) |
-| In a room every browser POST answers 403 "Origin/Host mismatch" | the proxy does not send `X-Forwarded-Host` (and `X-Forwarded-Proto`) from a peer in `WORKBENCH_COURSE_TRUST_PROXY` — the class nginx does (§10b) |
-| A mission says "capture refused the request … Run the mission again then" | strict capture could not make the request record durable at the class store within its retries; `course.status` names the store's state; the record is journaled and exported when the store answers |
 | The DEX view's branch labels do not match the bytes | a branch operand is a signed displacement in 16-bit code units from the instruction (`0x6e + 2·0x22 = 0xb2`), and a label `:l_<hex>` names the destination's byte offset — check the offset column: the label stands on the instruction at that offset. Switch payloads with their case destinations, fill-array-data payloads with their elements and the try table (`.catch <type> {:try_start_ .. :try_end_} :catch_`) are rendered as their own rows; a destination that is not an instruction start is written out in the operand (`+N units → hex`). If a label still disagrees with the bytes, the running server predates 2026-10-08 — restart the workbench. The listing is composed from the engine's instruction model — not a qualified round-trippable smali export |
 | Mock targets only | no JEB install was found — set `JEB_HOME` and restart |
 | The heap does not come back after closing a large target | JEB keeps per-context caches of a closed project until the process exits; the workbench unloads the project and reclaims nothing beyond that (`closeCapabilities` says so). Restart the workbench after cycling several large targets; `WORKBENCH_XMX` sizes the heap |

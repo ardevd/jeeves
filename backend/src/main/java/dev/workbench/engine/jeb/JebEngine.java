@@ -735,10 +735,9 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                             + " (not loaded) — unloaded entries cleared; projectFile=" + pf + "; retrying once");
                     project = engines.createProject(key); inputIdentity = null;
                 }
-                // Operator-only seed construction: persist the actual input bytes so a database
-                // moved into a room does not depend on its builder's private absolute path.
-                // Ordinary projects retain their existing storage policy. Qualification must
-                // still measure the reopened input after the builder's home is removed.
+                // WORKBENCH_SEED_PERSIST_INPUT=1: persist the actual input bytes, so a database copied
+                // elsewhere does not depend on its builder's absolute path. Ordinary projects keep
+                // JEB's default storage policy.
                 if ("1".equals(System.getenv("WORKBENCH_SEED_PERSIST_INPUT"))) {
                     if (artifact.length() > 512L * 1024 * 1024)
                         throw new IllegalStateException("Seed input exceeds the 512 MiB bound");
@@ -3348,7 +3347,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
         rows.add(r);
     }
 
-    // ------------------------------------------------------------ evidence packet (course integration P0.4)
+    // ------------------------------------------------------------ evidence packet
 
     public static final String PACKET_SCHEMA = "evidence-packet-v1";
 
@@ -3362,8 +3361,8 @@ public final class JebEngine implements Engine, SearchIndex.Host {
      * exceptional, edges). A branch selection is CFG reachability from the entry block, which is a
      * fact about the graph, not a claim about runtime: the packet says so, and names the caller's
      * choice of branch and the constructors of referenced classes as context it does not hold.
-     * The `student` block is the course fixture's shape (callback-cfg.json: id, lines, successors,
-     * exceptional, scope_note), so the students' packet builder consumes a real method unchanged.
+     * The `student` block is a fixed consumer shape (callback-cfg.json: id, lines, successors,
+     * exceptional, scope_note), so a packet consumer takes a real method unchanged.
      */
     @Override
     public Map<String, Object> evidencePacket(String symbol, Map<String, Object> opts) throws OpException {
@@ -3375,7 +3374,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                 : o.get("maxInstructions") instanceof String s && s.trim().matches("[1-9]\\d{0,5}") ? Integer.parseInt(s.trim()) : 400;   // the facade's schema types it as a string too
         boolean wantJava = !(o.get("java") instanceof Boolean b) || b;
         if (o.get("java") instanceof String js) wantJava = !"false".equalsIgnoreCase(js.trim());
-        boolean wantStudent = !(o.get("student") instanceof Boolean sb0) || sb0;   // the exercise's block: every line again — an agent's call leaves it out
+        boolean wantStudent = !(o.get("student") instanceof Boolean sb0) || sb0;   // the student block: every line again — an agent's call leaves it out
         if (o.get("student") instanceof String ss0) wantStudent = !"false".equalsIgnoreCase(ss0.trim());
         synchronized (this) {
             Resolved r = lookup(symbol);
@@ -3496,7 +3495,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             List<Object> studentBlocks = new ArrayList<>();
             /* the evidence is written in the dex's ORIGINAL names: a callee, field or type an analyst
                renamed appears under its own descriptor here and under its display name in provenance —
-               a rename must not change the evidence (the course's "display names do not change
+               a rename must not change the evidence ("display names do not change
                evidence" check, and a blind replay need it) */
             java.util.function.Function<IDalvikInstruction, String> fmt = insn -> {
                 String text = insn.format(null).trim();
@@ -3519,7 +3518,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                 brow.put("successors", new ArrayList<>(succ.getOrDefault(bid, java.util.Set.of())));
                 brow.put("exceptional", new ArrayList<>(exc.getOrDefault(bid, java.util.Set.of())));
                 blockRows.add(brow);
-                /* the student block carries EVERY block with its lines — the exercise is the student's
+                /* the student block carries EVERY block with its lines — the whole method is the consumer's
                    own selection over the whole graph (the fixture callback-cfg.json has the selector and
                    the irrelevant branch too); the packet's own listing and references are the selection */
                 List<String> lines = new ArrayList<>();
@@ -3594,7 +3593,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                encoded order with their count check, the debug names, never a mapping onto the arguments */
             try { out.put("methodParameters", parameterMetadata(dex, cls, m, false)); } catch (Throwable t) { out.put("methodParameters", Map.of("status", "unsupported", "why", String.valueOf(t))); }
 
-            /* the course exercise's shape: packet_builder.py consumes {target_id, original_method,
+            /* the student block's shape: a consumer takes {target_id, original_method,
                display_name, entry, scope_note, blocks[{id, lines, successors, exceptional}]} */
             Map<String, Object> student = new LinkedHashMap<>();
             student.put("fixture", false);
@@ -3607,7 +3606,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             student.put("names", "original");
             student.put("provenance", prov);   // the analyst's display names for symbols in the lines, kept apart from the evidence
             if (wantStudent) out.put("student", student);
-            else out.put("studentOmitted", "the exercise's block is left out (student: false) — ask with student: true");
+            else out.put("studentOmitted", "the student block is left out (student: false) — ask with student: true");
             return ordered(out);
         }
     }

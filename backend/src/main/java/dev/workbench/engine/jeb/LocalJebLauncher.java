@@ -7,8 +7,6 @@ import dev.workbench.server.WorkbenchServer;
 import java.io.IOException;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.util.Locale;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -26,11 +24,6 @@ public final class LocalJebLauncher {
         if (!Licensing.canUseCoreAPI()) {
             throw new IllegalStateException("This JEB build does not permit core API use");
         }
-        String mode = System.getenv().getOrDefault("WORKBENCH_COURSE", "0").trim().toLowerCase(Locale.ROOT);
-        if (!Set.of("", "0", "false", "no", "off").contains(mode)) {
-            throw new IllegalStateException("Official-client hosting is for local Jeeves, not hosted course rooms");
-        }
-
         // Use the public official-client implementation, including its ordinary
         // license checks; never fabricate a client signature or alter license flags.
         HeadlessClientContext client = new HeadlessClientContext() {

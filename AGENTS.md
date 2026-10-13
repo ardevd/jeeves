@@ -16,8 +16,8 @@
   './ui/hub.js'` resolves to hub.ts).
 - **Tests.** `gradle -p backend classes` must build without JEB; CI runs it on every pull request
   together with `npm run check`. `gradle -p backend parityTest` checks the op registry against
-  `design/MCP_SPEC.md` §4 on the mock engine; at the initial public release it reports 72 known
-  failures (course ops registered but absent from §4, 33 §4 names not registered, one review-mode
+  `design/MCP_SPEC.md` §4 on the mock engine; at the initial public release it reports 42 known
+  failures (23 registered ops absent from §4, 18 §4 names its parser mis-reads, one review-mode
   check): bring the spec and the registry back in step before gating CI on it. The
   `*IT` suites are plain `main` classes behind gradle tasks (`gradle -p backend m7IT`, `keysIT`,
   `paramsIT`, …); they need a JEB install and an APK fixture (`WORKBENCH_QUALIFY_FIXTURE`, default

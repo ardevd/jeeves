@@ -76,7 +76,7 @@ public final class KeyStore {
         return "WORKBENCH_LLM_" + id.toUpperCase().replaceAll("[^A-Z0-9]", "_") + "_KEY";
     }
 
-    /** Providers whose key lives in a FILE the deployment supplies (a course room's gateway
+    /** Providers whose key lives in a FILE the deployment supplies (a deployment's gateway
      *  credential, a systemd credential file): read at call time, so a rotation needs no restart;
      *  never written to the keyring, never echoed. */
     private final Map<String, java.io.File> fileKeys = new LinkedHashMap<>();

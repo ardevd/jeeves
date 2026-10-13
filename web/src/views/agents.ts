@@ -208,10 +208,8 @@ async function loadMissions(){
     const budgetPct = Math.min(100, Math.round((m.tokensUsed || 0) / (m.budget || 1) * 100));
     card.innerHTML =
       '<div class="mc-top"><span class="mstatus' + (({ running:' run', paused:' paused', done:' done', blocked:' blocked', queued:' queued', stopped:' stopped', interrupted:' interrupted' } as Record<string, string>)[m.state] || '') + '">'
-        /* a run the ROOM stopped (course mode: access closed) says so — STOPPING while its last
-           request may still answer, STOPPED BY ROOM once its thread returned; never a bare STOPPED
-           the student did not ask for (persona pass 2026-10-09 H1) */
-        + esc(m.displayState === 'draining' ? 'stopping' : m.fenced ? 'stopped by room' : m.state).toUpperCase() + '</span>' +   /* unmapped state = unstyled chip, fails visible (never calm-blue 'done') */
+        /* STOPPING while a stopped run's last request may still answer */
+        + esc(m.displayState === 'draining' ? 'stopping' : m.state).toUpperCase() + '</span>' +   /* unmapped state = unstyled chip, fails visible (never calm-blue 'done') */
       '<span class="mmodel">' + esc(m.providerLabel || m.model) + (m.effort ? ' · ' + esc(m.effort) : '') +
       (m.local ? ' <span class="vchip pv">LOCAL</span>' : '') +
       (m.depth ? ' <span class="vchip depth" title="reversing depth — quick: the subject alone · deep: its call tree">' + esc(m.depth).toUpperCase() + '</span>' : '') +
@@ -253,17 +251,6 @@ async function loadMissions(){
       why.className = 'mc-reason';
       why.textContent = m.reason;
       why.title = m.reason;
-      card.querySelector('.mc-goal')!.after(why);
-    }
-    /* a run stopped by the room (fenced) explains itself on the card — the stop was not the
-       student's, and nothing restarts it by itself */
-    if (m.fenced && m.stopReason){
-      const why = document.createElement('div');
-      why.className = 'mc-reason';
-      const text = 'stopped by the room: ' + String(m.stopReason).replace(/^fenced:\s*/, '') + ' — after ' + (m.turnsDone || 0) + ' turn(s); its names and comments stay (↶ undoes them); Jeeves never restarts runs by itself'
-        + (m.displayState === 'draining' ? " · stopping: the model's last reply may still arrive; it is recorded, not applied" : '');
-      why.textContent = text;
-      why.title = text;
       card.querySelector('.mc-goal')!.after(why);
     }
     card.addEventListener('click', async function(e){

@@ -440,7 +440,7 @@ public final class RunsManager implements FridaBridge.HitListener {
         if (targetParam == null || targetParam.isBlank())
             throw OpException.syntax("Capture requires an explicit target pin", "target=<open target id>");
         if (coldAction != null || coldComponent != null)
-            throw OpException.unsupported("Automatic force-stop/broadcast was retired", "perform and mark student actions explicitly");
+            throw OpException.unsupported("Automatic force-stop/broadcast was retired", "perform and mark the actions explicitly");
         if (device == null || device.isBlank()) throw OpException.syntax("runs.attach needs a device", "");
         if (pkg == null || pkg.isBlank()) throw OpException.syntax("runs.attach needs a package", "");
         String tid = ws.resolveTargetIdOrActive(targetParam);

@@ -5,8 +5,7 @@
 # install's jars on the classpath); without one it runs mock-only.
 # The install is $JEB_HOME when that is set — any licensed JEB, used in place, nothing copied or
 # changed — else a copy of an install under backend/engine when that exists.
-# WORKBENCH_RUN_ONLY=1 starts what is already built (no npm, no gradle). WORKBENCH_COURSE=1 refuses
-# to start without the real engine (a classroom room on the mock engine is not a deployment).
+# WORKBENCH_RUN_ONLY=1 starts what is already built (no npm, no gradle).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -77,17 +76,6 @@ if [ -n "${JEB_HOME:-}" ]; then
 else
   ENGINE="$SCRIPT_DIR/engine"
 fi
-
-# A course room (WORKBENCH_COURSE=1) needs the real engine: fail closed here, before anything is
-# built — a room that would come up on the mock engine is not a deployment that is merely degraded.
-# Tests set WORKBENCH_COURSE_ALLOW_MOCK=1 knowingly.
-case "${WORKBENCH_COURSE:-0}" in 1|true|yes|on|TRUE|YES|ON)
-  if [ ! -f "$ENGINE/bin/app/jeb.jar" ]; then
-    case "${WORKBENCH_COURSE_ALLOW_MOCK:-0}" in 1|true|yes|on) echo "[workbench] NOTE: course mode on the MOCK engine (WORKBENCH_COURSE_ALLOW_MOCK) — tests only" >&2 ;;
-      *) echo "[workbench] ERROR: WORKBENCH_COURSE=1 but no JEB install (JEB_HOME unset, backend/engine absent) — a course room without the real engine is not a deployment" >&2; exit 3 ;;
-    esac
-  fi ;;
-esac
 
 # WORKBENCH_RUN_ONLY=1: start what is already built and build nothing — no npm, no gradle. For
 # a tree that was built once and is started many times (a rehearsal of several instances from one

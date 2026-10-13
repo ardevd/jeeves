@@ -499,7 +499,7 @@ public final class ParamsIT {
         Map<String, Object> rvAgent = postAs("llm:agent-9", "rename.revert", Map.of("target", tid, "symbol", cq));
         check("E_SCOPE".equals(code(rvAgent)), "an agent cannot revert names");
         // the mock engine says what it cannot do
-        // (the mock has no dex; CourseIT's scene covers E_UNSUPPORTED statuses)
+        // (the mock has no dex)
 
         // ================================================================ G. save → close → reopen: mappings, names and History persist
         check(Boolean.TRUE.equals(data(post("target.save", Map.of("target", tid))).get("saved")), "target.save writes the database");
@@ -590,7 +590,7 @@ public final class ParamsIT {
             check(Boolean.TRUE.equals(post("symbol.resolve", Map.of("target", t, "symbol", "LX/1cq;")).get("ok")) && Boolean.TRUE.equals(((Map<?, ?>) dataList(post("history.list", Map.of("target", t))).get(0)).get("undone")), "fleet: redo → undo again, the entry reads undone");
             Map<String, Object> modern = post("code.params", Map.of("target", t, "symbol", "LX/06k;->A09(ZLjava/lang/String;J)V"));
             check(Boolean.TRUE.equals(modern.get("ok")) && List.of("expression", "errorMessageTemplate", "p1").equals(((Map<?, ?>) data(modern).get("annotation")).get("names")), "fleet: a modern annotation-bearing method (06k.A09) reads [expression, errorMessageTemplate, p1]");
-            /* the measurement the course needs: does JEB name the arguments from the annotation BY POSITION on the
+            /* the measurement: does JEB name the arguments from the annotation BY POSITION on the
                fleet build? 06k.A09 and every annotated method of a few classes — counted, printed, not asserted */
             int positional = 0, annotated = 0; List<String> positionalMethods = new ArrayList<>();
             for (String cls : List.of("LX/06k;", "LX/0gs;", "LX/1cq;", "LX/2XF;", "LX/0XS;")) {

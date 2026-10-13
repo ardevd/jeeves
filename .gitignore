@@ -36,6 +36,3 @@ web/js/
 # local QA/ops state: browser driver, scripts, logs, scratch (never /tmp)
 .qa/
 mcp/__pycache__/
-
-# the MCP bridge kit build output (deploy/bridge/build-bridge.sh)
-deploy/bridge/out/

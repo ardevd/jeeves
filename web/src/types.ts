@@ -153,9 +153,6 @@ export interface FsEntry {
 }
 
 export interface FsList {
-  roots?: string[];      // a course room: the browsable places (the student's files first, then the course folders)
-  confined?: boolean;    // a course room: the listing is confined to those roots
-  hidden?: number;       // a course room: entries not listed because their canonical path leaves the roots (a symlink out)
   dir: string;
   parent?: string;
   entries: FsEntry[];
@@ -643,9 +640,8 @@ export interface Mission {
   budgetFloor?: number;    // the least budget that lets the loop send the next request; below it a resume is refused
   turnCap?: number;        // the effective turn cap (explicit maxTurns or the depth default)
   turnsDone?: number;      // turns completed so far
-  displayState?: string;   // the Day 1 workflow's name for the state: queued/running/paused/draining/cancelled/failed/completed
-  stopReason?: string;     // why the run ended or stands where it does, in words (AgentLoop / AgentManager.fence)
-  fenced?: boolean;        // stopped by the ROOM (course mode: access closed), not by the student
+  displayState?: string;   // the workflow name for the state: queued/running/paused/draining/cancelled/failed/completed
+  stopReason?: string;     // why the run ended or stands where it does, in words (AgentLoop)
   cancellationUnconfirmed?: boolean;   // the loop's thread has not returned yet: the upstream may still be answering
   turnsNeeded?: number;    // >0 while paused AT the turn cap: the suggested raise (RAISE THIS MISSION & RESUME prefills it)
   dismissed?: boolean;     // removed from the view by the user (× on a finished card); the record stays
@@ -961,100 +957,6 @@ export interface PullResult {
   file?: string;
 }
 
-/* ---- course integration (ui/course.ts; backend dev.workbench.course, WORKBENCH_COURSE=1) ---- */
-/** course.status — the room's health contract; state "off" on a standalone workbench */
-/** the instructor's release of Jeeves as the room sees it (CoursePolicy): enabled | disabled | fenced | unknown | starting */
-export interface CourseAccess {
-  state: 'enabled' | 'disabled' | 'fenced' | 'unknown' | 'starting' | string;
-  reason?: string;
-  policyRevision?: number;
-  policyEnabled?: boolean;   // the class-wide release — false while the instructor's own room (realm admin) is open for preview
-  realm?: string;            // class | admin
-  handle?: string;
-  accountId?: string;
-  workspaceGeneration?: string;
-  since?: string;
-  fences?: number;
-}
-
-declare global {
-  interface Window { __WB_COURSE_ROOM?: string }   // injected into the served page by a course room (WorkbenchServer.handleStatic)
-}
-/** the classroom's current activity identity, read-only in a room (CourseActivity) */
-export interface CourseActivityIdentity {
-  id?: string | null;
-  revision?: number | null;
-  sha256?: string | null;
-  source?: 'classroom' | 'operator-default' | string;
-  stale?: boolean;
-  fetchedAt?: string;
-  lastError?: string;
-}
-/** the model route, apart from the analysis verdict: ready | blocked | degraded | unavailable | unconfigured */
-export interface CourseModelStatus {
-  state: string;
-  summary?: string;
-  qualification?: string;
-  verified?: boolean;
-  route?: Record<string, unknown>;
-}
-export interface CourseStatus {
-  state: 'off' | 'ready' | 'loading' | 'degraded' | 'target-mismatch' | 'unavailable' | string;
-  summary?: string;
-  fix?: string;
-  fixAudience?: string;
-  fixCode?: string;                       // the short code a student quotes to the instructor (target-mismatch, export-behind, …)
-  handoffs?: Record<string, string>;      // the classroom pages a student is handed to: findings, help, ready, thread
-  seamState?: string;
-  observedAt?: string;
-  access?: CourseAccess;
-  activity?: CourseActivityIdentity;
-  model?: CourseModelStatus;
-  config?: { room?: string; activity?: string; capture?: string; preset?: { model?: string; turns?: number; output?: number; budget?: number } };
-  dependencies?: Record<string, string>;
-  dependencyDetail?: Record<string, string>;
-  capture?: { mode?: string; journaled?: number; exported?: number; pending?: number; refused?: number; parked?: boolean; lastError?: string; homeDurable?: boolean; homeDurableWhy?: string; eventExportDurable?: boolean };
-  target?: { open?: string | null; name?: string; state?: string; resolution?: { match?: string; reason?: string; sha256?: string; manifestArtifact?: string } };
-}
-/** course.share — the preview (nothing sent) or the handoff to the classroom's Findings page: the
- *  composed text to carry (copy), the page (browser), sent:false always — the room never posts */
-export interface CourseShareResult {
-  destination?: string;
-  as?: string;
-  kind?: string;
-  title?: string;
-  summary?: string | null;
-  refs?: Record<string, string>;
-  bodyMd?: string;
-  bytes?: number;
-  limitBytes?: number;
-  identity?: string;
-  provenance?: Record<string, unknown>;
-  fields?: Record<string, string>;        // the Findings form's fields, one by one: type, title, summary, details, original_symbol, symbol, artifact_sha256, project_revision, …
-  requestId?: string;
-  note?: string;
-  originalSymbol?: string;
-  sent?: boolean;
-  reason?: string;
-  browser?: string;                       // the Findings page with the small fields in the URL fragment (#jeeves=…)
-  browserPlain?: string;                  // the same page without the fragment
-  copy?: string;                          // what goes into Details
-  draftNotJournaled?: string;
-}
-/** course.help / course.progress / course.thread — always the honest handoff: the classroom page
- *  and the text to paste; sent is false and reason says human_action_required */
-export interface CourseActionResult {
-  action: string;
-  preview?: Record<string, unknown>;
-  sent?: boolean;
-  reason?: string;
-  requestId?: string;
-  why?: string;
-  browser?: string;
-  copy?: string;
-  note?: string;
-}
-
 /* ---- retained parameter metadata (ui/params.ts; backend code.params / param.rename, 2026-10-08) ---- */
 /** one formal argument as it stands: position, type, the decompiler's current name and where it comes from */
 export interface ParamCurrent {
@@ -1154,10 +1056,6 @@ export interface OpMap {
   'param.rename': ParamRenameResult;
   'param.rename.bulk': ParamRenameResult | ParamPreview;
   'rename.revert': EditResult;
-  'course.status': CourseStatus;
-  'course.share': CourseShareResult;
-  'course.help': CourseActionResult;
-  'course.progress': CourseActionResult;
   'workspace.state': WorkspaceState;
   'workspace.sysmem': SysMem;
   'project.list': Project[];
@@ -1282,7 +1180,7 @@ export type OpResult<K extends string> = K extends OpName ? OpMap[K] : unknown;
 /* ==================================================================
    SSE event bus (api.ts)
 ================================================================== */
-/** `closed` is the server's last word on a stream it ends (a course room's access closing: {reason});
+/** `closed` is the server's last word on a stream it ends ({reason});
  *  `connection` is synthetic, from api.ts: {state: open | retrying | reconnecting, inMs?} */
 export type SseChannel = 'hello' | 'heartbeat' | 'progress' | 'presence' | 'activity' | 'proposals' | 'runs' | 'closed' | 'connection' | 'message' | string;
 /** event payloads are heterogeneous per channel and read defensively — a

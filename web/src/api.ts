@@ -61,9 +61,8 @@ export async function op<K extends string>(name: K, params: OpParams = {}): Prom
     throw new OpError({ error: { code: 'E_HTTP', message: String((e as { message?: unknown } | null)?.message || e) } }, -1);
   }
   if (!res.ok){
-    /* a non-2xx with a JSON error body is the backend (or a course room's gate) speaking: keep its
-       code and words. A 401/403/404 on a course page is an ACCESS answer — the class edge or the
-       room refusing this session — not a dead backend link; 5xx and no-answer are. */
+    /* a non-2xx with a JSON error body is the backend speaking: keep its code and words; 5xx and
+       no-answer are a dead backend link. */
     let body: OpPayload | null = null;
     try { body = await res.clone().json() as OpPayload; } catch { body = null; }
     if (res.status >= 500 || res.status === 0) link(false, `HTTP ${res.status} on ${name}`);
@@ -111,8 +110,7 @@ function ensureEvents(): void {
   s.onerror = () => {
     /* two different failures: the browser's own retry (readyState CONNECTING — a dropped socket, a
        backend restart: it comes back by itself) and a stream the server ENDED with a non-200 (readyState
-       CLOSED — a course room whose access closed, the class edge's denial page, an auth outage past
-       its window): the browser never retries that one. Re-create it ourselves with backoff; the hello
+       CLOSED): the browser never retries that one. Re-create it ourselves with backoff; the hello
        on the new stream resyncs the page (app.ts). The STATE item says "live updates paused" meanwhile. */
     if (s.readyState === EventSource.CLOSED){
       if (es === s) es = null;

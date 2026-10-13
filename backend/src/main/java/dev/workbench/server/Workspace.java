@@ -137,7 +137,7 @@ public final class Workspace {
     }
 
     /** The artifact file an open target was opened from (the apk/dex), or null for a bare .jdb2
-     *  target or a fixture — what the course's target manifest is resolved against. */
+     *  target or a fixture. */
     public synchronized File targetArtifactFile(String tid) {
         TargetMeta tm = tid == null ? null : targets.get(tid);
         if (tm == null || tm.path() == null) return null;
@@ -267,7 +267,7 @@ public final class Workspace {
      * file the target was opened from, or from the input embedded in the database (what a reopened .jdb2 still
      * carries); `recorded` by a device pull and NOT re-measured; `conflict` — the file beside the database is not
      * the database's input (both digests given); `missing`. `database` — the .jdb2 the engine works in (file,
-     * bytes, modified, store key; its hash is never the executable's). `revision` — this room's edit history.
+     * bytes, modified, store key; its hash is never the executable's). `revision` — this workbench's edit history.
      * `runtime` — the compiled build and the engine that answered. Hashing runs outside the Workspace monitor.
      */
     public Map<String, Object> targetIdentity(String tid) {
@@ -310,14 +310,6 @@ public final class Workspace {
             exe.put("state", "unknown");
             exe.put("sha256", null);
             exe.put("basis", "the target is still loading: nothing has been measured yet — ask again when analysis completes");
-        } else if (declaredBy(tm, embedded) != null) {
-            /* the course manifest NAMES the bytes for this artifact's name — a declaration to check against, never a measurement */
-            Map<String, Object> d = declaredBy(tm, embedded);
-            exe.put("state", "declared");
-            exe.put("sha256", null); exe.put("declared_sha256", d.get("sha256")); exe.put("file", d.get("name"));
-            if (inputClass != null) exe.put("inputClass", inputClass);
-            exe.put("basis", "NOT measured: the course manifest declares sha256 " + String.valueOf(d.get("sha256")).substring(0, 12) + "… for " + d.get("name")
-                    + (embedded != null && embedded.get("error") != null ? "; " + embedded.get("error") : "; this database's bytes were not read"));
         } else {
             Map<String, Object> prov = null;
             try {
@@ -371,20 +363,6 @@ public final class Workspace {
         return p;
     }
 
-    /** The course manifest's declaration for this target's artifact name (course mode only): {name, sha256}, or null. */
-    private static Map<String, Object> declaredBy(TargetMeta tm, Map<String, Object> embedded) {
-        try {
-            dev.workbench.course.CourseRuntime crt = dev.workbench.course.CourseRuntime.current();
-            if (crt == null || crt.manifest() == null || !crt.manifest().present()) return null;
-            java.util.Set<String> names = new java.util.LinkedHashSet<>();
-            if (embedded != null && embedded.get("name") != null) names.add(String.valueOf(embedded.get("name")));
-            if (tm.name() != null) { names.add(tm.name()); names.add(tm.name().replaceAll("(?i)\\.jdb2$", ".apk")); }
-            for (Map<String, Object> a : crt.manifest().artifactRows())
-                if (a.get("name") != null && names.contains(String.valueOf(a.get("name")))) return a;
-        } catch (Throwable ignored) {}
-        return null;
-    }
-
     /** The running build and engine — a compact session manifest. A source Git SHA alone does not say which
      *  compiled runtime is live: build-info.properties is written when the classes are compiled (gradle buildInfo)
      *  and read ONCE at boot; `build_file_changed_since_start` says when the directory was rebuilt under a running
@@ -400,15 +378,10 @@ public final class Workspace {
         m.put("process_id", ProcessHandle.current().pid());
         m.put("java_version", System.getProperty("java.version"));
         m.put("java_home", System.getProperty("java.home"));
-        String rehearsalNonce = System.getenv("WORKBENCH_REHEARSAL_NONCE");
-        if (!dev.workbench.course.Course.on() && rehearsalNonce != null) m.put("rehearsal_nonce", rehearsalNonce);
         java.util.Properties now = readBuildInfo();
         boolean changed = !now.isEmpty() && (!String.valueOf(now.getProperty("git.sha")).equals(BOOT_BUILD.getProperty("git.sha")) || !String.valueOf(now.getProperty("built.at")).equals(BOOT_BUILD.getProperty("built.at")));
         m.put("build_file_changed_since_start", changed);
         if (changed) m.put("note", "the classes directory was rebuilt after this process started (" + now.getProperty("git.sha", "?") + "): the answers come from the BOOT build above — restart to serve the new one");
-        String rev = dev.workbench.course.Course.runtimeRevision();
-        m.put("package_revision", rev == null ? "unpinned (development checkout)" : rev);
-        if (dev.workbench.course.Course.packageSha256() != null) m.put("package_sha256", dev.workbench.course.Course.packageSha256());
         String engine = null;
         try { Object v = Class.forName("dev.workbench.engine.jeb.JebCore").getMethod("version").invoke(null); engine = v == null ? null : String.valueOf(v); } catch (Throwable ignored) {}
         m.put("engine", engine == null ? "no JEB engine (mock)" : "JEB " + engine);
@@ -422,7 +395,7 @@ public final class Workspace {
         return exe != null ? exe : Map.of("state", "missing", "basis", "no identity record");
     }
 
-    /** THE digest every course surface cites for "which bytes": the executable's when it was MEASURED — the file
+    /** THE digest every evidence surface cites for "which bytes": the executable's when it was MEASURED — the file
      *  the target was opened from or the input the database holds (in a conflict, the database input's: the
      *  classes came from it) — null otherwise (recorded, missing, unknown): never the file beside a database. */
     public String executableSha(String tid) {
@@ -432,7 +405,7 @@ public final class Workspace {
     }
 
     /** The target's history revision: the count of entries ever recorded on it (ids run tN-h1,
-     *  tN-h2 …) — the "snapshot revision" a course mission records at spawn and diffs against. */
+     *  tN-h2 …) — the "snapshot revision" a mission records at spawn and diffs against. */
     public synchronized int historyRevision(String tid) {
         if (tid == null) return 0;
         Integer n = historySeq.get(tid);
@@ -456,7 +429,7 @@ public final class Workspace {
         try { return h < 0 ? 0 : Integer.parseInt(id.substring(h + 2)); } catch (NumberFormatException ex) { return 0; }
     }
 
-    /** Who hears of every history entry as it is recorded (the course capture) — null = nobody. */
+    /** Who hears of every history entry as it is recorded (a capture) — null = nobody. */
     private volatile java.util.function.BiConsumer<String, Map<String, Object>> historyListener;
     public void setHistoryListener(java.util.function.BiConsumer<String, Map<String, Object>> l) { this.historyListener = l; }
 
@@ -1644,7 +1617,6 @@ public final class Workspace {
         } catch (IOException e) {
             throw OpException.io("cannot resolve " + path + ": " + e, "");
         }
-        dev.workbench.course.CourseFiles.requireOpenable(f);   // a course room opens what is under its home or the course roots — checked on the canonical path, before anything is read
         if (!f.isFile()) throw OpException.notFound("artifact not found: " + path, "");
         String type = detectType(f);
         String engine = engineName == null || engineName.isBlank() ? defaultEngineFor(type) : engineName;
@@ -3293,12 +3265,6 @@ public final class Workspace {
     public Annotations annotations() { return annotations; }
 
     private RunsManager runs;
-    private dev.workbench.course.LocalCapture localCapture;
-    public void setLocalCapture(dev.workbench.course.LocalCapture value) { localCapture=value; }
-    public Map<String,Object> localCaptureStatus() {
-        return localCapture==null ? Map.of("enabled",false,"automatic_upload",false,
-            "enable","WORKBENCH_LOCAL_CAPTURE=1 on a standalone launch") : localCapture.status();
-    }
 
     /** Runs wiring (VIEWS_SPEC §2) — set by the server at boot. */
     public void setRuns(RunsManager r) { this.runs = r; }
@@ -4614,7 +4580,7 @@ public final class Workspace {
         List<Map<String, Object>> h = history.get(tid);
         if (h == null) {
             h = loadHistory(tid);
-            /* cache only for a REGISTERED target: a read for an archived mission's tid (course.mission.report,
+            /* cache only for a REGISTERED target: a read for an archived mission's tid (a mission's report,
                historyRevision) must not park an empty log under an id the next open will be minted —
                its first rename would then persist that empty list over the real history.json
                (fix-review 2026-10-07) */
@@ -4641,14 +4607,9 @@ public final class Workspace {
     public synchronized Map<String, Object> historyUndo(String targetParam, String id) throws OpException { return historyUndo(targetParam, id, "human"); }
 
     /** The analyst's own decisions — an argument mapping, a restored original name — are theirs to
-     *  reverse: an agent or a machine client gets a refusal, not a silent re-application (fix-review
+     *  reverse: an agent gets a refusal, not a silent re-application (fix-review
      *  2026-10-08 M4). */
     private static void analystsReversal(Map<String, Object> entry, String actor, String what) throws OpException {
-        /* a machine principal in a room (the student's assistant) may call itself human:<name>; its
-           connection says what it is (fix-review addendum M5) */
-        dev.workbench.course.CourseIdentity.Principal p = dev.workbench.course.CourseIdentity.CURRENT.get();
-        if (p != null && p.machine())
-            throw OpException.scope("History " + entry.get("id") + " is the student's to " + what + " — from the page, not through an assistant", "course=history-readonly");
         if (actor == null || "human".equals(EventBus.actorKind(actor))) return;
         if ("parameters".equals(entry.get("kind")) || Boolean.TRUE.equals(entry.get("revert")))
             throw OpException.scope("History " + entry.get("id") + " is the analyst's own decision (an argument mapping or a restored original name) — not an agent's to " + what, "actor=" + actor);

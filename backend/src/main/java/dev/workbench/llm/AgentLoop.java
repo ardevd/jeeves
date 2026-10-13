@@ -46,10 +46,10 @@ public final class AgentLoop {
         public boolean keeps() { return !"never".equals(reasoningReplay); }
     }
 
-    /** The private capture (course integration P0.2): the exact request about to be sent and the
+    /** The private capture hook: the exact request about to be sent and the
      *  exact answer received, per attempt, each tool result as the model consumed it, and how the
      *  run ended. The loop calls it in order; the implementation decides where it goes. request()
-     *  may refuse — strict classroom capture: no durable admission, no dispatch. Default: nothing
+     *  may refuse — a strict capture: no durable admission, no dispatch. Default: nothing
      *  (the owner's own workbench). */
     public interface Capture {
         /** The logical request id — one per attempt, stable across restarts of the same mission. */
@@ -136,7 +136,7 @@ public final class AgentLoop {
     private final String subject;
     private final Map<String, Object> extraParams;   // per-provider extras (e.g. DeepSeek thinking)
     private final Wire wire;                         // the provider's wire contract (reasoning replay, stream, output cap)
-    private Capture capture = new Capture() {};      // the private capture; AgentManager sets the course's
+    private Capture capture = new Capture() {};      // the private capture; AgentManager may set one
     public void capture(Capture c) { this.capture = c == null ? new Capture() {} : c; }
     private int contextTokens;                       // the model's window (Provider.contextTokens) — the loop's only ceiling; a refusal can lower it
     private java.util.function.IntConsumer onWindowLearned;   // AgentManager saves a learned window for the provider
@@ -616,7 +616,7 @@ public final class AgentLoop {
                         continue;
                     }
                     /* the output cap: the loop's own ceiling, what the budget leaves, the endpoint's cap
-                       (the course gateway: 8192) and the mission's (a Day 1 preset bounds it) */
+                       and the mission's own */
                     int maxOut = Math.min(MAX_COMPLETION_TOKENS, remaining - promptEst);
                     if (wire.maxOutputTokens() > 0) maxOut = Math.min(maxOut, wire.maxOutputTokens());
                     if (mission.maxOutputTokens > 0) maxOut = Math.min(maxOut, mission.maxOutputTokens);
@@ -628,10 +628,9 @@ public final class AgentLoop {
                     try {
                         resp = send(req, turn, attempt);
                     } catch (CaptureRefused e) {
-                        /* strict classroom capture: the request was not admitted durably — nothing
-                           is dispatched uncaptured, and the mission says why (P0.2). A stop or the
-                           course fence that interrupted the admission is a CANCELLATION, with the
-                           stop's own reason — not a capture failure (fix-review 2026-10-09 M5). */
+                        /* a strict capture: the request was not admitted durably — nothing is
+                           dispatched uncaptured, and the mission says why. A stop that interrupted
+                           the admission is a CANCELLATION with the stop's own reason — not a capture failure. */
                         if (mission.stopRequested) {
                             mission.state = "stopped";
                             rec.put("outcome", "cancelled"); rec.put("error", e.getMessage());
@@ -639,8 +638,7 @@ public final class AgentLoop {
                             return;
                         }
                         mission.state = "blocked";
-                        /* "fenced: …" is the room's access policy (course mode), not the capture store: said as such */
-                        mission.stopReason = String.valueOf(e.getMessage()).startsWith("fenced") ? e.getMessage() : "capture refused the request: " + e.getMessage();
+                        mission.stopReason = "capture refused the request: " + e.getMessage();
                         rec.put("outcome", "blocked"); rec.put("error", e.getMessage());
                         activity.row("blocked", "turn " + turn + " · not dispatched — " + e.getMessage());
                         return;
@@ -712,9 +710,7 @@ public final class AgentLoop {
                        (counted above) and set aside — its tool calls are never run, its text is not
                        a result. The mission reads stopped, and says what happened to that turn. */
                     if (mission.stopRequested) {
-                        /* the fence's own reason stays (the room closed); a user's stop gets this one */
-                        if (mission.stopReason == null || !mission.stopReason.startsWith("fenced"))
-                            mission.stopReason = "stopped while turn " + turn + "'s request was in flight — the answer was paid for and set aside";
+                        mission.stopReason = "stopped while turn " + turn + "'s request was in flight — the answer was paid for and set aside";
                         rec.put("outcome", "cancelled");
                         activity.row("note", "turn " + turn + " · " + mission.stopReason);
                         return;
@@ -792,7 +788,7 @@ public final class AgentLoop {
                     int callIx = 0;
                     for (Object tco : toolCalls) {
                         callIx++;
-                        /* a stop (the user's, or the course fence) that landed mid-turn: the remaining
+                        /* a stop that landed mid-turn: the remaining
                            calls — writes included — are not run; the mission reads stopped and the turn
                            record says where it stopped (fix-review 2026-10-09 M1) */
                         if (mission.stopRequested) {
@@ -954,7 +950,7 @@ public final class AgentLoop {
             }
         } catch (Exception e) {
             if (mission.stopRequested) {
-                /* a stop — the user's, or the course fence interrupting the request in flight — is a
+                /* a stop — the user's, interrupting the request in flight — is a
                    cancellation, not a provider failure: the attempt's own failure record is in the
                    capture, the stop reason is the one the stop gave */
                 mission.state = "stopped";
@@ -999,7 +995,7 @@ public final class AgentLoop {
         }
     }
 
-    /** The capture would not admit a request (strict classroom capture). */
+    /** The capture would not admit a request (a strict capture). */
     public static final class CaptureRefused extends Exception {
         public CaptureRefused(String why) { super(why); }
     }
@@ -1110,7 +1106,7 @@ public final class AgentLoop {
                 .connectTimeout(Duration.ofSeconds(15)).build();
         return req -> {
             Map<String, Object> body = new LinkedHashMap<>(req);
-            Object lid = body.remove("_logicalId");   // the loop's logical request id → X-Request-ID (the course gateway keys its capture on it)
+            Object lid = body.remove("_logicalId");   // the loop's logical request id → X-Request-ID
             HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(endpoint))
                     .timeout(Duration.ofSeconds(120))
                     .header("Content-Type", "application/json")
@@ -1148,7 +1144,7 @@ public final class AgentLoop {
         return w;
     }
 
-    /** The streaming variant for an endpoint that answers SSE only (the course gateway requires
+    /** The streaming variant for an endpoint that answers SSE only (some gateways require
      *  stream:true): sends `stream: true` + `stream_options.include_usage`, collects the deltas into
      *  the one message the loop reads — content and the reasoning field by concatenation, tool calls
      *  by index with their id, name and argument fragments — keeps the final chunk's usage, and
@@ -1328,7 +1324,7 @@ public final class AgentLoop {
     }
 
     /** The `fixture` provider's scenarios, by model id (LlmRegistry lists them). Recorded-shape
-     *  answers, no network, no key, no secret — what the course integration's tests drive the
+     *  answers, no network, no key, no secret — what the provider-loop tests drive the
      *  loop with (P0.1):
      *    fixture-1       the original script: symbols → code → annotate → final text
      *    ds-tools        a thinking provider with tools (DeepSeek/Kimi shape): reasoning_content on
