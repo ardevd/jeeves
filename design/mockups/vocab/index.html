@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<!-- Visual vocabulary explorations — five takes on the same workbench scene -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vocabulary studies</title>
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="%230c0e10"/><text x="8" y="28" font-family="monospace" font-size="15" fill="%233fb950">64 65</text><text x="8" y="48" font-family="monospace" font-size="15" fill="%232ee6c0">78 0a</text></svg>'>
+<style>
+  body { margin:0; background:#101013; color:#ddd; font:14px/1.6 -apple-system,"SF Pro Text","Segoe UI",sans-serif; }
+  .wrap { max-width: 1100px; margin:0 auto; padding:56px 32px 80px; }
+  h1 { font-size:24px; margin:0 0 6px; font-weight:650; letter-spacing:-.01em; }
+  .sub { color:#888; margin-bottom:36px; max-width:70ch; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  a.card { display:block; border:1px solid #26262c; border-radius:14px; padding:24px 26px; color:inherit;
+           text-decoration:none; transition:border-color .15s, transform .15s; background:#17171b; }
+  a.card:hover { transform:translateY(-2px); }
+  h2 { margin:0 0 4px; font-size:18px; }
+  .swatches { display:flex; gap:6px; margin:12px 0; }
+  .sw { width:22px; height:22px; border-radius:6px; border:1px solid rgba(255,255,255,.12); }
+  p { margin:0 0 10px; color:#999; font-size:13.5px; }
+  .meta { font-size:12.5px; color:#777; }
+  .meta b { color:#ccc; font-weight:600; }
+  .full { grid-column: 1 / -1; }
+  footer { margin-top:40px; color:#777; font-size:13px; border-top:1px solid #26262c; padding-top:18px; max-width:90ch; }
+  code { background:#222228; border-radius:4px; padding:1px 6px; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Vocabulary studies</h1>
+  <div class="sub">Five visual languages, one identical scene (same targets, same class, same panels).
+  Judge the feeling, not the content. Grounded in current dev-tool design research:
+  elevation-by-lightness, one-accent discipline, tabular numerals, ≤150ms hover feedback,
+  cockpit color rules. ⌘K works in each.</div>
+
+  <div class="grid">
+    <a class="card" href="v1-flux.html" style="border-color:#2a2a33">
+      <h2>V1 · Flux</h2>
+      <div class="swatches">
+        <div class="sw" style="background:#1c1c21"></div><div class="sw" style="background:#28282f"></div>
+        <div class="sw" style="background:#6e6bf0"></div><div class="sw" style="background:#5cc48a"></div>
+        <div class="sw" style="background:#d8a952"></div>
+      </div>
+      <p>Linear/Raycast-grade minimalism. Zinc surfaces, elevation by lightness, one electric-indigo
+      accent, spacious padding, 200ms ease-out everything. Command palette open on load.</p>
+      <p class="meta"><b>Feels like:</b> the tool you trust all day. <b>Risk:</b> safe to the point of bland.</p>
+    </a>
+
+    <a class="card" href="v2-phosphor.html" style="border-color:#1d2b22">
+      <h2>V2 · Phosphor</h2>
+      <div class="swatches">
+        <div class="sw" style="background:#0a0e14"></div><div class="sw" style="background:#121926"></div>
+        <div class="sw" style="background:#4ade80"></div><div class="sw" style="background:#22d3ee"></div>
+        <div class="sw" style="background:#d97706"></div>
+      </div>
+      <p>Modern terminal romance — Warp/Charm lineage. Mono-first everything, block panels,
+      phosphor green with disciplined glow on exactly two elements, blinking cursors, ASCII tree guides.</p>
+      <p class="meta"><b>Feels like:</b> hacker identity, in-group pride. <b>Risk:</b> mono UI labels tire some users.</p>
+    </a>
+
+    <a class="card" href="v3-flightdeck.html" style="border-color:#2c2a1e">
+      <h2>V3 · Flight Deck</h2>
+      <div class="swatches">
+        <div class="sw" style="background:#15181c"></div><div class="sw" style="background:#22282f"></div>
+        <div class="sw" style="background:#4fd17c"></div><div class="sw" style="background:#e8b04b"></div>
+        <div class="sw" style="background:#4fc8d8"></div><div class="sw" style="background:#d873d8"></div>
+      </div>
+      <p>The literal captain's cockpit. Titled instrument bays, aviation color discipline (red = errors only),
+      HUD telemetry strip with Zulu clock, toggle switches, 90ms instrument response.</p>
+      <p class="meta"><b>Feels like:</b> commanding the target. <b>Risk:</b> density can read as cold.</p>
+    </a>
+
+    <a class="card" href="v4-blueprint.html" style="border-color:#3a3630">
+      <h2>V4 · Blueprint</h2>
+      <div class="swatches">
+        <div class="sw" style="background:#f4f2ec"></div><div class="sw" style="background:#1c2430"></div>
+        <div class="sw" style="background:#0b5cad"></div><div class="sw" style="background:#c0342b"></div>
+        <div class="sw" style="background:#8a8578"></div>
+      </div>
+      <p>The contrarian light mode — engineering schematic. Warm paper, ink hairlines, construction grids,
+      renames shown as drafting redlines, annotation-style panel titles. Dark toggle included.</p>
+      <p class="meta"><b>Feels like:</b> a precise printed schematic. <b>Risk:</b> light mode is heresy to some.</p>
+    </a>
+
+    <a class="card full" href="v5-uv.html" style="border-color:#2a2140">
+      <h2>V5 · Ultraviolet</h2>
+      <div class="swatches">
+        <div class="sw" style="background:#100d1d"></div><div class="sw" style="background:#201a3e"></div>
+        <div class="sw" style="background:#8b5cf6"></div><div class="sw" style="background:#22d3ee"></div>
+        <div class="sw" style="background:#f472d0"></div>
+      </div>
+      <p>Synthwave cool, disciplined. Deep-space indigo, frosted-glass panels over a slow ambient aurora,
+      UV→cyan gradient on focus signals only, magenta reserved for the agent. The "I want to live in
+      this tool" option.</p>
+      <p class="meta"><b>Feels like:</b> cinematic identity. <b>Risk:</b> the aurora must stay out of working surfaces — if it ever distracts, it's slop.</p>
+    </a>
+    <a class="card full" href="v6-helio.html" style="border-color:#2e3a2e">
+      <h2>V6 · Helio</h2>
+      <div class="swatches">
+        <div class="sw" style="background:#f4f2ec"></div><div class="sw" style="background:#1c2430"></div>
+        <div class="sw" style="background:#0b5cad"></div><div class="sw" style="background:#c0342b"></div>
+        <div class="sw" style="background:#159347"></div>
+      </div>
+      <p>The hybrid: V3's flight-deck rigor (HUD strip, instrument bays, toggle switches) on V4's
+      blueprint paper palette — flat, no grid textures — with V2's phosphor glow confined to live
+      elements (LEDs, clock, current line, blinking cursor). Red reserved for redlines and warnings.</p>
+      <p class="meta"><b>Feels like:</b> a precision instrument on bright paper. Dark toggle included.</p>
+    </a>
+
+    <a class="card full" href="v7-helio-dock.html" style="border-color:#2e3a3e">
+      <h2>V7 · Helio, docked</h2>
+      <div class="swatches">
+        <div class="sw" style="background:#f4f2ec"></div><div class="sw" style="background:#1c2430"></div>
+        <div class="sw" style="background:#0072B2"></div><div class="sw" style="background:#D55E00"></div>
+        <div class="sw" style="background:#009E73"></div><div class="sw" style="background:#CC79A7"></div>
+      </div>
+      <p>V6 evolved to close its gaps: a real docking system (drag tabs between dock and rails,
+      layout presets Default/Wide/Debug, ⌘J/⌘B collapse), a first-class LIGHT/DARK switch with
+      light as default, and a strict Okabe–Ito signal palette in both themes.</p>
+      <p class="meta"><b>Feels like:</b> the V6 instrument, now rearrangeable and color-blind safe.</p>
+    </a>
+  </div>
+
+  <footer>
+    Research basis: Linear's motion tokens &amp; perceived-speed doctrine, Raycast's action-bar teaching,
+    Warp/Ghostty terminal-modern palettes, aviation HUD color discipline (≤6 colors, red reserved),
+    OKLCH elevation-by-lightness, APCA contrast comfort, "hacker flavor at 5%, not 50%".
+    These vocabularies are orthogonal to the layout — any of them can skin the Workbench A2 design.
+  </footer>
+</div>
+</body>
+</html>

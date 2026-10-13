@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<!--
+  Mockup C — The Agent Cockpit (AI-supervision-first)
+  Jeeves New · reverse-engineering workbench · high-fidelity UI mockup
+  Self-contained: inline CSS + JS, no external dependencies, no network requests.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jeeves New — Agent Cockpit</title>
+<style>
+  :root {
+    --bg:        #0d1117;
+    --bg-panel:  #11161d;
+    --bg-card:   #161c25;
+    --bg-hover:  #1a222e;
+    --bg-active: #1c2634;
+    --border:    #232c3a;
+    --border-hi: #31405a;
+    --text:      #c9d4e3;
+    --text-dim:  #76869b;
+    --text-faint:#4e5b6e;
+    --teal:      #2dd4bf;
+    --teal-dim:  #134e4a;
+    --amber:     #f0b64a;
+    --amber-dim: #3d2e12;
+    --green:     #4ade80;
+    --green-dim: #12331f;
+    --red:       #f87171;
+    --red-dim:   #3d1518;
+    --blue:      #60a5fa;
+    --violet:    #a78bfa;
+    --mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 12.5px;
+    line-height: 1.45;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ---------- top chrome ---------- */
+  .titlebar {
+    height: 38px;
+    flex: 0 0 38px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 14px;
+    background: linear-gradient(#131922, #10151d);
+    border-bottom: 1px solid var(--border);
+    user-select: none;
+  }
+  .titlebar .logo {
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: .4px;
+    color: var(--text);
+  }
+  .titlebar .logo .jv { color: var(--teal); }
+  .titlebar .apk {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .titlebar .spacer { flex: 1; }
+  .titlebar .env {
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .dot.ok { background: var(--green); box-shadow: 0 0 6px rgba(74,222,128,.6); }
+
+  /* ---------- main grid ---------- */
+  .main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 280px 1fr 320px;
+    min-height: 0;
+  }
+  .col { min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .col.left   { border-right: 1px solid var(--border); background: var(--bg-panel); }
+  .col.right  { border-left: 1px solid var(--border); background: var(--bg-panel); }
+  .col-header {
+    flex: 0 0 30px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,.012);
+    user-select: none;
+  }
+  .col-header .count {
+    font-weight: 600;
+    color: var(--text-faint);
+    letter-spacing: 0;
+  }
+  .col-header .mini-btn { margin-left: auto; }
+  .scroll { flex: 1; overflow-y: auto; min-height: 0; }
+  .scroll::-webkit-scrollbar { width: 8px; }
+  .scroll::-webkit-scrollbar-thumb { background: #26303f; border-radius: 4px; }
+
+  /* ---------- buttons / chips ---------- */
+  .mini-btn {
+    font: inherit;
+    font-size: 11px;
+    color: var(--text-dim);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+  }
+  .mini-btn:hover { color: var(--text); border-color: var(--border-hi); }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+  .chip.running { color: var(--teal);   background: var(--teal-dim);   border-color: #1d5a52; }
+  .chip.paused  { color: var(--amber);  background: var(--amber-dim);  border-color: #5a4318; }
+  .chip.done    { color: var(--green);  background: var(--green-dim);  border-color: #1e4a2c; }
+  .chip.queued  { color: var(--text-dim); background: #1a212c;         border-color: var(--border); }
+  .chip .pulse {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--teal);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(45,212,191,.5); }
+    50%      { opacity: .55; box-shadow: 0 0 0 4px rgba(45,212,191,0); }
+  }
+  .model-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--violet);
+    background: rgba(167,139,250,.1);
+    border: 1px solid rgba(167,139,250,.25);
+    padding: 1px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .model-badge.local { color: var(--teal); background: rgba(45,212,191,.08); border-color: rgba(45,212,191,.3); }
+  .scope-chip {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    background: #1a212c;
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  /* ---------- mission cards ---------- */
+  .missions { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .mission {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 9px 10px;
+    cursor: pointer;
+    transition: border-color .12s, background .12s;
+  }
+  .mission:hover { background: var(--bg-hover); }
+  .mission.selected { border-color: var(--teal); background: var(--bg-active); box-shadow: inset 2px 0 0 var(--teal); }
+  .mission .m-title {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text);
+    word-break: break-all;
+    margin-bottom: 6px;
+  }
+  .mission .m-title .m-count { color: var(--text-faint); font-size: 10.5px; }
+  .mission .m-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .mission .m-row:last-child { margin-bottom: 0; }
+  .pbar {
+    flex: 1;
+    height: 4px;
+    background: #1e2632;
+    border-radius: 2px;
+    overflow: hidden;
+    min-width: 60px;
+  }
+  .pbar > i { display: block; height: 100%; background: var(--teal); border-radius: 2px; }
+  .pbar.done > i { background: var(--green); }
+  .pbar.paused > i { background: var(--amber); }
+  .pbar-label { font-family: var(--mono); font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+  .gauge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    flex: 1;
+    min-width: 0;
+  }
+  .gauge .g-track { flex: 1; height: 3px; background: #1e2632; border-radius: 2px; overflow: hidden; }
+  .gauge .g-fill { height: 100%; border-radius: 2px; background: var(--amber); }
+  .gauge .g-fill.hot { background: var(--red); }
+  .gauge .g-fill.cool { background: var(--teal); }
+  .new-mission {
+    border: 1px dashed var(--border-hi);
+    border-radius: 7px;
+    color: var(--text-dim);
+    text-align: center;
+    padding: 8px;
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .new-mission:hover { color: var(--teal); border-color: var(--teal); }
+
+  /* ---------- center review surface ---------- */
+  .center { background: var(--bg); }
+  .class-header {
+    flex: 0 0 auto;
+    padding: 10px 16px 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-panel);
+  }
+  .class-header .crumb {
+    font-size: 10.5px;
+    color: var(--text-faint);
+    font-family: var(--mono);
+    margin-bottom: 3px;
+  }
+  .class-header h1 {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .class-header h1 .was { color: var(--text-faint); font-weight: 400; font-size: 12px; }
+  .class-header .ctx {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+
+  .review-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 16px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(rgba(240,182,74,.05), rgba(240,182,74,.02));
+  }
+  .review-bar .rq-label { font-size: 11.5px; color: var(--amber); font-weight: 600; }
+  .review-bar .rq-sub { font-size: 11px; color: var(--text-dim); }
+  .review-bar .rq-dots { display: flex; gap: 4px; }
+  .rq-dot { width: 8px; height: 8px; border-radius: 2px; background: #2a3444; }
+  .rq-dot.pending { background: var(--amber); }
+  .rq-dot.accepted { background: var(--green); }
+  .rq-dot.rejected { background: var(--red); }
+  .review-bar .grow { flex: 1; }
+  .seg {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .seg button {
+    font: inherit;
+    font-size: 11px;
+    background: var(--bg-card);
+    color: var(--text-dim);
+    border: none;
+    padding: 3px 10px;
+    cursor: pointer;
+  }
+  .seg button.on { background: var(--bg-active); color: var(--teal); }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .btn {
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 5px;
+    padding: 3px 10px;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .btn.accept-all { color: var(--green); background: var(--green-dim); border-color: #1e4a2c; }
+  .btn.reject-all { color: var(--red); background: transparent; border-color: var(--border); }
+  .btn.reject-all:hover { border-color: var(--red); }
+
+  /* ---------- code view ---------- */
+  .code-wrap { flex: 1; overflow: auto; min-height: 0; padding: 10px 0 30px; }
+  .code-wrap::-webkit-scrollbar { width: 8px; height: 8px; }
+  .code-wrap::-webkit-scrollbar-thumb { background: #26303f; border-radius: 4px; }
+  table.code {
+    border-collapse: collapse;
+    width: 100%;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  table.code td { vertical-align: top; }
+  td.ln {
+    width: 44px;
+    text-align: right;
+    padding: 0 12px 0 16px;
+    color: var(--text-faint);
+    user-select: none;
+    font-size: 10.5px;
+    position: relative;
+  }
+  td.src { white-space: pre; padding-right: 16px; color: #aebacd; }
+  tr.hl-pending td { background: rgba(240,182,74,.045); }
+  tr.hl-pending td.ln { box-shadow: inset 2px 0 0 var(--amber); }
+  tr.hl-ghost td { background: rgba(96,165,250,.05); }
+  tr.hl-ghost td.ln { box-shadow: inset 2px 0 0 var(--blue); }
+  tr.hl-settled td { background: rgba(74,222,128,.03); }
+  tr.hl-settled td.ln { box-shadow: inset 2px 0 0 rgba(74,222,128,.5); }
+  tr.flash td { animation: flash .8s ease-out; }
+  @keyframes flash {
+    0% { background: rgba(74,222,128,.28); }
+    100% { background: transparent; }
+  }
+
+  /* syntax */
+  .kw  { color: #c792ea; }
+  .ty  { color: #7dcfff; }
+  .str { color: #9ece6a; }
+  .num { color: #ff9e64; }
+  .cm  { color: #565f89; font-style: italic; }
+  .ann { color: #e0af68; }
+  .id  { color: #aebacd; }
+
+  /* ghost edits */
+  .hunk { position: relative; display: inline-block; }
+  .del {
+    color: var(--red);
+    text-decoration: line-through;
+    text-decoration-color: rgba(248,113,113,.7);
+    opacity: .85;
+  }
+  .arrow { color: var(--text-faint); margin: 0 3px; }
+  .ins {
+    color: var(--green);
+    background: rgba(74,222,128,.12);
+    border-bottom: 1px dashed rgba(74,222,128,.5);
+    padding: 0 2px;
+    border-radius: 2px;
+  }
+  .hunk-btns {
+    display: inline-flex;
+    gap: 3px;
+    margin-left: 7px;
+    vertical-align: 1px;
+  }
+  .hb {
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 700;
+    width: 16px;
+    height: 16px;
+    line-height: 14px;
+    text-align: center;
+    border-radius: 3px;
+    border: 1px solid var(--border-hi);
+    background: var(--bg-card);
+    cursor: pointer;
+    padding: 0;
+  }
+  .hb.ok { color: var(--green); }
+  .hb.ok:hover { background: var(--green-dim); border-color: var(--green); }
+  .hb.no { color: var(--red); }
+  .hb.no:hover { background: var(--red-dim); border-color: var(--red); }
+  .kbd {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 3px;
+    padding: 0 3px;
+    background: #171e29;
+    white-space: nowrap;
+  }
+  .ghost-comment td.src { color: var(--text-faint); font-style: italic; }
+  .ghost-comment .bot {
+    font-style: normal;
+    font-size: 10px;
+    color: var(--blue);
+    border: 1px solid rgba(96,165,250,.35);
+    background: rgba(96,165,250,.1);
+    border-radius: 3px;
+    padding: 0 4px;
+    margin-right: 6px;
+    white-space: nowrap;
+  }
+  .settled-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-family: var(--sans);
+    font-size: 9.5px;
+    font-weight: 600;
+    color: var(--green);
+    background: var(--green-dim);
+    border-radius: 3px;
+    padding: 0 5px;
+    margin-left: 7px;
+    vertical-align: 1px;
+  }
+  .conf {
+    font-family: var(--sans);
+    font-size: 9.5px;
+    color: var(--text-faint);
+    margin-left: 6px;
+    white-space: nowrap;
+  }
+
+  /* diff view */
+  .diff-view { display: none; padding: 14px 20px; font-family: var(--mono); font-size: 12px; line-height: 1.7; }
+  .diff-view.on { display: block; }
+  .code-wrap.hidden { display: none; }
+  .dline { white-space: pre; }
+  .dline.d { color: var(--red); background: rgba(248,113,113,.07); }
+  .dline.a { color: var(--green); background: rgba(74,222,128,.07); }
+  .dline.h { color: var(--text-faint); padding-top: 8px; }
+
+  /* ---------- right column ---------- */
+  .panel { display: flex; flex-direction: column; min-height: 0; }
+  .panel.activity { flex: 1.25; border-bottom: 1px solid var(--border); }
+  .panel.controls { flex: 1; }
+  .feed { padding: 6px 0; font-size: 11px; }
+  .ev {
+    display: flex;
+    gap: 8px;
+    padding: 4px 12px;
+    border-left: 2px solid transparent;
+    align-items: baseline;
+  }
+  .ev:hover { background: var(--bg-hover); }
+  .ev .ts { font-family: var(--mono); font-size: 9.5px; color: var(--text-faint); flex: 0 0 44px; }
+  .ev .who { font-family: var(--mono); font-size: 10px; flex: 0 0 62px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ev .what { color: var(--text-dim); min-width: 0; }
+  .ev .what b { color: var(--text); font-weight: 600; }
+  .ev .what code { font-family: var(--mono); font-size: 10px; color: var(--teal); }
+  .ev.a1 .who { color: var(--teal); }   .ev.a1 { border-left-color: rgba(45,212,191,.5); }
+  .ev.a2 .who { color: var(--violet); } .ev.a2 { border-left-color: rgba(167,139,250,.5); }
+  .ev.a3 .who { color: var(--blue); }   .ev.a3 { border-left-color: rgba(96,165,250,.5); }
+  .ev.sys .who { color: var(--text-faint); }
+  .ev.flag .what { color: var(--amber); }
+  .ev.blocked { background: rgba(248,113,113,.06); border-left-color: var(--red); }
+  .ev.blocked .what { color: var(--red); }
+  .ev.blocked .what code { color: var(--red); }
+  .ev.new { animation: evin .5s ease-out; }
+  @keyframes evin { from { background: rgba(45,212,191,.15); } to { background: transparent; } }
+
+  .follow {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+  }
+  .follow .ftrack {
+    width: 24px; height: 13px;
+    border-radius: 999px;
+    background: #232c3a;
+    border: 1px solid var(--border-hi);
+    position: relative;
+    transition: background .15s;
+  }
+  .follow .fthumb {
+    position: absolute;
+    top: 1px; left: 1px;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    transition: left .15s, background .15s;
+  }
+  .follow.on { color: var(--teal); }
+  .follow.on .ftrack { background: var(--teal-dim); border-color: var(--teal); }
+  .follow.on .fthumb { left: 12px; background: var(--teal); }
+
+  /* controls panel */
+  .ctl { padding: 10px 12px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+  .ctl-group { display: flex; flex-direction: column; gap: 6px; }
+  .ctl-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+  }
+  .select {
+    font: inherit;
+    font-size: 11.5px;
+    font-family: var(--mono);
+    color: var(--text);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 5px 8px;
+    width: 100%;
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--text-dim) 50%), linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
+    background-position: calc(100% - 14px) 55%, calc(100% - 9px) 55%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+  }
+  .slider-row { display: flex; align-items: center; gap: 8px; }
+  input[type="range"] {
+    flex: 1;
+    appearance: none;
+    height: 4px;
+    background: linear-gradient(90deg, var(--teal) 0%, var(--teal) 41%, #1e2632 41%);
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--teal);
+    border: 2px solid var(--bg);
+    cursor: pointer;
+  }
+  .slider-val { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); flex: 0 0 74px; text-align: right; }
+  .scope-edit {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 5px 8px;
+    width: 100%;
+  }
+  .scope-edit:focus { outline: none; border-color: var(--teal); }
+  .scope-hint { font-size: 10px; color: var(--text-faint); }
+  .scope-hint code { color: var(--amber); font-family: var(--mono); }
+  .toggle-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-dim); }
+  .btn-danger {
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--amber);
+    background: var(--amber-dim);
+    border: 1px solid #5a4318;
+    border-radius: 6px;
+    padding: 7px 10px;
+    cursor: pointer;
+    width: 100%;
+  }
+  .btn-danger:hover { border-color: var(--amber); }
+  .ctl-note { font-size: 10px; color: var(--text-faint); line-height: 1.5; }
+
+  /* ---------- status bar ---------- */
+  .statusbar {
+    flex: 0 0 26px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 14px;
+    background: #10151d;
+    border-top: 1px solid var(--border);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    user-select: none;
+  }
+  .statusbar .st { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .statusbar .st b { color: var(--text); font-weight: 600; font-family: var(--mono); font-size: 10.5px; }
+  .statusbar .st.dirty b { color: var(--amber); }
+  .statusbar .grow { flex: 1; }
+  .save-btn {
+    font: inherit;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--bg);
+    background: var(--teal);
+    border: none;
+    border-radius: 4px;
+    padding: 2px 12px;
+    cursor: pointer;
+    height: 18px;
+  }
+  .save-btn:active { filter: brightness(.85); }
+</style>
+</head>
+<body>
+
+<div class="titlebar">
+  <span class="logo"><span class="jv">Jeeves</span> New</span>
+  <span class="apk">com.google.android.gm · 62409068.apk</span>
+  <span class="spacer"></span>
+  <span class="env"><span class="dot ok"></span>JEB 5.19 core · headless</span>
+  <span class="env"><span class="dot ok"></span>MCP :7841 · 2 clients</span>
+</div>
+
+<div class="main">
+
+  <!-- ================= LEFT: MISSIONS ================= -->
+  <div class="col left">
+    <div class="col-header">MISSIONS <span class="count">· 5</span><button class="mini-btn">＋ new</button></div>
+    <div class="scroll">
+      <div class="missions" id="missionList">
+
+        <div class="mission selected" data-mission="m1">
+          <div class="m-title">com.google.android.gm.sync <span class="m-count">· 12 classes</span></div>
+          <div class="m-row">
+            <span class="chip running"><span class="pulse"></span>RUNNING</span>
+            <span class="model-badge">deepseek-v4</span>
+          </div>
+          <div class="m-row">
+            <div class="pbar"><i style="width:58%"></i></div>
+            <span class="pbar-label">7/12 classes</span>
+          </div>
+          <div class="m-row">
+            <span class="gauge">⛁<span class="g-track"><span class="g-fill" style="width:41%"></span></span>41k/100k</span>
+            <span class="scope-chip">scope: sync.* only</span>
+          </div>
+        </div>
+
+        <div class="mission" data-mission="m2">
+          <div class="m-title">com.google.android.gm.crypto <span class="m-count">· 6 classes</span></div>
+          <div class="m-row">
+            <span class="chip running"><span class="pulse"></span>RUNNING</span>
+            <span class="model-badge local">local: qwen3-32b</span>
+          </div>
+          <div class="m-row">
+            <div class="pbar"><i style="width:33%"></i></div>
+            <span class="pbar-label">2/6 classes</span>
+          </div>
+          <div class="m-row">
+            <span class="gauge">⛁<span class="g-track"><span class="g-fill cool" style="width:18%"></span></span>9k/50k</span>
+            <span class="scope-chip">scope: crypto.* only</span>
+          </div>
+        </div>
+
+        <div class="mission" data-mission="m3">
+          <div class="m-title">com.google.android.gm.ui <span class="m-count">· 34 classes</span></div>
+          <div class="m-row">
+            <span class="chip paused">❚❚ PAUSED</span>
+            <span class="model-badge">deepseek-v4</span>
+          </div>
+          <div class="m-row">
+            <div class="pbar paused"><i style="width:76%"></i></div>
+            <span class="pbar-label">26/34 classes</span>
+          </div>
+          <div class="m-row">
+            <span class="gauge">⛁<span class="g-track"><span class="g-fill hot" style="width:88%"></span></span>176k/200k</span>
+            <span class="scope-chip">scope: ui.* only</span>
+          </div>
+        </div>
+
+        <div class="mission" data-mission="m4">
+          <div class="m-title">com.google.android.gm.provider <span class="m-count">· 9 classes</span></div>
+          <div class="m-row">
+            <span class="chip done">✓ DONE</span>
+            <span class="model-badge local">local: qwen3-32b</span>
+          </div>
+          <div class="m-row">
+            <div class="pbar done"><i style="width:100%"></i></div>
+            <span class="pbar-label">9/9 classes</span>
+          </div>
+          <div class="m-row">
+            <span class="gauge">⛁<span class="g-track"><span class="g-fill cool" style="width:62%"></span></span>31k/50k</span>
+            <span class="scope-chip">scope: provider.* only</span>
+          </div>
+        </div>
+
+        <div class="mission" data-mission="m5">
+          <div class="m-title">com.android.mail.browse <span class="m-count">· 21 classes</span></div>
+          <div class="m-row">
+            <span class="chip queued">QUEUED</span>
+            <span class="model-badge">deepseek-v4</span>
+          </div>
+          <div class="m-row">
+            <div class="pbar"><i style="width:0%"></i></div>
+            <span class="pbar-label">0/21 classes</span>
+          </div>
+          <div class="m-row">
+            <span class="gauge">⛁<span class="g-track"><span class="g-fill cool" style="width:0%"></span></span>0/80k</span>
+            <span class="scope-chip">scope: browse.* only</span>
+          </div>
+        </div>
+
+        <div class="new-mission">＋ New mission — “Reverse this package…”</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= CENTER: REVIEW SURFACE ================= -->
+  <div class="col center" id="centerCol">
+    <!-- mission m1 -->
+    <div class="mission-view" data-view="m1">
+      <div class="class-header">
+        <div class="crumb">MISSION · com.google.android.gm.sync · class 8/12</div>
+        <h1>MessageSyncHandler <span class="was">(was: c)</span></h1>
+        <div class="ctx">
+          <span class="chip running"><span class="pulse"></span>RUNNING</span>
+          <span class="model-badge">deepseek-v4</span>
+          <span class="scope-chip">scope: sync.* only</span>
+          <span class="scope-chip">deobf: 63%</span>
+        </div>
+      </div>
+      <div class="review-bar">
+        <span class="rq-label">◔ <span id="rqCount">4</span> of 9 proposals reviewed</span>
+        <span class="rq-dots" id="rqDots">
+          <span class="rq-dot accepted"></span><span class="rq-dot accepted"></span><span class="rq-dot rejected"></span><span class="rq-dot accepted"></span><span class="rq-dot pending"></span><span class="rq-dot pending"></span><span class="rq-dot pending"></span><span class="rq-dot pending"></span><span class="rq-dot pending"></span>
+        </span>
+        <span class="rq-sub">next: 2 renames, 2 comments, 1 tag</span>
+        <span class="grow"></span>
+        <span class="seg" id="viewSeg">
+          <button class="on" data-v="code">code</button><button data-v="diff">diff</button>
+        </span>
+        <button class="btn accept-all" id="acceptAll">Accept all <span class="kbd">⌘⇧A</span></button>
+        <button class="btn reject-all">Reject all</button>
+      </div>
+
+      <div class="code-wrap" id="codeWrap">
+        <table class="code"><tbody id="codeBody">
+          <tr><td class="ln">1</td><td class="src"><span class="kw">package</span> <span class="id">com.google.android.gm.sync</span>;</td></tr>
+          <tr><td class="ln">2</td><td class="src"></td></tr>
+          <tr><td class="ln">3</td><td class="src"><span class="kw">import</span> <span class="id">android.provider.Settings</span>;</td></tr>
+          <tr><td class="ln">4</td><td class="src"><span class="kw">import</span> <span class="id">java.security.MessageDigest</span>;</td></tr>
+          <tr><td class="ln">5</td><td class="src"></td></tr>
+          <tr class="hl-settled"><td class="ln">6</td><td class="src"><span class="cm">// Handles invite.v2 sync payloads pushed by the server.</span><span class="settled-badge">✓ accepted · comment</span></td></tr>
+          <tr class="hl-settled"><td class="ln">7</td><td class="src"><span class="kw">public final class</span> <span class="ty">MessageSyncHandler</span> <span class="kw">extends</span> <span class="ty">e.g</span> <span class="kw">implements</span> <span class="ty">f</span> {<span class="settled-badge">✓ c → MessageSyncHandler</span></td></tr>
+          <tr><td class="ln">8</td><td class="src">    <span class="kw">private static final</span> <span class="ty">String</span> <span class="id">TAG</span> = <span class="str">"MsgSync"</span>;</td></tr>
+          <tr><td class="ln">9</td><td class="src">    <span class="kw">private final</span> <span class="ty">Context</span> <span class="id">d</span>;</td></tr>
+          <tr class="hl-pending"><td class="ln">10</td><td class="src">    <span class="kw">private final</span> <span class="ty">byte</span>[] <span class="hunk"><span class="del">e</span><span class="arrow">→</span><span class="ins">inviteKey</span><span class="hunk-btns"><button class="hb ok" title="Accept (⌘A)">✓</button><button class="hb no" title="Reject (⌘X)">✗</button></span></span><span class="conf">conf 0.93</span>;</td></tr>
+          <tr><td class="ln">11</td><td class="src"></td></tr>
+          <tr><td class="ln">12</td><td class="src">    <span class="kw">public</span> <span class="hunk"><span class="del">c</span><span class="arrow">→</span><span class="ins">MessageSyncHandler</span><span class="settled-badge">✓</span></span>(<span class="ty">Context</span> <span class="id">ctx</span>) {</td></tr>
+          <tr><td class="ln">13</td><td class="src">        <span class="kw">this</span>.<span class="id">d</span> = <span class="id">ctx</span>;</td></tr>
+          <tr><td class="ln">14</td><td class="src">        <span class="kw">this</span>.<span class="id">e</span> = <span class="id">b</span>(<span class="id">ctx</span>);</td></tr>
+          <tr><td class="ln">15</td><td class="src">    }</td></tr>
+          <tr><td class="ln">16</td><td class="src"></td></tr>
+          <tr class="hl-ghost ghost-comment"><td class="ln">·</td><td class="src"><span class="bot">◈ agent</span>// Derives invite.v2 key from ANDROID_ID via HKDF — verify against native lib <span class="hunk-btns"><button class="hb ok" title="Accept (⌘A)">✓</button><button class="hb no" title="Reject (⌘X)">✗</button></span></td></tr>
+          <tr class="hl-pending"><td class="ln">17</td><td class="src">    <span class="kw">private static</span> <span class="ty">byte</span>[] <span class="hunk"><span class="del">b</span><span class="arrow">→</span><span class="ins">deriveInviteKey</span><span class="hunk-btns"><button class="hb ok" title="Accept (⌘A)">✓</button><button class="hb no" title="Reject (⌘X)">✗</button></span></span><span class="conf">conf 0.87</span>(<span class="ty">Context</span> <span class="id">ctx</span>) {</td></tr>
+          <tr><td class="ln">18</td><td class="src">        <span class="ty">String</span> <span class="id">id</span> = <span class="id">Settings.Secure</span>.<span class="id">getString</span>(<span class="id">ctx</span>.<span class="id">getContentResolver</span>(), <span class="str">"android_id"</span>);</td></tr>
+          <tr><td class="ln">19</td><td class="src">        <span class="ty">MessageDigest</span> <span class="id">md</span> = <span class="id">MessageDigest</span>.<span class="id">getInstance</span>(<span class="str">"SHA-256"</span>);</td></tr>
+          <tr><td class="ln">20</td><td class="src">        <span class="id">md</span>.<span class="id">update</span>(<span class="id">id</span>.<span class="id">getBytes</span>(<span class="id">StandardCharsets</span>.<span class="id">UTF_8</span>));</td></tr>
+          <tr><td class="ln">21</td><td class="src">        <span class="kw">return</span> <span class="id">Arrays</span>.<span class="id">copyOf</span>(<span class="id">md</span>.<span class="id">digest</span>(<span class="str">"invite.v2"</span>.<span class="id">getBytes</span>()), <span class="num">32</span>);</td></tr>
+          <tr><td class="ln">22</td><td class="src">    }</td></tr>
+          <tr><td class="ln">23</td><td class="src"></td></tr>
+          <tr><td class="ln">24</td><td class="src">    <span class="ann">@Override</span></td></tr>
+          <tr class="hl-pending"><td class="ln">25</td><td class="src">    <span class="kw">public</span> <span class="ty">void</span> <span class="hunk"><span class="del">a</span><span class="arrow">→</span><span class="ins">handleInvite</span><span class="hunk-btns"><button class="hb ok" title="Accept (⌘A)">✓</button><button class="hb no" title="Reject (⌘X)">✗</button></span></span><span class="conf">conf 0.9</span>(<span class="ty">g</span> <span class="id">msg</span>, <span class="kw">int</span> <span class="id">flags</span>) {</td></tr>
+          <tr><td class="ln">26</td><td class="src">        <span class="kw">if</span> ((<span class="id">flags</span> &amp; <span class="num">0x40</span>) != <span class="num">0</span>) {</td></tr>
+          <tr class="hl-ghost ghost-comment"><td class="ln">·</td><td class="src"><span class="bot">◈ agent</span>// 0x40 = invite payload is AEAD-sealed; plaintext path is legacy only <span class="hunk-btns"><button class="hb ok" title="Accept (⌘A)">✓</button><button class="hb no" title="Reject (⌘X)">✗</button></span></td></tr>
+          <tr><td class="ln">27</td><td class="src">            <span class="ty">byte</span>[] <span class="id">pt</span> = <span class="id">e.g</span>.<span class="hunk"><span class="del">f</span><span class="arrow">→</span><span class="ins">decryptPayload</span><span class="hunk-btns"><button class="hb ok" title="Accept (⌘A)">✓</button><button class="hb no" title="Reject (⌘X)">✗</button></span></span>(<span class="id">msg</span>.<span class="id">b</span>(), <span class="kw">this</span>.<span class="id">e</span>);</td></tr>
+          <tr><td class="ln">28</td><td class="src">            <span class="kw">if</span> (<span class="id">pt</span> == <span class="kw">null</span>) {</td></tr>
+          <tr><td class="ln">29</td><td class="src">                <span class="id">Log</span>.<span class="id">w</span>(<span class="id">TAG</span>, <span class="str">"sealed payload failed to open"</span>);</td></tr>
+          <tr><td class="ln">30</td><td class="src">                <span class="kw">return</span>;</td></tr>
+          <tr><td class="ln">31</td><td class="src">            }</td></tr>
+          <tr><td class="ln">32</td><td class="src">            <span class="kw">this</span>.<span class="id">d</span>(<span class="kw">new</span> <span class="ty">h</span>(<span class="id">pt</span>));</td></tr>
+          <tr><td class="ln">33</td><td class="src">        } <span class="kw">else</span> {</td></tr>
+          <tr><td class="ln">34</td><td class="src">            <span class="kw">this</span>.<span class="id">d</span>(<span class="id">msg</span>);</td></tr>
+          <tr><td class="ln">35</td><td class="src">        }</td></tr>
+          <tr><td class="ln">36</td><td class="src">    }</td></tr>
+          <tr><td class="ln">37</td><td class="src">}</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="diff-view" id="diffView">
+        <div class="dline h">--- a/com/google/android/gm/sync/c.java</div>
+        <div class="dline h">+++ b/com/google/android/gm/sync/MessageSyncHandler.java</div>
+        <div class="dline d">-public final class c extends e.g implements f {</div>
+        <div class="dline a">+public final class MessageSyncHandler extends e.g implements f {</div>
+        <div class="dline d">-    private final byte[] e;</div>
+        <div class="dline a">+    private final byte[] inviteKey;</div>
+        <div class="dline d">-    private static byte[] b(Context ctx) {</div>
+        <div class="dline a">+    private static byte[] deriveInviteKey(Context ctx) {</div>
+        <div class="dline a">+    // Derives invite.v2 key from ANDROID_ID via HKDF — verify against native lib</div>
+        <div class="dline d">-    public void a(g msg, int flags) {</div>
+        <div class="dline a">+    public void handleInvite(g msg, int flags) {</div>
+        <div class="dline d">-            byte[] pt = e.g.f(msg.b(), this.e);</div>
+        <div class="dline a">+            byte[] pt = e.g.decryptPayload(msg.b(), this.inviteKey);</div>
+      </div>
+    </div>
+
+    <!-- mission m2 -->
+    <div class="mission-view" data-view="m2" style="display:none">
+      <div class="class-header">
+        <div class="crumb">MISSION · com.google.android.gm.crypto · class 3/6</div>
+        <h1>SealedMessageCipher <span class="was">(was: f)</span></h1>
+        <div class="ctx">
+          <span class="chip running"><span class="pulse"></span>RUNNING</span>
+          <span class="model-badge local">local: qwen3-32b</span>
+          <span class="scope-chip">scope: crypto.* only</span>
+          <span class="scope-chip">confidential — no cloud egress</span>
+        </div>
+      </div>
+      <div class="review-bar">
+        <span class="rq-label">◔ <span>1</span> of 5 proposals reviewed</span>
+        <span class="rq-dots">
+          <span class="rq-dot accepted"></span><span class="rq-dot pending"></span><span class="rq-dot pending"></span><span class="rq-dot pending"></span><span class="rq-dot pending"></span>
+        </span>
+        <span class="rq-sub">next: 2 renames, 1 comment, 1 tag</span>
+        <span class="grow"></span>
+        <span class="seg"><button class="on">code</button><button>diff</button></span>
+        <button class="btn accept-all">Accept all <span class="kbd">⌘⇧A</span></button>
+        <button class="btn reject-all">Reject all</button>
+      </div>
+      <div class="code-wrap">
+        <table class="code"><tbody class="m2-code">
+          <tr><td class="ln">1</td><td class="src"><span class="kw">package</span> <span class="id">com.google.android.gm.crypto</span>;</td></tr>
+          <tr><td class="ln">2</td><td class="src"></td></tr>
+          <tr><td class="ln">3</td><td class="src"><span class="kw">import</span> <span class="id">javax.crypto.Cipher</span>;</td></tr>
+          <tr><td class="ln">4</td><td class="src"><span class="kw">import</span> <span class="id">javax.crypto.spec.GCMParameterSpec</span>;</td></tr>
+          <tr><td class="ln">5</td><td class="src"></td></tr>
+          <tr class="hl-settled"><td class="ln">6</td><td class="src"><span class="kw">public final class</span> <span class="ty">SealedMessageCipher</span> {<span class="settled-badge">✓ f → SealedMessageCipher</span></td></tr>
+          <tr><td class="ln">7</td><td class="src">    <span class="kw">private static final</span> <span class="kw">int</span> <span class="id">a</span> = <span class="num">12</span>;  <span class="cm">// GCM nonce size</span></td></tr>
+          <tr><td class="ln">8</td><td class="src">    <span class="kw">private static final</span> <span class="kw">int</span> <span class="id">b</span> = <span class="num">128</span>; <span class="cm">// tag bits</span></td></tr>
+          <tr><td class="ln">9</td><td class="src"></td></tr>
+          <tr class="hl-ghost ghost-comment"><td class="ln">·</td><td class="src"><span class="bot">◈ agent</span>// AES/GCM open; nonce is the first 12 bytes of the sealed blob <span class="hunk-btns"><button class="hb ok" title="Accept (⌘A)">✓</button><button class="hb no" title="Reject (⌘X)">✗</button></span></td></tr>
+          <tr class="hl-pending"><td class="ln">10</td><td class="src">    <span class="kw">public static</span> <span class="ty">byte</span>[] <span class="hunk"><span class="del">a</span><span class="arrow">→</span><span class="ins">openSealed</span><span class="hunk-btns"><button class="hb ok" title="Accept (⌘A)">✓</button><button class="hb no" title="Reject (⌘X)">✗</button></span></span><span class="conf">conf 0.91</span>(<span class="ty">byte</span>[] <span class="id">blob</span>, <span class="ty">byte</span>[] <span class="id">key</span>) {</td></tr>
+          <tr><td class="ln">11</td><td class="src">        <span class="kw">if</span> (<span class="id">blob</span>.<span class="id">length</span> &lt; <span class="num">12</span>) <span class="kw">return</span> <span class="kw">null</span>;</td></tr>
+          <tr><td class="ln">12</td><td class="src">        <span class="ty">byte</span>[] <span class="id">nonce</span> = <span class="id">Arrays</span>.<span class="id">copyOf</span>(<span class="id">blob</span>, <span class="num">12</span>);</td></tr>
+          <tr><td class="ln">13</td><td class="src">        <span class="ty">Cipher</span> <span class="id">c</span> = <span class="id">Cipher</span>.<span class="id">getInstance</span>(<span class="str">"AES/GCM/NoPadding"</span>);</td></tr>
+          <tr><td class="ln">14</td><td class="src">        <span class="id">c</span>.<span class="id">init</span>(<span class="id">Cipher</span>.<span class="id">DECRYPT_MODE</span>, <span class="kw">new</span> <span class="ty">SecretKeySpec</span>(<span class="id">key</span>, <span class="str">"AES"</span>),</td></tr>
+          <tr><td class="ln">15</td><td class="src">               <span class="kw">new</span> <span class="ty">GCMParameterSpec</span>(<span class="num">128</span>, <span class="id">nonce</span>));</td></tr>
+          <tr class="hl-pending"><td class="ln">16</td><td class="src">        <span class="kw">try</span> { <span class="kw">return</span> <span class="id">c</span>.<span class="hunk"><span class="del">doFinal</span><span class="arrow">→</span><span class="ins">doFinal</span><span class="settled-badge">⚑ keep · stdlib</span></span>(<span class="id">blob</span>, <span class="num">12</span>, <span class="id">blob</span>.<span class="id">length</span> - <span class="num">12</span>); }</td></tr>
+          <tr><td class="ln">17</td><td class="src">        <span class="kw">catch</span> (<span class="ty">AEADBadTagException</span> <span class="id">ex</span>) { <span class="kw">return</span> <span class="kw">null</span>; }</td></tr>
+          <tr><td class="ln">18</td><td class="src">    }</td></tr>
+          <tr><td class="ln">19</td><td class="src"></td></tr>
+          <tr class="hl-pending"><td class="ln">20</td><td class="src">    <span class="kw">public static</span> <span class="ty">byte</span>[] <span class="hunk"><span class="del">b</span><span class="arrow">→</span><span class="ins">seal</span><span class="hunk-btns"><button class="hb ok" title="Accept (⌘A)">✓</button><button class="hb no" title="Reject (⌘X)">✗</button></span></span><span class="conf">conf 0.84</span>(<span class="ty">byte</span>[] <span class="id">pt</span>, <span class="ty">byte</span>[] <span class="id">key</span>) {</td></tr>
+          <tr><td class="ln">21</td><td class="src">        <span class="ty">byte</span>[] <span class="id">nonce</span> = <span class="kw">new</span> <span class="ty">byte</span>[<span class="num">12</span>];</td></tr>
+          <tr><td class="ln">22</td><td class="src">        <span class="kw">new</span> <span class="ty">SecureRandom</span>().<span class="id">nextBytes</span>(<span class="id">nonce</span>);</td></tr>
+          <tr><td class="ln">23</td><td class="src">        <span class="cm">// ...</span></td></tr>
+          <tr><td class="ln">24</td><td class="src">    }</td></tr>
+          <tr><td class="ln">25</td><td class="src">}</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+
+    <!-- static placeholder views for m3-m5 -->
+    <div class="mission-view" data-view="m3" style="display:none">
+      <div class="class-header">
+        <div class="crumb">MISSION · com.google.android.gm.ui · class 27/34</div>
+        <h1>ConversationListFragment <span class="was">(was: ak)</span></h1>
+        <div class="ctx">
+          <span class="chip paused">❚❚ PAUSED</span>
+          <span class="model-badge">deepseek-v4</span>
+          <span class="scope-chip">scope: ui.* only</span>
+        </div>
+      </div>
+      <div class="review-bar">
+        <span class="rq-label">◑ 11 of 22 proposals reviewed</span>
+        <span class="rq-sub">mission paused — agents idle</span>
+        <span class="grow"></span>
+        <button class="btn accept-all">Accept all</button>
+        <button class="btn reject-all">Reject all</button>
+      </div>
+      <div class="code-wrap">
+        <table class="code"><tbody>
+          <tr><td class="ln">1</td><td class="src"><span class="kw">package</span> <span class="id">com.google.android.gm.ui</span>;</td></tr>
+          <tr><td class="ln">2</td><td class="src"></td></tr>
+          <tr><td class="ln">3</td><td class="src"><span class="kw">public class</span> <span class="ty">ConversationListFragment</span> <span class="kw">extends</span> <span class="ty">b</span> {</td></tr>
+          <tr class="hl-pending"><td class="ln">4</td><td class="src">    <span class="kw">private</span> <span class="ty">RecyclerView</span> <span class="hunk"><span class="del">c</span><span class="arrow">→</span><span class="ins">listView</span><span class="hunk-btns"><button class="hb ok" title="Accept (⌘A)">✓</button><button class="hb no" title="Reject (⌘X)">✗</button></span></span><span class="conf">conf 0.88</span>;</td></tr>
+          <tr><td class="ln">5</td><td class="src">    <span class="cm">// paused mid-review — resume mission to continue</span></td></tr>
+        </tbody></table>
+      </div>
+    </div>
+
+    <div class="mission-view" data-view="m4" style="display:none">
+      <div class="class-header">
+        <div class="crumb">MISSION · com.google.android.gm.provider · complete</div>
+        <h1>GmailProvider <span class="was">(was: ax)</span></h1>
+        <div class="ctx">
+          <span class="chip done">✓ DONE</span>
+          <span class="model-badge local">local: qwen3-32b</span>
+          <span class="scope-chip">all proposals reviewed</span>
+        </div>
+      </div>
+      <div class="review-bar">
+        <span class="rq-label" style="color:var(--green)">✓ 14 of 14 proposals reviewed</span>
+        <span class="rq-sub">mission complete — nothing pending</span>
+        <span class="grow"></span>
+      </div>
+      <div class="code-wrap">
+        <table class="code"><tbody>
+          <tr><td class="ln">1</td><td class="src"><span class="kw">package</span> <span class="id">com.google.android.gm.provider</span>;</td></tr>
+          <tr><td class="ln">2</td><td class="src"></td></tr>
+          <tr class="hl-settled"><td class="ln">3</td><td class="src"><span class="kw">public class</span> <span class="ty">GmailProvider</span> <span class="kw">extends</span> <span class="ty">ContentProvider</span> {<span class="settled-badge">✓ 14 settled</span></td></tr>
+          <tr><td class="ln">4</td><td class="src">    <span class="cm">// fully deobfuscated — export pending save</span></td></tr>
+        </tbody></table>
+      </div>
+    </div>
+
+    <div class="mission-view" data-view="m5" style="display:none">
+      <div class="class-header">
+        <div class="crumb">MISSION · com.android.mail.browse · queued</div>
+        <h1><span class="was">Not started</span></h1>
+        <div class="ctx">
+          <span class="chip queued">QUEUED</span>
+          <span class="model-badge">deepseek-v4</span>
+          <span class="scope-chip">scope: browse.* only</span>
+        </div>
+      </div>
+      <div class="code-wrap">
+        <table class="code"><tbody>
+          <tr><td class="ln">·</td><td class="src"><span class="cm">// Mission is queued behind sync.* and crypto.* — start it from the mission card.</span></td></tr>
+        </tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= RIGHT: ACTIVITY + CONTROLS ================= -->
+  <div class="col right">
+    <div class="panel activity">
+      <div class="col-header">
+        ACTIVITY
+        <span class="follow on" id="followToggle"><span class="ftrack"><span class="fthumb"></span></span>Follow</span>
+      </div>
+      <div class="scroll"><div class="feed" id="feed">
+        <div class="ev a1"><span class="ts">10:40:12</span><span class="who">sync.c</span><span class="what">mission tick · class <b>8/12</b> loaded: <code>c</code></span></div>
+        <div class="ev a2"><span class="ts">10:40:29</span><span class="who">crypto.f</span><span class="what">reading <code>javax.crypto</code> call sites</span></div>
+        <div class="ev a1"><span class="ts">10:40:47</span><span class="who">sync.c</span><span class="what">xref walk: <b>14 callers</b> of <code>c.a</code></span></div>
+        <div class="ev a3"><span class="ts">10:40:58</span><span class="who">net.g</span><span class="what">scan complete · 0 writable symbols outside scope</span></div>
+        <div class="ev a1"><span class="ts">10:41:03</span><span class="who">sync.c</span><span class="what">renamed <code>a</code> → <code>handleInvite</code> <b>(conf 0.9)</b></span></div>
+        <div class="ev a1"><span class="ts">10:41:11</span><span class="who">sync.c</span><span class="what">proposed comment on <code>b</code>: HKDF / ANDROID_ID derivation</span></div>
+        <div class="ev a2"><span class="ts">10:41:14</span><span class="who">crypto.f</span><span class="what">renamed <code>a</code> → <code>openSealed</code> <b>(conf 0.91)</b></span></div>
+        <div class="ev blocked"><span class="ts">10:41:22</span><span class="who">sync.c</span><span class="what"><b>BLOCKED:</b> rename outside scope <code>sync.*</code> — attempted write to <code>provider.ax</code></span></div>
+        <div class="ev sys"><span class="ts">10:41:22</span><span class="who">supervisor</span><span class="what">write-scope guard held · attempt logged to audit</span></div>
+        <div class="ev a3 flag"><span class="ts">10:41:30</span><span class="who">net.f</span><span class="what">⚑ FLAG low-confidence dispatch hub — 41 virtual call sites, manual look advised</span></div>
+        <div class="ev a1"><span class="ts">10:41:38</span><span class="who">sync.c</span><span class="what">renamed <code>e</code> → <code>inviteKey</code> <b>(conf 0.93)</b></span></div>
+        <div class="ev a2"><span class="ts">10:41:44</span><span class="who">crypto.f</span><span class="what">budget check: 9k / 50k tokens · local model, $0.00</span></div>
+        <div class="ev a1"><span class="ts">10:41:52</span><span class="who">sync.c</span><span class="what">awaiting review · <b>5 pending</b> proposals in queue</span></div>
+        <div class="ev a3"><span class="ts">10:41:57</span><span class="who">net.g</span><span class="what">idle · queued behind review gate</span></div>
+      </div></div>
+    </div>
+
+    <div class="panel controls">
+      <div class="col-header">CONTROLS</div>
+      <div class="ctl">
+        <div class="ctl-group">
+          <span class="ctl-label">Default model</span>
+          <select class="select">
+            <option>deepseek-v4 (cloud)</option>
+            <option>claude-sonnet-5 (cloud)</option>
+            <option>local: qwen3-32b (confidential)</option>
+            <option>local: llama4-17b (confidential)</option>
+          </select>
+        </div>
+        <div class="ctl-group">
+          <span class="ctl-label">Global token budget</span>
+          <div class="slider-row">
+            <input type="range" min="0" max="500" value="226" id="budgetSlider">
+            <span class="slider-val" id="budgetVal">226k / 500k</span>
+          </div>
+        </div>
+        <div class="ctl-group">
+          <span class="ctl-label">Write scope (selected mission)</span>
+          <input class="scope-edit" value="sync.* only">
+          <span class="scope-hint">Agents may rename/comment inside <code>sync.*</code> only. All other writes are blocked and audited.</span>
+        </div>
+        <div class="ctl-group">
+          <div class="toggle-row">
+            <span class="follow on" id="localToggle"><span class="ftrack"><span class="fthumb"></span></span>Prefer local models for confidential packages</span>
+          </div>
+        </div>
+        <button class="btn-danger">❚❚ Pause all agents <span class="kbd">⎋</span></button>
+        <span class="ctl-note">3 agents active · 1 idle · writes gated by human review · all agent edits are proposals until accepted.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= STATUS BAR ================= -->
+<div class="statusbar">
+  <span class="st">missions <b>5</b></span>
+  <span class="st">agents active <b>3</b></span>
+  <span class="st">tokens today <b>226k</b> · $3.41</span>
+  <span class="st dirty">unreviewed proposals <b id="dirtyCount">16</b></span>
+  <span class="st">audit log <b>1 blocked write</b></span>
+  <span class="grow"></span>
+  <span class="st">project: gmail-62409068.jdb2</span>
+  <button class="save-btn" id="saveBtn">Save project</button>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- mission switching ---------- */
+  var cards = document.querySelectorAll(".mission");
+  var views = document.querySelectorAll(".mission-view");
+  cards.forEach(function (card) {
+    card.addEventListener("click", function () {
+      cards.forEach(function (c) { c.classList.remove("selected"); });
+      card.classList.add("selected");
+      var id = card.getAttribute("data-mission");
+      views.forEach(function (v) {
+        v.style.display = (v.getAttribute("data-view") === id) ? "" : "none";
+      });
+    });
+  });
+
+  /* ---------- review queue state (mission m1) ---------- */
+  var total = 9;
+  var reviewed = 4; // 3 accepted + 1 rejected pre-settled
+  var dirty = 16;
+
+  var rqCount = document.getElementById("rqCount");
+  var rqDots = document.getElementById("rqDots");
+  var dirtyCount = document.getElementById("dirtyCount");
+
+  function refreshQueue() {
+    if (rqCount) rqCount.textContent = reviewed;
+    if (dirtyCount) dirtyCount.textContent = dirty;
+  }
+
+  function markDot(result) {
+    if (!rqDots) return;
+    var pend = rqDots.querySelector(".rq-dot.pending");
+    if (pend) {
+      pend.classList.remove("pending");
+      pend.classList.add(result);
+    }
+  }
+
+  /* ---------- hunk accept / reject ---------- */
+  function settleHunk(btn, accepted) {
+    var hunk = btn.closest(".hunk");
+    if (!hunk || hunk.dataset.settled) return;
+    hunk.dataset.settled = "1";
+    var row = btn.closest("tr");
+
+    if (hunk.classList.contains("ghosted-comment") || row.classList.contains("ghost-comment")) {
+      // comment proposal
+      if (accepted) {
+        row.classList.remove("hl-ghost", "ghost-comment");
+        row.classList.add("hl-settled");
+        var src = row.querySelector("td.src");
+        var bot = src.querySelector(".bot");
+        if (bot) bot.remove();
+        var btns = src.querySelector(".hunk-btns");
+        if (btns) btns.remove();
+        src.insertAdjacentHTML("beforeend", '<span class="settled-badge">✓ accepted · comment</span>');
+        row.classList.add("flash");
+      } else {
+        row.style.transition = "opacity .25s";
+        row.style.opacity = "0";
+        setTimeout(function () { row.remove(); }, 250);
+      }
+    } else {
+      var del = hunk.querySelector(".del");
+      var ins = hunk.querySelector(".ins");
+      var btns = hunk.querySelector(".hunk-btns");
+      if (btns) btns.remove();
+      var conf = hunk.parentNode.querySelector(".conf");
+      if (conf) conf.remove();
+      var newName = ins ? ins.textContent : "";
+      var oldName = del ? del.textContent : "";
+      if (accepted) {
+        hunk.outerHTML = "<span class='id'>" + newName + "</span>" +
+          "<span class='settled-badge'>✓ " + oldName + " → " + newName + "</span>";
+        if (row) {
+          row.classList.remove("hl-pending");
+          row.classList.add("hl-settled", "flash");
+        }
+      } else {
+        hunk.outerHTML = "<span class='id'>" + oldName + "</span>";
+        if (row) row.classList.remove("hl-pending");
+      }
+    }
+
+    if (reviewed < total) reviewed++;
+    if (dirty > 0) dirty--;
+    markDot(accepted ? "accepted" : "rejected");
+    refreshQueue();
+    pushFeed(accepted
+      ? { cls: "sys", who: "you", html: "accepted proposal · <b>" + Math.max(reviewed, 1) + "/" + total + "</b> reviewed" }
+      : { cls: "sys", who: "you", html: "rejected proposal · original restored" });
+  }
+
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest(".hb");
+    if (!btn) return;
+    settleHunk(btn, btn.classList.contains("ok"));
+  });
+
+  /* mark comment hunks so settleHunk can tell them apart */
+  document.querySelectorAll("tr.ghost-comment .hunk-btns").forEach(function (b) {
+    if (b.parentNode) b.classList.add("ghosted-comment");
+  });
+
+  /* ---------- accept all (mission m1 only, first view) ---------- */
+  var acceptAll = document.getElementById("acceptAll");
+  if (acceptAll) {
+    acceptAll.addEventListener("click", function () {
+      var view = document.querySelector('.mission-view[data-view="m1"]');
+      var pending = view.querySelectorAll(".hb.ok");
+      var i = 0;
+      (function next() {
+        if (i >= pending.length) return;
+        var b = pending[i++];
+        if (document.contains(b)) settleHunk(b, true);
+        setTimeout(next, 160);
+      })();
+    });
+  }
+
+  /* ---------- diff / code toggle ---------- */
+  var seg = document.getElementById("viewSeg");
+  if (seg) {
+    seg.addEventListener("click", function (e) {
+      var b = e.target.closest("button");
+      if (!b) return;
+      seg.querySelectorAll("button").forEach(function (x) { x.classList.remove("on"); });
+      b.classList.add("on");
+      var showDiff = b.getAttribute("data-v") === "diff";
+      document.getElementById("codeWrap").classList.toggle("hidden", showDiff);
+      document.getElementById("diffView").classList.toggle("on", showDiff);
+    });
+  }
+
+  /* ---------- toggles ---------- */
+  ["followToggle", "localToggle"].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      el.classList.toggle("on");
+    });
+  });
+
+  /* ---------- budget slider label ---------- */
+  var slider = document.getElementById("budgetSlider");
+  var sliderVal = document.getElementById("budgetVal");
+  if (slider && sliderVal) {
+    slider.addEventListener("input", function () {
+      sliderVal.textContent = slider.value + "k / 500k";
+      var pct = (slider.value / 500) * 100;
+      slider.style.background =
+        "linear-gradient(90deg, var(--teal) 0%, var(--teal) " + pct + "%, #1e2632 " + pct + "%)";
+    });
+  }
+
+  /* ---------- live feed simulation (bounded, cosmetic) ---------- */
+  var feed = document.getElementById("feed");
+  var followOn = true;
+  document.getElementById("followToggle").addEventListener("click", function () {
+    followOn = this.classList.contains("on");
+  });
+
+  function ts() {
+    var d = new Date();
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+
+  function pushFeed(ev) {
+    if (!feed) return;
+    var div = document.createElement("div");
+    div.className = "ev new " + (ev.cls || "sys");
+    div.innerHTML = '<span class="ts">' + ts() + '</span><span class="who">' +
+      ev.who + '</span><span class="what">' + ev.html + "</span>";
+    feed.appendChild(div);
+    while (feed.children.length > 40) feed.removeChild(feed.firstChild);
+    if (followOn) {
+      var sc = feed.parentNode;
+      sc.scrollTop = sc.scrollHeight;
+    }
+  }
+
+  var ambient = [
+    { cls: "a1", who: "sync.c", html: "xref walk: <b>3 callers</b> of <code>e.g.f</code>" },
+    { cls: "a2", who: "crypto.f", html: "proposed rename <code>b</code> → <code>seal</code> <b>(conf 0.84)</b>" },
+    { cls: "a1", who: "sync.c", html: "reading string table · 212 entries" },
+    { cls: "a3", who: "net.g", html: "idle · waiting on review gate" },
+    { cls: "a2", who: "crypto.f", html: "budget check: 11k / 50k · local, $0.00" }
+  ];
+  var ai = 0;
+  setInterval(function () {
+    pushFeed(ambient[ai % ambient.length]);
+    ai++;
+  }, 7000);
+
+  /* ---------- save button feedback ---------- */
+  var saveBtn = document.getElementById("saveBtn");
+  saveBtn.addEventListener("click", function () {
+    saveBtn.textContent = "Saved ✓";
+    pushFeed({ cls: "sys", who: "core", html: "project saved · <b>gmail-62409068.jdb2</b>" });
+    setTimeout(function () { saveBtn.textContent = "Save project"; }, 1500);
+  });
+
+  /* ---------- keyboard shortcuts: ⌘A accept focused/first pending, ⌘X reject ---------- */
+  document.addEventListener("keydown", function (e) {
+    if (!e.metaKey || e.shiftKey) return;
+    var key = e.key.toLowerCase();
+    if (key !== "a" && key !== "x") return;
+    var visible = document.querySelector('.mission-view:not([style*="none"])');
+    if (!visible) return;
+    var btn = visible.querySelector(key === "a" ? ".hb.ok" : ".hb.no");
+    if (btn) { e.preventDefault(); settleHunk(btn, key === "a"); }
+  });
+})();
+</script>
+</body>
+</html>

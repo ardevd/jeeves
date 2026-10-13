@@ -1,0 +1,152 @@
+{
+  "schema": "jeeves-run-bundle-v1",
+  "run_id": "00000000-0000-4000-8000-000000000001",
+  "recipe": {
+    "id": "fixture-local-v1",
+    "revision": 1,
+    "sha256": "6fa7ce92eb726e50ab929d10eea2446bf9883a9b9a385a00add1d579f781387c",
+    "parent": null,
+    "activity": "fixture-infrastructure",
+    "variant": "case-sensitive-symbols",
+    "family": "fixture-local-v1",
+    "split": "unassigned",
+    "split_provenance": "fixture"
+  },
+  "producer": {
+    "name": "jeeves-contract-fixture",
+    "version": "1.0.0",
+    "build_revision": "fixture-v1",
+    "build_sha256": "3cc1428908b9bd3e5142368330effe8c65ab2327640e11e09b477dfdc72f33bc",
+    "mode": "fixture",
+    "engine": null
+  },
+  "target": {
+    "package": "fixture.synthetic",
+    "version": "1",
+    "artifact": {
+      "kind": "fixture",
+      "sha256": "b66c3217ef4a2a880abcfd1442292bb4b88865af63c7efd40591d0c4f2360650",
+      "size": 91
+    },
+    "identity_basis": "fixture"
+  },
+  "device": {
+    "id": "fixture-device-A",
+    "platform": "fixture",
+    "model": null,
+    "os_version": null,
+    "identity_basis": "fixture"
+  },
+  "session": {
+    "id": "fixture-session-A",
+    "controller_id": "00000000-0000-4000-8000-000000000002",
+    "ownership": "fixture",
+    "processes": [
+      {
+        "id": "fixture-process",
+        "pid": null,
+        "start_identity": "synthetic:no-process-created",
+        "identity_basis": "fixture"
+      }
+    ]
+  },
+  "conditions": [
+    {
+      "name": "scope",
+      "value": "schema and submission infrastructure only",
+      "provenance": "fixture",
+      "source": "fixture generator"
+    }
+  ],
+  "hooks": [
+    {
+      "id": "fixture-observer",
+      "role": "observation",
+      "source_sha256": "b92af737c4528ce339a306d25c158f7e21283fd40e9b05fc96790aa5457eddf3",
+      "state": "installed",
+      "state_basis": "fixture",
+      "origSigs": [
+        "Lfixture/Probe;->Ping(I)V",
+        "Lfixture/Probe;->ping(I)V"
+      ],
+      "native_sites": [],
+      "error": null
+    }
+  ],
+  "coverage": {
+    "scope": "hooked-methods",
+    "installed_methods": 2,
+    "observed_methods": 2,
+    "whole_app": false
+  },
+  "capture": {
+    "started_at": "2026-10-10T00:00:00Z",
+    "ended_at": "2026-10-10T00:00:01Z",
+    "completion": "complete",
+    "stop_reason": "deadline",
+    "event_count": 4,
+    "first_seq": 1,
+    "last_seq": 4,
+    "sequence_gaps": 0,
+    "sequence_scope": "recorder-session",
+    "ordering": "local-order-does-not-prove-causality",
+    "loss": {
+      "known_dropped": 0,
+      "unknown_loss": false,
+      "details": []
+    }
+  },
+  "cleanup": {
+    "state": "not-applicable",
+    "basis": "fixture",
+    "resources": []
+  },
+  "research": {
+    "capture_location": "none",
+    "contributions": []
+  },
+  "privacy": {
+    "projection": "fixture",
+    "sensitive_content_review": "fixture-reviewed",
+    "publication": "private",
+    "training_admission": "not-requested"
+  },
+  "files": [
+    {
+      "path": "events/000001.jsonl",
+      "role": "events",
+      "size": 1703,
+      "sha256": "f58a05627ad9df36790fc50791448c59d87232938fdb6fccd6f43353c0aa4c21",
+      "event_count": 4,
+      "first_seq": 1,
+      "last_seq": 4
+    },
+    {
+      "path": "evidence/fixture-input.txt",
+      "role": "static-evidence",
+      "size": 91,
+      "sha256": "b66c3217ef4a2a880abcfd1442292bb4b88865af63c7efd40591d0c4f2360650",
+      "event_count": null,
+      "first_seq": null,
+      "last_seq": null
+    },
+    {
+      "path": "evidence/hook-definition.txt",
+      "role": "static-evidence",
+      "size": 129,
+      "sha256": "b92af737c4528ce339a306d25c158f7e21283fd40e9b05fc96790aa5457eddf3",
+      "event_count": null,
+      "first_seq": null,
+      "last_seq": null
+    },
+    {
+      "path": "evidence/recipe.json",
+      "role": "static-evidence",
+      "size": 234,
+      "sha256": "6fa7ce92eb726e50ab929d10eea2446bf9883a9b9a385a00add1d579f781387c",
+      "event_count": null,
+      "first_seq": null,
+      "last_seq": null
+    }
+  ]
+}

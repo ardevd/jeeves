@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<!--
+  Mockup E4 — RUNS expanded (dynamic analysis)
+  Same shell as Mockup S (target strip, breadcrumb, activity rail, status bar);
+  the center surface is the RUNS workbench: device bar + method breakpoints +
+  live hit feed with detail strip + run history cards.
+  Self-contained: inline CSS + JS, no external dependencies, no network requests.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>64 65 78 0a 30 33 35 00 — workbench</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='12'%20fill='%230c0e10'/%3E%3Crect%20x='1.5'%20y='1.5'%20width='61'%20height='61'%20rx='10.5'%20fill='none'%20stroke='%2327322c'/%3E%3Ctext%20x='32'%20y='28'%20font-family='monospace'%20font-size='12'%20fill='%233fb950'%20text-anchor='middle'%20letter-spacing='1'%3E64%2065%2078%3C/text%3E%3Ctext%20x='32'%20y='46'%20font-family='monospace'%20font-size='12'%20fill='%233fb950'%20text-anchor='middle'%20letter-spacing='1'%20opacity='.75'%3E0a%2030%2035%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg0:#101214; --bg1:#15181b; --bg2:#1a1e22; --bg3:#20252a; --bg4:#262c32;
+  --border:#272c31; --border-soft:#20252a;
+  --text:#c9d1d9; --text-dim:#7d8590; --text-faint:#545d66;
+  --accent:#2dd4bf; --accent-dim:#134e4a; --accent-glow:rgba(45,212,191,.14);
+  --blue:#58a6ff; --purple:#d2a8ff; --orange:#ffa657; --yellow:#e3b341;
+  --red:#f47067; --green:#7ee787; --pink:#f778ba;
+  --agent:#b892f6; --agent-bg:rgba(184,146,246,.10);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:12.5px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:var(--sans);background:var(--bg0);color:var(--text);
+  overflow:hidden;display:flex;flex-direction:column;font-size:12.5px;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--accent-dim)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#2c333a;border-radius:5px;border:2px solid var(--bg1)}
+::-webkit-scrollbar-track{background:transparent}
+kbd{
+  font-family:var(--mono);font-size:10px;color:var(--text-dim);
+  background:var(--bg2);border:1px solid var(--border);border-bottom-width:2px;
+  border-radius:4px;padding:0 4px;line-height:15px;display:inline-block;white-space:nowrap;
+}
+.icn{font-family:var(--mono);font-style:normal;font-size:15px;line-height:1}
+.dirtydot{width:7px;height:7px;border-radius:50%;background:var(--orange);display:inline-block}
+
+/* ============ TARGET STRIP ============ */
+#targets{
+  height:32px;min-height:32px;background:#0c0e10;border-bottom:1px solid var(--border);
+  display:flex;align-items:stretch;padding:0 8px;gap:2px;overflow-x:auto;
+}
+.tchip{
+  display:flex;align-items:center;gap:7px;padding:0 12px;margin-top:5px;
+  font-family:var(--mono);font-size:11px;color:var(--text-dim);cursor:pointer;white-space:nowrap;
+  background:var(--bg1);border:1px solid var(--border-soft);border-bottom:none;border-radius:7px 7px 0 0;
+}
+.tchip:hover{color:var(--text)}
+.tchip.active{background:var(--bg0);color:var(--text);border-color:var(--border);box-shadow:inset 0 2px 0 var(--accent);position:relative}
+.tchip.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--bg0)}
+.tchip .ft{font-size:11px}
+.eng{font-size:8.5px;letter-spacing:.06em;border-radius:3px;padding:1px 5px;font-weight:700}
+.eng.jeb{background:rgba(45,212,191,.14);color:var(--accent);border:1px solid rgba(45,212,191,.3)}
+.eng.jadx{background:rgba(255,166,87,.12);color:var(--orange);border:1px solid rgba(255,166,87,.3)}
+.eng.ida{background:rgba(88,166,255,.12);color:var(--blue);border:1px solid rgba(88,166,255,.3)}
+.tchip .adot{width:6px;height:6px;border-radius:50%;background:var(--agent);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.tchip .ddev{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.tchip.add{border-style:dashed;color:var(--text-faint);background:transparent}
+.tchip.add:hover{color:var(--accent);border-color:var(--accent-dim)}
+
+/* ============ TOP BAR ============ */
+#topbar{
+  height:42px;min-height:42px;background:var(--bg1);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;padding:0 12px;
+}
+.locbar{
+  display:flex;align-items:center;gap:5px;min-width:0;flex:0 2 auto;overflow:hidden;
+  font-family:var(--mono);font-size:11.5px;
+}
+.lseg{
+  color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;
+  cursor:pointer;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:5px;flex:0 1 auto;
+}
+.lseg:hover{background:var(--bg3);color:var(--text)}
+.lseg.tgt{background:var(--accent-glow);color:var(--accent);border:1px solid rgba(45,212,191,.25);flex:none}
+.lseg.cur{color:var(--text);font-weight:600;flex:none}
+.lseg.flash{background:var(--accent-dim);color:#99f6e4}
+.lsep{color:var(--text-faint);font-size:10px;flex:none}
+.navhist{display:flex;align-items:center;gap:2px;margin-left:4px}
+.navhist button{
+  background:transparent;border:1px solid transparent;color:var(--text-dim);border-radius:5px;
+  width:24px;height:24px;cursor:pointer;font-size:13px;
+}
+.navhist button:hover{background:var(--bg3);color:var(--text)}
+.crumbs{
+  display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:11px;color:var(--text-dim);
+  padding:3px 8px;border-radius:5px;background:var(--bg2);border:1px solid var(--border-soft);
+}
+.crumbs b{color:var(--text);font-weight:600}
+.crumbs .sep{color:var(--text-faint)}
+.jumpbox{
+  flex:0 1 420px;margin:0 auto;display:flex;align-items:center;gap:8px;
+  background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;
+  color:var(--text-faint);font-family:var(--mono);font-size:11.5px;cursor:text;
+}
+.jumpbox:hover{border-color:#31383f}
+.jumpbox .grow{flex:1}
+.proj{
+  display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:6px;padding:4px 9px;font-size:11.5px;color:var(--text);cursor:pointer;
+}
+.proj .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.proj .chev{color:var(--text-faint);font-size:9px}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);
+  color:var(--text);border-radius:6px;padding:4px 10px;font-size:11.5px;cursor:pointer;font-family:var(--sans);
+}
+.btn:hover{background:var(--bg3)}
+.btn.primary{background:var(--accent-dim);border-color:#155e57;color:#99f6e4}
+.btn.primary:hover{background:#165e56}
+
+/* ============ ACTIVITY RAIL ============ */
+#activity{
+  width:48px;min-width:48px;background:var(--bg1);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;padding-top:6px;gap:2px;
+}
+.actbtn{
+  width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  color:var(--text-faint);cursor:pointer;position:relative;font-size:17px;border:none;background:transparent;
+}
+.actbtn:hover{color:var(--text);background:var(--bg3)}
+.actbtn.active{color:var(--accent);background:var(--accent-glow)}
+.actbtn.active::before{content:"";position:absolute;left:-4px;top:8px;bottom:8px;width:2px;background:var(--accent);border-radius:2px}
+.actbtn .badge{
+  position:absolute;top:3px;right:3px;min-width:14px;height:14px;border-radius:7px;background:var(--accent-dim);
+  color:#99f6e4;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0 3px;
+}
+.actbtn .badge.agent{background:var(--agent);color:#1b1030}
+#activity .spacer{flex:1}
+
+/* ============ RUNS SURFACE ============ */
+#main{flex:1;display:flex;min-height:0}
+#surface{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg0)}
+
+/* device bar */
+#devbar{
+  display:flex;align-items:center;gap:10px;padding:7px 12px;
+  background:var(--bg1);border-bottom:1px solid var(--border);flex-wrap:wrap;
+}
+.livedot{
+  width:8px;height:8px;border-radius:50%;background:var(--green);flex:none;
+  box-shadow:0 0 0 3px rgba(126,231,135,.15);animation:livedot 1.8s ease-in-out infinite;
+}
+@keyframes livedot{0%,100%{box-shadow:0 0 0 3px rgba(126,231,135,.18)}50%{box-shadow:0 0 0 5px rgba(126,231,135,.05)}}
+.devspec{font-family:var(--mono);font-size:11.5px;color:var(--text)}
+.devspec .dim{color:var(--text-faint)}
+.devtag{
+  font-family:var(--mono);font-size:9px;letter-spacing:.06em;border-radius:3px;padding:1px 6px;
+  color:var(--green);border:1px solid rgba(126,231,135,.35);background:rgba(126,231,135,.07);
+}
+#devbar .btn{padding:3px 9px;font-size:11px}
+#devbar .grow{flex:1}
+#recline{font-family:var(--mono);font-size:10.5px;color:var(--text-faint);white-space:nowrap}
+#recline b{color:var(--text-dim);font-weight:600}
+.info-hint{
+  font-size:10.5px;color:var(--text-faint);cursor:help;white-space:nowrap;
+  border-bottom:1px dotted var(--text-faint);padding-bottom:1px;
+}
+.info-hint:hover{color:var(--text-dim)}
+
+/* three-column body */
+#runs-body{flex:1;display:flex;min-height:0}
+
+/* ---- left: method breakpoints ---- */
+#bp-pane{
+  width:300px;min-width:300px;background:var(--bg1);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;
+}
+.pane-head{
+  padding:10px 12px 6px;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--text-dim);
+  text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;
+}
+.pane-head .hk{font-weight:400;letter-spacing:0;text-transform:none}
+.bprow{
+  display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;
+  border-left:2px solid transparent;user-select:none;
+}
+.bprow:hover{background:var(--bg2)}
+.bprow.nat{border-left-color:var(--blue)}
+.bprow.off .bpsig{color:var(--text-faint);text-decoration:line-through;text-decoration-color:var(--border)}
+.bpcheck{
+  width:14px;height:14px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);
+  flex:none;display:flex;align-items:center;justify-content:center;font-size:10px;color:transparent;
+}
+.bprow:not(.off) .bpcheck{background:var(--accent-dim);border-color:#155e57;color:#99f6e4}
+.bpmain{min-width:0;flex:1}
+.bpsig{font-family:var(--mono);font-size:11.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bpsig .cls{color:var(--text-dim)}
+.bpcond{font-family:var(--mono);font-size:9.5px;color:var(--yellow);margin-top:2px}
+.bpwas{
+  font-family:var(--mono);font-size:9px;color:var(--text-faint);border:1px dashed var(--border);
+  border-radius:3px;padding:0 4px;margin-left:6px;white-space:nowrap;
+}
+.bpnat{
+  font-family:var(--mono);font-size:9px;color:var(--blue);border:1px solid rgba(88,166,255,.4);
+  border-radius:3px;padding:0 4px;margin-left:6px;white-space:nowrap;
+}
+.bphits{
+  font-family:var(--mono);font-size:10px;color:var(--text-dim);background:var(--bg2);
+  border:1px solid var(--border);border-radius:8px;padding:0 7px;flex:none;min-width:34px;text-align:center;
+}
+.bphits.hot{color:var(--orange);border-color:rgba(255,166,87,.4)}
+.bp-note{padding:8px 12px;font-size:10.5px;color:var(--text-faint);line-height:1.5;border-top:1px solid var(--border-soft)}
+.bp-note kbd{margin:0 1px}
+
+/* ---- center: live hit feed ---- */
+#feed-pane{flex:1;display:flex;flex-direction:column;min-width:0}
+#feed-toolbar{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;
+  background:var(--bg1);border-bottom:1px solid var(--border);
+}
+.filter{
+  flex:0 1 240px;min-width:160px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;
+  display:flex;align-items:center;gap:6px;padding:4px 8px;
+}
+.filter:focus-within{border-color:var(--accent-dim)}
+.filter input{
+  background:transparent;border:none;outline:none;color:var(--text);font-family:var(--mono);
+  font-size:11.5px;width:100%;
+}
+.filter input::placeholder{color:var(--text-faint)}
+.tgl{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);cursor:pointer;user-select:none;white-space:nowrap}
+.tgl .sw{width:22px;height:12px;border-radius:6px;background:var(--bg3);position:relative;flex:none;transition:background .15s}
+.tgl .sw::after{content:"";position:absolute;left:1.5px;top:1.5px;width:9px;height:9px;border-radius:50%;background:var(--text-faint);transition:all .15s}
+.tgl.on{color:var(--text)}
+.tgl.on .sw{background:var(--accent-dim)}
+.tgl.on .sw::after{left:11px;background:var(--accent)}
+#feedcount{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--text-faint);white-space:nowrap}
+#feedcount b{color:var(--text-dim);font-weight:600}
+
+#feedwrap{flex:1;overflow:auto;min-height:0}
+#feedtable{width:100%;border-collapse:collapse;font-size:12px}
+#feedtable th{
+  text-align:left;color:var(--text-faint);font-weight:600;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  padding:7px 12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg1);z-index:2;
+  white-space:nowrap;user-select:none;
+}
+#feedtable td{padding:4px 12px;border-bottom:1px solid var(--border-soft);white-space:nowrap}
+#feedtable tbody tr{cursor:pointer}
+#feedtable tbody tr:hover td{background:var(--bg2)}
+#feedtable tbody tr.sel td{background:var(--accent-glow);box-shadow:inset 2px 0 0 var(--accent)}
+#feedtable tbody tr.disabled-bp td{opacity:.38}
+td.ts{font-family:var(--mono);font-size:11px;color:var(--text-dim)}
+td.mth{font-family:var(--mono);font-size:11.5px}
+td.mth .cls{color:var(--text-faint)}
+td.mth .nm{color:var(--text)}
+td.mth .nat{color:var(--blue);font-size:9px;border:1px solid rgba(88,166,255,.4);border-radius:3px;padding:0 4px;margin-left:6px}
+td.args{font-family:var(--mono);font-size:11px;color:#a5d6ff;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+td.args .bytelen{color:var(--text-faint)}
+td.ret{font-family:var(--mono);font-size:11px;color:var(--green)}
+td.ret .void{color:var(--text-faint)}
+td.bt{font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:right}
+.runbadge{
+  font-family:var(--mono);font-size:9.5px;font-weight:700;border-radius:3px;padding:1px 6px;border:1px solid;
+}
+.runbadge.a{color:var(--accent);border-color:rgba(45,212,191,.4);background:rgba(45,212,191,.07)}
+.runbadge.b{color:var(--purple);border-color:rgba(210,168,255,.4);background:rgba(210,168,255,.07)}
+
+/* ---- detail strip ---- */
+#detail{
+  min-height:128px;max-height:128px;background:var(--bg1);border-top:1px solid var(--border);
+  display:flex;overflow:hidden;
+}
+.det-col{padding:8px 14px;min-width:0;overflow-y:auto}
+.det-col.args{flex:0 1 340px;border-right:1px solid var(--border-soft)}
+.det-col.bt{flex:1}
+.det-head{
+  font-size:9.5px;font-weight:700;letter-spacing:.12em;color:var(--text-faint);text-transform:uppercase;
+  display:flex;justify-content:space-between;gap:10px;margin-bottom:5px;
+}
+.det-head .mono{font-weight:400;letter-spacing:0;text-transform:none;font-family:var(--mono)}
+.det-arg{font-family:var(--mono);font-size:11px;line-height:1.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.det-arg .an{color:var(--text-faint)}
+.det-arg .av{color:#a5d6ff}
+.det-arg .at{color:var(--text-faint);font-size:10px}
+.det-ret{font-family:var(--mono);font-size:11px;color:var(--green);line-height:1.7}
+.bt-frame{font-family:var(--mono);font-size:10.5px;line-height:1.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bt-frame .faddr{color:var(--text-faint)}
+.bt-frame .fmod{color:var(--orange)}
+.bt-frame .fsym{color:var(--text)}
+.bt-frame .foff{color:var(--text-dim)}
+.bt-frame.hit-frame .fsym{color:var(--accent)}
+.det-empty{padding:22px 14px;color:var(--text-faint);font-size:11.5px;flex:1;text-align:center}
+
+/* ---- right: run history ---- */
+#runs-pane{
+  width:280px;min-width:280px;background:var(--bg1);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;
+}
+.runcard{
+  margin:8px 12px 0;padding:10px 12px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:8px;cursor:pointer;position:relative;
+}
+.runcard:hover{border-color:#31383f}
+.runcard.sel{border-color:var(--accent-dim);box-shadow:inset 2px 0 0 var(--accent)}
+.rc-head{display:flex;align-items:center;gap:8px}
+.rc-name{font-weight:700;font-size:12px}
+.rc-time{font-family:var(--mono);font-size:10.5px;color:var(--text-faint);margin-left:auto}
+.rc-meta{font-family:var(--mono);font-size:10.5px;color:var(--text-dim);margin-top:5px;display:flex;gap:12px}
+.rc-cov{margin-top:8px}
+.rc-cov .lbl{display:flex;justify-content:space-between;font-size:9.5px;color:var(--text-faint);letter-spacing:.06em;text-transform:uppercase;margin-bottom:3px}
+.rc-cov .lbl b{font-family:var(--mono);letter-spacing:0}
+.covbar{height:5px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.covbar i{display:block;height:100%;border-radius:3px}
+.runcard.a .covbar i{background:var(--accent);width:34%}
+.runcard.b .covbar i{background:var(--purple);width:28%}
+.rc-note{font-size:10px;color:var(--text-faint);margin-top:7px;line-height:1.45}
+#diffbtn{margin:10px 12px 0;justify-content:center}
+#diffbtn.on{background:var(--accent-dim);border-color:#155e57;color:#99f6e4}
+#diffpanel{
+  margin:8px 12px 0;padding:10px 12px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:8px;display:none;
+}
+#diffpanel.open{display:block}
+.dp-sec{font-size:9.5px;font-weight:700;letter-spacing:.12em;color:var(--text-faint);text-transform:uppercase;margin:6px 0 4px}
+.dp-sec:first-child{margin-top:0}
+.dp-row{font-family:var(--mono);font-size:10.5px;line-height:1.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dp-row .onlya{color:var(--accent)}
+.dp-row .onlyb{color:var(--purple)}
+.dp-row .delta{color:var(--green)}
+.runs-note{padding:10px 12px;font-size:10.5px;color:var(--text-faint);line-height:1.5}
+
+/* ============ STATUS BAR ============ */
+#status{
+  height:24px;min-height:24px;background:var(--bg1);border-top:1px solid var(--border);
+  display:flex;align-items:center;padding:0 10px;gap:14px;font-size:10.5px;color:var(--text-dim);
+  font-family:var(--mono);
+}
+.st{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.st .heapbar{width:52px;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.st .heapbar i{display:block;height:100%;background:var(--yellow)}
+.spinner{width:9px;height:9px;border:1.5px solid var(--accent-dim);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.agentchip{
+  display:flex;align-items:center;gap:6px;background:var(--agent-bg);border:1px solid rgba(184,146,246,.3);
+  color:var(--agent);border-radius:10px;padding:1px 9px;font-size:10px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.follow{display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:auto}
+.follow .sw{width:22px;height:12px;border-radius:6px;background:var(--accent-dim);position:relative}
+.follow .sw::after{content:"";position:absolute;right:1.5px;top:1.5px;width:9px;height:9px;border-radius:50%;background:var(--accent)}
+</style>
+</head>
+<body>
+
+<!-- ================= TARGET STRIP ================= -->
+<div id="targets">
+  <div class="tchip active" title="gmail.apk · JEB — switch ⌘1">
+    <span class="ft" style="color:var(--orange)">▣</span> gmail.apk <span class="eng jeb">JEB</span> <span class="dirtydot"></span>
+  </div>
+  <div class="tchip" title="gmail.apk · JADX — switch ⌘2 · read-only · sidecar names">
+    <span class="ft" style="color:var(--orange)">▣</span> gmail.apk <span class="eng jadx">JADX</span>
+  </div>
+  <div class="tchip" title="libgmail.so · IDA — switch ⌘3 · agent active">
+    <span class="ft" style="color:var(--blue)">◈</span> libgmail.so <span class="eng ida">IDA</span> <span class="adot"></span>
+  </div>
+  <div class="tchip" title="wallet.apk · JADX — switch ⌘4 · device attached: pixel-8">
+    <span class="ft" style="color:var(--orange)">▣</span> wallet.apk <span class="eng jadx">JADX</span> <span class="ddev"></span>
+  </div>
+  <div class="tchip add" title="Open target…">+</div>
+</div>
+
+<!-- ================= TOP BAR ================= -->
+<div id="topbar">
+  <nav class="locbar" title="Current location — hierarchy, not history">
+    <span class="lseg tgt"><span class="eng jeb">JEB</span>gmail.apk</span><span class="lsep">›</span>
+    <span class="lseg cur">Runs</span>
+  </nav>
+  <div class="navhist" title="Navigation history">
+    <button title="Back (Alt+←)">‹</button>
+    <button title="Forward (Alt+→)">›</button>
+  </div>
+  <div class="crumbs" title="Navigation history · Alt+← / Alt+→">
+    <span>sync.c</span><span class="sep">→</span><span>decryptPayload</span><span class="sep">→</span><span><b>runs</b></span><span class="sep">▾</span>
+  </div>
+  <div class="jumpbox" title="Jump anywhere">
+    <span style="color:var(--accent)">➜</span>
+    <span class="grow">Jump to class, method, string, offset…</span>
+    <kbd>G</kbd>
+  </div>
+  <div class="proj" title="Project">
+    <span class="dot"></span> gmail_9.41.apk <span class="chev">▾</span>
+  </div>
+  <button class="btn primary" title="Save project (⌘S)"><span class="dirtydot"></span> Save</button>
+  <button class="btn" title="More actions">⋯</button>
+</div>
+
+<!-- ================= MAIN ================= -->
+<div id="main">
+
+  <!-- activity rail -->
+  <div id="activity">
+    <button class="actbtn" title="Explorer"><i class="icn">⛁</i></button>
+    <button class="actbtn" title="Search (⌘⇧F)"><i class="icn">⌕</i></button>
+    <button class="actbtn" title="Strings"><i class="icn">❝</i></button>
+    <button class="actbtn" title="Bookmarks &amp; Tags"><i class="icn">⚑</i><span class="badge">14</span></button>
+    <button class="actbtn active" title="Runs — dynamic analysis"><i class="icn">▶</i><span class="badge" id="railbadge">2</span></button>
+    <button class="actbtn" title="Agents"><i class="icn">🤖</i><span class="badge agent">2</span></button>
+    <div class="spacer"></div>
+    <button class="actbtn" title="Settings"><i class="icn">⚙</i></button>
+  </div>
+
+  <!-- runs surface -->
+  <div id="surface">
+
+    <!-- device bar -->
+    <div id="devbar">
+      <span class="livedot" title="Frida session alive — heartbeat 1s"></span>
+      <span class="devspec">Pixel 8 <span class="dim">·</span> Android 15 <span class="dim">·</span> frida-server 17.11 <span class="dim">·</span> <span style="color:var(--green)">attached</span></span>
+      <span class="devtag" title="Java + native hooks installed via jeb-bridge">HOOKED</span>
+      <button class="btn" title="Spawn com.google.android.gm under frida (fresh process)">⏵ Spawn</button>
+      <button class="btn" title="Attach to a running process on this device">⌁ Attach</button>
+      <span class="grow"></span>
+      <span id="recline"><b>REC</b> run C · <b id="rec-hits">0</b> hits · 00:00:00</span>
+      <span class="info-hint" title="Design: method breakpoints are dual — a Java hook (frida Java.use) AND a static marker. Hits stream here AND paint coverage into the editor's glyph margin (see status bar), so dynamic evidence accumulates on the static view instead of living in a throwaway console.">ⓘ why runs live in the IDE</span>
+    </div>
+
+    <div id="runs-body">
+
+      <!-- left: method breakpoints -->
+      <aside id="bp-pane">
+        <div class="pane-head"><span>Method breakpoints</span><span class="hk" title="Toggle the selected breakpoint"><kbd>B</kbd></span></div>
+        <div id="bplist"></div>
+        <div class="bp-note">
+          Disabled breakpoints stay listed (dimmed) and their feed rows fade — instrumentation is uninstalled but history is kept. <kbd>B</kbd> toggles, <kbd>⌫</kbd> deletes.
+        </div>
+      </aside>
+
+      <!-- center: live hit feed -->
+      <div id="feed-pane">
+        <div id="feed-toolbar">
+          <div class="filter"><span style="color:var(--text-faint)">⌕</span><input id="feedfilter" placeholder="filter hits…  (method / arg)" spellcheck="false"></div>
+          <span class="tgl on" id="tgl-follow" title="Auto-scroll to newest hit"><span class="sw"></span> tail</span>
+          <span class="tgl" id="tgl-runA" title="Show run A hits"><span class="sw"></span> A</span>
+          <span class="tgl" id="tgl-runB" title="Show run B hits"><span class="sw"></span> B</span>
+          <button class="btn" id="btn-pause" title="Pause the live feed (Space) — capture continues in the background">⏸ Pause</button>
+          <span id="feedcount"><b>15</b> hits · <b id="feedshown">15</b> shown</span>
+        </div>
+        <div id="feedwrap">
+          <table id="feedtable">
+            <thead>
+              <tr>
+                <th>time</th>
+                <th>method</th>
+                <th>args</th>
+                <th>return</th>
+                <th style="text-align:right">bt</th>
+                <th>run</th>
+              </tr>
+            </thead>
+            <tbody id="feedbody"></tbody>
+          </table>
+        </div>
+        <div id="detail">
+          <div class="det-empty">Select a hit to inspect args, return value and backtrace ↵</div>
+        </div>
+      </div>
+
+      <!-- right: run history -->
+      <aside id="runs-pane">
+        <div class="pane-head"><span>Run history</span><span class="hk" title="Select run card — scopes the hit feed"><kbd>1</kbd> <kbd>2</kbd></span></div>
+        <div class="runcard a sel" id="card-a" title="Run A — invite-flow exploration · click to scope the feed">
+          <div class="rc-head"><span class="runbadge a">A</span><span class="rc-name">invite flow</span><span class="rc-time">14:02</span></div>
+          <div class="rc-meta"><span>1.2k hits</span><span>6 BPs</span><span>41s</span></div>
+          <div class="rc-cov">
+            <div class="lbl"><span>class coverage</span><b>34%</b></div>
+            <div class="covbar"><i></i></div>
+          </div>
+          <div class="rc-note">open invite → decrypt → classify · drove GeminiClient paths</div>
+        </div>
+        <div class="runcard b" id="card-b" title="Run B — plain sync pass · click to scope the feed">
+          <div class="rc-head"><span class="runbadge b">B</span><span class="rc-name">sync pass</span><span class="rc-time">15:11</span></div>
+          <div class="rc-meta"><span>842 hits</span><span>5 BPs</span><span>27s</span></div>
+          <div class="rc-cov">
+            <div class="lbl"><span>class coverage</span><b>28%</b></div>
+            <div class="covbar"><i></i></div>
+          </div>
+          <div class="rc-note">MailSyncService foreground sync only · no UI interaction</div>
+        </div>
+        <button class="btn" id="diffbtn" title="Compare run A against run B — symmetric difference of hit methods and coverage">⇄ Diff A⇄B</button>
+        <div id="diffpanel" title="Diff is computed from per-run method hit-sets, not timestamps">
+          <div class="dp-sec">coverage delta</div>
+          <div class="dp-row"><span class="delta">+6%</span> class coverage in A <span style="color:var(--text-faint)">(34% vs 28%)</span></div>
+          <div class="dp-sec">methods only in A <span style="color:var(--accent)">(3)</span></div>
+          <div class="dp-row"><span class="onlya">＋</span> GeminiClient.classify</div>
+          <div class="dp-row"><span class="onlya">＋</span> InviteHandler.handleInvite</div>
+          <div class="dp-row"><span class="onlya">＋</span> AttachmentStore.fetchAttachment</div>
+          <div class="dp-sec">methods only in B <span style="color:var(--purple)">(1)</span></div>
+          <div class="dp-row"><span class="onlyb">＋</span> KeyRotator.rotateKey</div>
+        </div>
+        <div class="runs-note">
+          Runs are named by intent, not timestamp — the diff answers "what did that gesture actually reach?" Coverage is keyed by class so it can be pushed into the editor.
+        </div>
+      </aside>
+
+    </div>
+  </div>
+</div>
+
+<!-- ================= STATUS BAR ================= -->
+<div id="status">
+  <span class="st" title="Decompiled classes">◈ 18,204 classes</span>
+  <span class="st" title="Coverage from runs decorates the editor glyph margin — hit classes get a teal bar, unhit stay bare">▮ coverage → editor glyph margin</span>
+  <span class="st" title="Target heap — gmail.apk·JEB"><span class="heapbar"><i style="width:52%"></i></span> heap 3.2g</span>
+  <span class="st" title="Global ceiling — 4 targets, 9.1 of 24 GB"><span class="heapbar" style="width:64px"><i style="width:38%;background:var(--red)"></i></span> Σ 9.1g / 24g</span>
+  <span class="st" title="Streaming frida events…" id="st-stream"><span class="spinner"></span> streaming</span>
+  <span class="st" title="Unsaved changes"><span class="dirtydot"></span> unsaved</span>
+  <span class="agentchip" title="Agent activity">🤖 agent reviewing <b>&nbsp;gmail.apk :: sync.c</b></span>
+  <span class="follow" title="Follow live runtime events">Follow <span class="sw"></span></span>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---- data: method breakpoints ---- */
+  /* sig: display signature; m: method key used by feed rows; nat: native (libgmail.so);
+     cond: condition hint; hits: cumulative hit count badge */
+  var BPS = [
+    {cls:"MessageSyncHandler", was:"sync.c", m:"decryptPayload", hits:412, on:true},
+    {cls:"MessageSyncHandler", was:"sync.c", m:"onMessage", hits:388, on:true},
+    {cls:"InviteHandler", was:"a.a.f", m:"handleInvite", hits:96, on:true, cond:"cond: arg0 != null"},
+    {cls:"GeminiClient", was:"ai.b", m:"classify", hits:51, on:true},
+    {cls:"KeyRotator", was:"sync.e", m:"rotateKey", hits:7, on:true},
+    {cls:"AttachmentStore", was:"provider.g", m:"fetchAttachment", hits:23, on:false},
+    {cls:"MailSyncService", was:null, m:"onStartCommand", hits:3, on:true},
+    {cls:"nativeDecrypt", was:null, m:"nativeDecrypt", hits:301, on:true, nat:"libgmail.so"}
+  ];
+
+  /* ---- data: live hit feed ---- */
+  var HITS = [
+    {ts:"15:11:03.912", cls:"MailSyncService", m:"onStartCommand", args:'"com.google.android.gm.intent.SYNC"', ret:'void', bt:9, run:"B",
+     argsFull:[["intent",'Intent { act=com.google.android.gm.intent.SYNC flg=0x10 }',"Intent"]],
+     retFull:"void",
+     btFull:[["0x7c9a41f2c8","gmail.apk","MailSyncService.onStartCommand","+0x3c"],
+             ["0x7c9a3e08a4","gmail.apk","android.app.ActivityThread.handleServiceArgs","+0x128"],
+             ["0x7d21b55e10","boot.oat","android.os.Handler.dispatchMessage","+0x2c"],
+             ["0x7d21b471f0","boot.oat","android.os.Looper.loopOnce","+0xf4"]]},
+    {ts:"15:11:04.031", cls:"MessageSyncHandler", m:"onMessage", args:'"sync.push", 412B', ret:"true", bt:11, run:"B"},
+    {ts:"15:11:04.033", cls:"MessageSyncHandler", m:"decryptPayload", args:'412B, key#3', ret:'"thread_id=18f…"', bt:14, run:"B",
+     argsFull:[["payload","byte[412] · 8f a2 11 c4 9e …","byte[]"],
+               ["key","SecretKeySpec · AES-256-GCM · slot#3","SecretKey"]],
+     retFull:'"{\\"thread_id\\":\\"18f2c91\\",\\"op\\":\\"upsert\\",\\"seq\\":40912}"',
+     btFull:[["0x7c9a52d110","gmail.apk","MessageSyncHandler.decryptPayload","+0x0"],
+             ["0x7c9a52c884","gmail.apk","MessageSyncHandler.onMessage","+0x64"],
+             ["0x7c9a4f0e2c","gmail.apk","PushEndpoint.deliver","+0xb8"],
+             ["0x7d21b55e10","boot.oat","android.os.Handler.dispatchMessage","+0x2c"]]},
+    {ts:"15:11:04.034", cls:"nativeDecrypt", m:"nativeDecrypt", args:'0x7e4f22c0, 412B', ret:"0x7e51a800", bt:15, run:"B", nat:true,
+     argsFull:[["in","0x0000007e4f22c0 · 412B ciphertext","jbyteArray"],
+               ["ctx","0x0000007c88b1d0 · EVP_CIPHER_CTX*","jlong"]],
+     retFull:"0x0000007e51a800 (jbyteArray, 380B plaintext)",
+     btFull:[["0x0004a2f8","libgmail.so","nativeDecrypt","+0x0"],
+             ["0x0004b11c","libgmail.so","jni_DecryptBridge","+0x48"],
+             ["0x7c9a52d1b4","gmail.apk","MessageSyncHandler.decryptPayload","+0xa4"],
+             ["0x7c9a52c884","gmail.apk","MessageSyncHandler.onMessage","+0x64"]]},
+    {ts:"14:02:18.205", cls:"MessageSyncHandler", m:"onMessage", args:'"invite.v2", 32B', ret:"true", bt:12, run:"A",
+     argsFull:[["topic",'"invite.v2"',"String"],
+               ["payload","byte[32] · c1 09 77 3a bd …","byte[]"]],
+     retFull:"true",
+     btFull:[["0x7c9a52c820","gmail.apk","MessageSyncHandler.onMessage","+0x0"],
+             ["0x7c9a4f0e2c","gmail.apk","PushEndpoint.deliver","+0xb8"],
+             ["0x7d21b55e10","boot.oat","android.os.Handler.dispatchMessage","+0x2c"],
+             ["0x7d21b471f0","boot.oat","android.os.Looper.loopOnce","+0xf4"]]},
+    {ts:"14:02:18.207", cls:"MessageSyncHandler", m:"decryptPayload", args:'32B, key#3', ret:'"invite_id=9x2…"', bt:14, run:"A",
+     argsFull:[["payload","byte[32] · c1 09 77 3a bd …","byte[]"],
+               ["key","SecretKeySpec · AES-256-GCM · slot#3","SecretKey"]],
+     retFull:'"{\\"invite_id\\":\\"9x2kq7\\",\\"from\\":\\"mira@…\\"}"',
+     btFull:[["0x7c9a52d110","gmail.apk","MessageSyncHandler.decryptPayload","+0x0"],
+             ["0x7c9a52c884","gmail.apk","MessageSyncHandler.onMessage","+0x64"],
+             ["0x7c9a4f0e2c","gmail.apk","PushEndpoint.deliver","+0xb8"],
+             ["0x7d21b55e10","boot.oat","android.os.Handler.dispatchMessage","+0x2c"]]},
+    {ts:"14:02:18.208", cls:"nativeDecrypt", m:"nativeDecrypt", args:'0x7e4d9180, 32B', ret:"0x7e4d9c40", bt:15, run:"A", nat:true},
+    {ts:"14:02:18.240", cls:"InviteHandler", m:"handleInvite", args:'"9x2kq7"', ret:"Invite@4f1a", bt:13, run:"A",
+     argsFull:[["inviteId",'"9x2kq7"',"String"]],
+     retFull:"Invite@4f1a2c8 · from=mira@… · state=PENDING",
+     btFull:[["0x7c9a61e4a0","gmail.apk","InviteHandler.handleInvite","+0x0"],
+             ["0x7c9a52c920","gmail.apk","MessageSyncHandler.onMessage","+0x100"],
+             ["0x7c9a4f0e2c","gmail.apk","PushEndpoint.deliver","+0xb8"],
+             ["0x7d21b55e10","boot.oat","android.os.Handler.dispatchMessage","+0x2c"]]},
+    {ts:"14:02:18.392", cls:"GeminiClient", m:"classify", args:'"invite from mira…"', ret:'"social.invite"', bt:18, run:"A",
+     argsFull:[["text",'"invite from mira@… — join the thread"',"String"],
+               ["model",'"gemini-nano-v2"',"String"]],
+     retFull:'"social.invite" · conf 0.94 · 21ms on-device',
+     btFull:[["0x7c9a77b310","gmail.apk","GeminiClient.classify","+0x0"],
+             ["0x7c9a61e558","gmail.apk","InviteHandler.handleInvite","+0xb8"],
+             ["0x7c9a52c920","gmail.apk","MessageSyncHandler.onMessage","+0x100"],
+             ["0x7d21b55e10","boot.oat","android.os.Handler.dispatchMessage","+0x2c"]]},
+    {ts:"14:02:31.118", cls:"AttachmentStore", m:"fetchAttachment", args:'"att/7f22", 1.4MB', ret:"ParcelFileDescriptor@9c", bt:16, run:"A"},
+    {ts:"14:02:31.980", cls:"MessageSyncHandler", m:"decryptPayload", args:'1.4MB, key#3', ret:"byte[1398276]", bt:14, run:"A"},
+    {ts:"14:02:44.556", cls:"KeyRotator", m:"rotateKey", args:"slot#3 → slot#4", ret:"true", bt:10, run:"B",
+     argsFull:[["from","slot#3 · AES-256-GCM · age 22h","int"],
+               ["to","slot#4 · fresh from Keystore","int"]],
+     retFull:"true · old key scheduled for wipe in 300s",
+     btFull:[["0x7c9a58f6c0","gmail.apk","KeyRotator.rotateKey","+0x0"],
+             ["0x7c9a58f1a4","gmail.apk","KeyRotator$1.run","+0x28"],
+             ["0x7d21b55e10","boot.oat","android.os.Handler.dispatchMessage","+0x2c"],
+             ["0x7d21b471f0","boot.oat","android.os.Looper.loopOnce","+0xf4"]]},
+    {ts:"15:11:04.355", cls:"MessageSyncHandler", m:"onMessage", args:'"sync.ack", 8B', ret:"true", bt:11, run:"B"},
+    {ts:"15:11:05.002", cls:"MessageSyncHandler", m:"decryptPayload", args:'96B, key#4', ret:'"seq=40913"', bt:14, run:"B"},
+    {ts:"15:11:05.771", cls:"GeminiClient", m:"classify", args:'"thread digest (4)"', ret:'"updates"', bt:17, run:"A"}
+  ];
+
+  /* ---- state ---- */
+  var selHit = -1;
+  var scopeRun = "A";         /* run card selection scopes the feed */
+  var showA = false, showB = false; /* toolbar run toggles override scope when on */
+  var paused = false;
+
+  var bplist = document.getElementById("bplist");
+  var feedbody = document.getElementById("feedbody");
+  var feedshown = document.getElementById("feedshown");
+  var feedwrap = document.getElementById("feedwrap");
+  var detail = document.getElementById("detail");
+
+  function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+
+  /* ---- breakpoints pane ---- */
+  function renderBps(){
+    bplist.innerHTML = "";
+    BPS.forEach(function(bp, i){
+      var row = document.createElement("div");
+      row.className = "bprow" + (bp.on ? "" : " off") + (bp.nat ? " nat" : "");
+      row.title = bp.nat
+        ? "Native breakpoint — Interceptor.attach in " + bp.nat + " · click to toggle"
+        : "Java hook — frida Java.use(\"" + bp.cls + "\") · click to toggle";
+      var hot = bp.hits >= 100;
+      row.innerHTML =
+        '<span class="bpcheck">✓</span>' +
+        '<span class="bpmain">' +
+          '<div class="bpsig"><span class="cls">' + esc(bp.cls) + '.</span>' + esc(bp.m) +
+            (bp.was ? '<span class="bpwas" title="Renamed from obfuscated name — sidecar rename, DEX untouched">was: ' + esc(bp.was) + '</span>' : '') +
+            (bp.nat ? '<span class="bpnat" title="Native method — hooked via Interceptor.attach, args are raw pointers">⚙ ' + esc(bp.nat) + '</span>' : '') +
+          '</div>' +
+          (bp.cond ? '<div class="bpcond" title="Conditional breakpoint — hook evaluates this before reporting a hit">' + esc(bp.cond) + '</div>' : '') +
+        '</span>' +
+        '<span class="bphits' + (hot ? " hot" : "") + '" title="Cumulative hits across all runs">' + bp.hits + '</span>';
+      row.addEventListener("click", function(){
+        bp.on = !bp.on;
+        renderBps();
+        renderFeed();
+      });
+      bplist.appendChild(row);
+    });
+  }
+
+  /* ---- feed ---- */
+  function bpEnabled(m){
+    for (var i = 0; i < BPS.length; i++) if (BPS[i].m === m) return BPS[i].on;
+    return true;
+  }
+  function runVisible(run){
+    if (showA || showB) return (run === "A" && showA) || (run === "B" && showB);
+    return run === scopeRun;
+  }
+  function renderFeed(){
+    var q = (document.getElementById("feedfilter").value || "").toLowerCase();
+    feedbody.innerHTML = "";
+    var n = 0;
+    HITS.forEach(function(h, i){
+      if (!runVisible(h.run)) return;
+      if (q && (h.m.toLowerCase().indexOf(q) === -1 && h.args.toLowerCase().indexOf(q) === -1 && h.cls.toLowerCase().indexOf(q) === -1)) return;
+      n++;
+      var tr = document.createElement("tr");
+      tr.setAttribute("data-i", i);
+      if (i === selHit) tr.classList.add("sel");
+      if (!bpEnabled(h.m)) tr.classList.add("disabled-bp");
+      tr.innerHTML =
+        '<td class="ts">' + esc(h.ts) + '</td>' +
+        '<td class="mth"><span class="cls">' + esc(h.cls) + '.</span><span class="nm">' + esc(h.m) + '</span>' +
+          (h.nat ? '<span class="nat">so</span>' : '') + '</td>' +
+        '<td class="args">' + esc(h.args) + '</td>' +
+        '<td class="ret">' + (h.ret === "void" ? '<span class="void">void</span>' : esc(h.ret)) + '</td>' +
+        '<td class="bt">' + h.bt + '</td>' +
+        '<td><span class="runbadge ' + h.run.toLowerCase() + '">' + h.run + '</span></td>';
+      tr.addEventListener("click", function(){ selectHit(i); });
+      feedbody.appendChild(tr);
+    });
+    feedshown.textContent = n;
+    if (document.getElementById("tgl-follow").classList.contains("on")){
+      feedwrap.scrollTop = feedwrap.scrollHeight;
+    }
+  }
+
+  /* ---- detail strip ---- */
+  function selectHit(i){
+    selHit = i;
+    feedbody.querySelectorAll("tr").forEach(function(tr){
+      tr.classList.toggle("sel", +tr.getAttribute("data-i") === i);
+    });
+    var h = HITS[i];
+    var argsRows = (h.argsFull || [["args", h.args, "—"]]).map(function(a){
+      return '<div class="det-arg"><span class="an">' + esc(a[0]) + '</span> = <span class="av">' + esc(a[1]) + '</span> <span class="at">' + esc(a[2]) + '</span></div>';
+    }).join("");
+    var btRows = (h.btFull || [
+      ["0x7c9a52d110","gmail.apk", h.cls + "." + h.m, "+0x0"],
+      ["0x7c9a4f0e2c","gmail.apk","PushEndpoint.deliver","+0xb8"],
+      ["0x7d21b55e10","boot.oat","android.os.Handler.dispatchMessage","+0x2c"],
+      ["0x7d21b471f0","boot.oat","android.os.Looper.loopOnce","+0xf4"]
+    ]).map(function(f, k){
+      return '<div class="bt-frame' + (k === 0 ? " hit-frame" : "") + '">' +
+        '<span class="faddr">' + esc(f[0]) + '</span>  <span class="fmod">' + esc(f[1]) + '</span>' +
+        ' <span class="fsym">' + esc(f[2]) + '</span><span class="foff">' + esc(f[3]) + '</span></div>';
+    }).join("");
+    detail.innerHTML =
+      '<div class="det-col args">' +
+        '<div class="det-head"><span>Arguments · return</span><span class="mono">run ' + h.run + ' · ' + esc(h.ts) + '</span></div>' +
+        argsRows +
+        '<div class="det-ret">→ ' + esc(h.retFull || h.ret) + '</div>' +
+      '</div>' +
+      '<div class="det-col bt">' +
+        '<div class="det-head"><span>Backtrace · 4 of ' + h.bt + ' frames</span><span class="mono" title="Full backtrace captured; deepest frames are ART runtime">▼ full ' + h.bt + '</span></div>' +
+        btRows +
+      '</div>';
+  }
+
+  /* ---- filter ---- */
+  document.getElementById("feedfilter").addEventListener("input", renderFeed);
+
+  /* ---- toolbar toggles ---- */
+  document.getElementById("tgl-follow").addEventListener("click", function(){
+    this.classList.toggle("on");
+  });
+  document.getElementById("tgl-runA").addEventListener("click", function(){
+    showA = !showA; this.classList.toggle("on", showA); renderFeed();
+  });
+  document.getElementById("tgl-runB").addEventListener("click", function(){
+    showB = !showB; this.classList.toggle("on", showB); renderFeed();
+  });
+  function togglePause(){
+    paused = !paused;
+    var b = document.getElementById("btn-pause");
+    b.innerHTML = paused ? "⏵ Resume" : "⏸ Pause";
+    document.getElementById("st-stream").innerHTML = paused
+      ? '<span style="color:var(--yellow)">⏸ capture held</span>'
+      : '<span class="spinner"></span> streaming';
+  }
+  document.getElementById("btn-pause").addEventListener("click", togglePause);
+
+  /* ---- run cards + diff ---- */
+  var cardA = document.getElementById("card-a"), cardB = document.getElementById("card-b");
+  function pickRun(r){
+    scopeRun = r;
+    cardA.classList.toggle("sel", r === "A");
+    cardB.classList.toggle("sel", r === "B");
+    renderFeed();
+  }
+  cardA.addEventListener("click", function(){ pickRun("A"); });
+  cardB.addEventListener("click", function(){ pickRun("B"); });
+  document.getElementById("diffbtn").addEventListener("click", function(){
+    var p = document.getElementById("diffpanel");
+    var open = !p.classList.contains("open");
+    p.classList.toggle("open", open);
+    this.classList.toggle("on", open);
+  });
+
+  /* ---- hotkeys ---- */
+  document.addEventListener("keydown", function(e){
+    if (document.activeElement.id === "feedfilter") return;
+    if (e.key === "1") pickRun("A");
+    else if (e.key === "2") pickRun("B");
+    else if (e.key === " "){ e.preventDefault(); togglePause(); }
+    else if (e.key === "Enter" && selHit < 0 && HITS.length) selectHit(0);
+  });
+
+  /* ---- simulated live capture (run C) ---- */
+  var recHits = 0, recSecs = 0;
+  var REC_POOL = [
+    {cls:"MessageSyncHandler", m:"onMessage", args:'"sync.push", 208B', ret:"true", bt:11},
+    {cls:"MessageSyncHandler", m:"decryptPayload", args:'208B, key#4', ret:'"seq=40914"', bt:14},
+    {cls:"nativeDecrypt", m:"nativeDecrypt", args:'0x7e4fa140, 208B', ret:"0x7e4fb600", bt:15, nat:true}
+  ];
+  setInterval(function(){
+    recSecs++;
+    if (paused) return;
+    var p = REC_POOL[recHits % REC_POOL.length];
+    var now = new Date();
+    var ts = ("0" + now.getHours()).slice(-2) + ":" + ("0" + now.getMinutes()).slice(-2) + ":" +
+             ("0" + now.getSeconds()).slice(-2) + "." + ("00" + now.getMilliseconds()).slice(-3);
+    HITS.push({ts:ts, cls:p.cls, m:p.m, args:p.args, ret:p.ret, bt:p.bt, run:"C", nat:!!p.nat});
+    if (HITS.length > 60) HITS.splice(0, HITS.length - 60);
+    recHits++;
+    var mm = Math.floor(recSecs / 60), ss = recSecs % 60;
+    document.getElementById("rec-hits").textContent = recHits;
+    document.getElementById("recline").innerHTML =
+      '<b style="color:var(--red)">●</b> <b>REC</b> run C · <b id="rec-hits">' + recHits + '</b> hits · 00:' +
+      ("0" + mm).slice(-2) + ":" + ("0" + ss).slice(-2);
+    if (showA && showB || scopeRun === "C") renderFeed();
+  }, 2000);
+
+  /* ---- target strip + breadcrumb + follow (same as workbench) ---- */
+  document.querySelectorAll("#targets .tchip:not(.add)").forEach(function(chip){
+    chip.addEventListener("click", function(){
+      document.querySelectorAll("#targets .tchip").forEach(function(c){ c.classList.remove("active"); });
+      chip.classList.add("active");
+    });
+  });
+  document.querySelectorAll(".locbar .lseg").forEach(function(seg){
+    seg.addEventListener("click", function(){
+      seg.classList.add("flash");
+      setTimeout(function(){ seg.classList.remove("flash"); }, 250);
+    });
+  });
+  document.querySelector(".follow").addEventListener("click", function(){
+    var sw = this.querySelector(".sw");
+    var on = sw.style.background !== "var(--bg3)";
+    sw.style.background = on ? "var(--bg3)" : "var(--accent-dim)";
+  });
+
+  /* ---- init ---- */
+  renderBps();
+  renderFeed();
+  selectHit(4); /* the invite.v2 decrypt hit */
+})();
+</script>
+</body>
+</html>

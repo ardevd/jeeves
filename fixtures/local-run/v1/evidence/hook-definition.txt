@@ -1,0 +1,4 @@
+Fixture-only observation sites:
+Lfixture/Probe;->Ping(I)V
+Lfixture/Probe;->ping(I)V
+No executable hook is included or installed.

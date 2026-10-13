@@ -1,0 +1,316 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "run_id",
+    "seq",
+    "monotonic_ns",
+    "kind",
+    "hook_id",
+    "origSig",
+    "native",
+    "process_id",
+    "thread_id",
+    "phase",
+    "correlation",
+    "args",
+    "result",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "jeeves-run-event-v1"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$(?![\\s\\S])"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "monotonic_ns": {
+      "type": "string",
+      "pattern": "^[0-9]{1,24}$(?![\\s\\S])"
+    },
+    "kind": {
+      "enum": [
+        "enter",
+        "leave",
+        "exception",
+        "marker",
+        "loss",
+        "diagnostic"
+      ]
+    },
+    "hook_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$(?![\\s\\S])"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "origSig": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 2048,
+          "pattern": "^L[^;\\s]+;->[^\\s(]+\\([^\\s]*\\)[^\\s]+$(?![\\s\\S])"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "native": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "module",
+            "build_id",
+            "relative_offset",
+            "symbol"
+          ],
+          "properties": {
+            "module": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1
+            },
+            "build_id": {
+              "type": "string",
+              "maxLength": 160,
+              "minLength": 1
+            },
+            "relative_offset": {
+              "type": "string",
+              "pattern": "^0x[0-9a-f]+$(?![\\s\\S])"
+            },
+            "symbol": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1024,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "process_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$(?![\\s\\S])"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "thread_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 80,
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "phase": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 120,
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "correlation": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "basis",
+            "source"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 160,
+              "minLength": 1
+            },
+            "basis": {
+              "enum": [
+                "student-declared",
+                "same-source-identifier"
+              ]
+            },
+            "source": {
+              "type": "string",
+              "maxLength": 120,
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "args": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "length",
+          "sha256",
+          "preview",
+          "truncated"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1
+          },
+          "length": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$(?![\\s\\S])"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "maxItems": 16
+    },
+    "result": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "length",
+            "sha256",
+            "preview",
+            "truncated"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "maxLength": 80,
+              "minLength": 1
+            },
+            "length": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sha256": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$(?![\\s\\S])"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "preview": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 500
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:jeeves:run-event:v1",
+  "title": "Jeeves run event v1 \u2014 one JSON object per UTF-8 line",
+  "description": "Case-sensitive original symbols. Sequence and monotonic clock are scoped to one recorder session, not causal order. Preview content requires explicit local selection."
+}

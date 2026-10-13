@@ -1,0 +1,535 @@
+plugins {
+    id 'java'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// build-info.properties on the runtime classpath: WHICH compiled classes are live (a source Git SHA alone does
+// not say — the WhatsApp path investigation ran an unrebuilt runtime, 2026-10-09). Deterministic on a clean tree
+// (the commit's date), wall-clock only when the tree is dirty — the packaged jar stays byte-stable per commit.
+// written INTO the classes dir: the one directory every classpath has (gradle, workbench.sh's -cp, the package's
+// jar) — after compileJava, so a clean recompile never leaves the file behind
+def buildInfoDir = file("${buildDir}/classes/java/main")
+tasks.register('buildInfo') {
+    outputs.upToDateWhen { false }
+    mustRunAfter 'compileJava'
+    doLast {
+        def sha = 'unknown', dirty = 'unknown', at = java.time.Instant.now().toString(), basis = 'wall clock'
+        def sourcePin = 'unknown'
+        try {
+            def root = rootProject.projectDir.parentFile   // the REPO root: the pathspecs below are repo-relative (this project is backend/)
+            def run = { List<String> cmd -> def pr = cmd.execute(null, root); def out = pr.text.trim(); pr.waitFor(); if (pr.exitValue() != 0) throw new RuntimeException("git failed: " + cmd); out }
+            sha = run(['git', 'rev-parse', 'HEAD'])
+            // modified tracked files, or UNTRACKED sources (a new .java is a different build), under the source trees
+            def porcelain = run(['git', 'status', '--porcelain', '--untracked-files=all', '--', 'backend/src', 'backend/runs', 'backend/build.gradle', 'web/src', 'mcp', 'deploy'])
+            dirty = porcelain.isEmpty() ? 'false' : 'true'
+            if (porcelain.isEmpty()) { at = run(['git', 'log', '-1', '--format=%cI', 'HEAD']); basis = 'the commit date (clean tree)' }
+        } catch (Exception ignored) {}
+        buildInfoDir.mkdirs()
+        new File(buildInfoDir, 'build-info.properties').text = "git.sha=${sha}\ngit.dirty=${dirty}\nbuilt.at=${at}\nbuilt.at.basis=${basis}\nsource.inputs.sha256=${sourcePin}\n"
+    }
+}
+classes.dependsOn 'buildInfo'
+
+// No external dependencies: JDK's com.sun.net.httpserver only, like old Jeeves.
+// JEB (JEB_HOME, or a copy of an install under backend/engine) is compileOnly + added to
+// run classpaths when present; without it the jeb adapter package is excluded and the
+// backend builds/runs mock-only.
+
+def engineDir = file(System.getenv('JEB_HOME') ?: "${rootProject.projectDir}/engine")
+def engineJars = fileTree(dir: "$engineDir/bin/app", include: '*.jar')
+def hasEngine = new File(engineDir, 'bin/app/jeb.jar').isFile()
+if (System.getenv('JEB_HOME') && !hasEngine) {
+    throw new GradleException('Explicit JEB_HOME has no bin/app/jeb.jar: ' + engineDir)
+}
+
+if (hasEngine) {
+    dependencies {
+        compileOnly engineJars
+        testCompileOnly engineJars   // KeysIT makes databases through the published API
+    }
+} else {
+    sourceSets.main.java.exclude 'dev/workbench/engine/jeb/**'
+    sourceSets.test.java.exclude 'dev/workbench/it/**'
+    logger.lifecycle('NOTE: no JEB install (JEB_HOME unset, backend/engine absent) — building mock-only')
+}
+
+// JVM flags JEB requires (SecurityManager opt-in, reflective access). Absolute paths: JavaExec workingDir is the repo root.
+// Heap default 16g, matching workbench.sh: fresh GMS-class analysis peaks ~14.1g and
+// an OOM mid-analysis can strand a .jdb2.lock (app-review-opus P1-2). WORKBENCH_XMX
+// overrides (e.g. WORKBENCH_XMX=8g gradle m1IT for cached-jdb2 browsing tasks).
+def workbenchXmx = System.getenv('WORKBENCH_XMX') ?: '16g'
+// the JVM's temp dir for every gradle-run server and IT: under build/, never the system /tmp
+// (nothing of the workbench's is kept there — 2026-09-15)
+def jvmTmp = file("${buildDir}/tmp/jvm")
+def jebJvmArgs = [
+    '-Xms1g', "-Xmx${workbenchXmx}", '-XX:+UseG1GC', '-Djava.awt.headless=true',
+    '-Djava.security.manager=allow', "-Djava.io.tmpdir=${jvmTmp}",
+    '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
+    "-Dworkbench.jebHome=$engineDir",
+]
+
+tasks.withType(JavaExec).configureEach {
+    if (System.getenv('JAVA_HOME')) executable = new File(System.getenv('JAVA_HOME'), 'bin/java').absolutePath
+    doFirst { jvmTmp.mkdirs() }
+    // the suites written before the review switch exercise the proposal QUEUE: they run under
+    // manual review; m7IT owns the switch itself (default auto, then toggles)
+    if (name.endsWith('IT') && name != 'm7IT') environment 'WORKBENCH_REVIEW_MODE', 'manual'
+    if (name in ['keysIT', 'packetIT'] && System.getenv('WORKBENCH_QUALIFY_FIXTURE')) {
+        args System.getenv('WORKBENCH_QUALIFY_FIXTURE')
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+}
+
+def repoRoot = rootProject.projectDir.parentFile
+
+// Serve HTTP+SSE from build/classes (main entry: dev.workbench.server.WorkbenchServer)
+tasks.register('runServer', JavaExec) {
+    group = 'application'
+    description = 'Build and run the workbench HTTP/SSE server on 127.0.0.1:7800'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = hasEngine ? 'dev.workbench.engine.jeb.LocalJebLauncher' : 'dev.workbench.server.WorkbenchServer'
+    workingDir = repoRoot
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// Parity test: plain main-class, no JUnit (see src/test/java/dev/workbench/parity/ParityTest.java)
+tasks.register('parityTest', JavaExec) {
+    group = 'verification'
+    description = 'Registry/spec parity test (ops vs design/MCP_SPEC.md section 4)'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.parity.ParityTest'
+    workingDir = repoRoot
+    mustRunAfter 'test'
+}
+
+// M1 integration test: server + real APK via target.open (see src/test/java/dev/workbench/it/M1IT.java)
+tasks.register('m1IT', JavaExec) {
+    group = 'verification'
+    description = 'M1 integration test: open real APK, tree/decompile/xref/switch/close over HTTP'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.M1IT'
+    workingDir = repoRoot
+    def m1home = new File(buildDir, 'tmp/m1it-home')
+    doFirst { delete(m1home) }
+    environment 'WORKBENCH_HOME', m1home.absolutePath
+    environment 'WORKBENCH_PORT', '7801'   // hermetic since 2026-09-10: never touch the live 7800 sidecar
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// M2 integration test: code.smali, rename/history/undo, persistence (see src/test/java/dev/workbench/it/M2IT.java)
+tasks.register('m2IT', JavaExec) {
+    group = 'verification'
+    description = 'M2 integration test: smali listing, rename+history undo/redo, .jdb2 persistence'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.M2IT'
+    workingDir = repoRoot
+    def m2home = new File(buildDir, 'tmp/m2it-home')
+    doFirst { delete(m2home) }
+    environment 'WORKBENCH_HOME', m2home.absolutePath
+    environment 'WORKBENCH_PORT', '7802'   // hermetic since 2026-09-10: never touch the live 7800 sidecar
+    timeout = java.time.Duration.ofMinutes(20)   // an unattended chain never waits forever on a stalled JVM (the test bounds its own ops too)
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// M8 integration test: device catalog, pull, annotations (see src/test/java/dev/workbench/it/M8IT.java)
+tasks.register('m8IT', JavaExec) {
+    group = 'verification'
+    description = 'M8 integration test: adb catalog + refresh diff, pull-to-target, annotation missions'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.M8IT'
+    workingDir = repoRoot
+    def m8home = new File(buildDir, 'tmp/m8it-home')
+    doFirst { delete(m8home) }
+    environment 'WORKBENCH_HOME', m8home.absolutePath
+    environment 'WORKBENCH_PORT', '7804'   // hermetic since 2026-09-10: never touch the live 7800 sidecar
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// M7 integration test: agents, proposals, scope, MCP (see src/test/java/dev/workbench/it/M7IT.java)
+// Hermetic: own home + port like m6/m11 — the suite (incl. the MCP selftest's
+// fcm-attack-surface map) was written against the mock scene, so WORKBENCH_MOCK=1.
+// (Found 2026-09-08: unpinned, the selftest's python child fell back to WORKBENCH_URL's
+// default and tested the LIVE 7800 server — green only while that server had the mock.)
+tasks.register('m7IT', JavaExec) {
+    group = 'verification'
+    description = 'M7 integration test: scripted mission, proposals review, scope enforcement, MCP selftest'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.M7IT'
+    workingDir = repoRoot
+    def m7home = new File(buildDir, 'tmp/m7it-home')
+    doFirst { delete(m7home) }
+    environment 'WORKBENCH_HOME', m7home.absolutePath
+    environment 'WORKBENCH_PORT', '7807'   // never collide with the interactive server on 7800
+    environment 'WORKBENCH_MOCK', '1'      // the suite's expectations predate the empty boot
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// M10a integration test: multi-LLM — providers, keys, http agent loop on fixture
+// Provider-conversation IT (course integration P0.1, 2026-10-07): the http agent loop against the fixture
+// provider's recorded-shape scenarios — a thinking provider's reasoning field kept or stripped per the
+// provider's policy, tool-call pairing across compaction, reasoning-only answers, malformed bodies, an
+// upstream failure, cancellation mid-request, the SSE parser. Hermetic home + port, no network, no key.
+tasks.register('providerLoopIT', JavaExec) {
+    group = 'verification'
+    description = 'Provider-conversation IT: reasoning replay policies, tool pairing under compaction, failures, cancellation'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.ProviderLoopIT'
+    workingDir = repoRoot
+    def plHome = new File(buildDir, 'tmp/providerloopit-home')
+    doFirst { delete(plHome); plHome.mkdirs() }
+    environment 'WORKBENCH_HOME', plHome.absolutePath
+    environment 'WORKBENCH_PORT', '7818'
+    environment 'WORKBENCH_QA', '1'
+    environment 'WORKBENCH_REVIEW_MODE', 'auto'
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// Course integration IT (P0.2–P0.6, 2026-10-07): the workbench in course mode against an in-process
+// fixture class server (auth grant, store events with dedup / 409 / 503 / lost acks, board posts) —
+// identity gate, private capture journal + export, strict admission, target manifest, the Day 1
+// mission preset and its report, reset, share, the evidence packet route and the export seam.
+// Hermetic home + port; the fixture server picks a free loopback port; no network, no key.
+tasks.register('courseIT', JavaExec) {
+    group = 'verification'
+    description = 'Course integration IT: identity gate, capture, manifest, Day 1 mission, share, evidence packet'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.CourseIT'
+    workingDir = repoRoot
+    def courseHome = new File(buildDir, 'tmp/courseit-home')
+    doFirst { delete(courseHome); courseHome.mkdirs() }
+    environment 'WORKBENCH_HOME', courseHome.absolutePath
+    environment 'WORKBENCH_PORT', '7819'
+    environment 'WORKBENCH_QA', '1'
+    environment 'WORKBENCH_REVIEW_MODE', 'auto'
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// Evidence-packet IT on the REAL engine (course integration P0.4, 2026-10-07): evidence.packet over
+// ~/jeb/test_visionocr.apk — whole method, CFG branch selection (shared tail kept, the irrelevant
+// branch and the selector omitted), exception edge, loop, truncation, a neutral rename keeping the
+// original descriptor, the stale snapshot visible, the student block through the course's
+// packet_builder.py; in course mode against CourseIT's fixture class server (manifest MATCH on real
+// bytes, share with the original descriptor, the capture on real tool results). Needs the engine and
+// the fixture apk; hermetic home + port.
+tasks.register('packetIT', JavaExec) {
+    group = 'verification'
+    description = 'Evidence-packet IT on the JEB engine: CFG selection, provenance, student block, course share/capture on real symbols'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.PacketIT'
+    workingDir = repoRoot
+    def packetHome = new File(buildDir, 'tmp/packetit-home')
+    doFirst { delete(packetHome); packetHome.mkdirs() }
+    environment 'WORKBENCH_HOME', packetHome.absolutePath
+    environment 'WORKBENCH_PORT', '7820'
+    environment 'WORKBENCH_MOCK', '0'
+    environment 'WORKBENCH_QA', '1'
+    environment 'WORKBENCH_REVIEW_MODE', 'auto'
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// Parameter-metadata + DEX-view fidelity IT (2026-10-08): the constructed, redistributable fixture
+// backend/src/test/fixtures/params/params-fixture.dex on the JEB engine — branch destinations decoded
+// from the rows' own bytes (forward/backward, goto widths, switch payloads and cases, fill-array-data,
+// try/catch), retained MethodParameters extracted verbatim (nulls, duplicates, stale counts, no-body
+// methods, the permuted same-length shape), debug-info names kept apart, no automatic renames, the
+// analyst mapping ops (single, bulk preview/apply, swaps, conflicts, undo/redo, save/reopen), original
+// DEX names restored through history.undo and rename.revert. With -Pwa=<dir> the real WhatsApp
+// artifacts are checked too (laptop-heavy; opt-in). Hermetic home + port.
+tasks.register('paramsIT', JavaExec) {
+    group = 'verification'
+    description = 'Parameter metadata + DEX view fidelity IT on the JEB engine (constructed fixture; -Pwa=<dir> adds the WhatsApp artifacts)'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.ParamsIT'
+    workingDir = repoRoot
+    def paramsHome = new File(buildDir, 'tmp/paramsit-home')
+    doFirst { delete(paramsHome); paramsHome.mkdirs() }
+    environment 'WORKBENCH_HOME', paramsHome.absolutePath
+    environment 'WORKBENCH_PORT', '7821'
+    environment 'WORKBENCH_MOCK', '0'
+    if (project.hasProperty('wa')) environment 'PARAMS_IT_WA', project.property('wa')
+    if (project.hasProperty('waOnly')) environment 'PARAMS_IT_WA_ONLY', '1'
+    if (project.hasProperty('probe')) systemProperty 'params.probe', project.property('probe')   // -Pprobe=api: the direct JEB API probe instead of the suite
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+tasks.register('m10aIT', JavaExec) {
+    group = 'verification'
+    description = 'M10a integration test: llm registry, write-only keys, fixture http agent loop'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.M10aIT'
+    workingDir = repoRoot
+    dependsOn 'compileTestJava'
+    /* hermetic since batch 2 (2026-09-10): proposals moved under projects/<slug>/, so the
+       test's live-sidecar backup would have protected nothing while its cleanup still
+       rejected whatever pending proposals it found (the 2026-09-09 incident, re-armed) */
+    def m10ahome = new File(buildDir, 'tmp/m10ait-home')
+    doFirst { delete(m10ahome) }
+    environment 'WORKBENCH_HOME', m10ahome.absolutePath
+    environment 'WORKBENCH_PORT', '7810'   // never collide with the interactive server on 7800
+    environment 'WORKBENCH_LLM_ENVTEST_KEY', 'env-value-12345'   // env-override precedence seam
+    environment 'WORKBENCH_QA', '1'                                 // task.configure accepts the canned fixture provider under test
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// LLM config IT: the provider/model configuration contract (llm-config design §9) — the
+// create gate + slug precedence, the explicit default, built-in labels, write-only keys,
+// the UNLISTED pin, rename (config/key/pins, position, refusals, custom, env on both ids),
+// remove ordering, persistence through fresh stores, persist failures (E_IO, the rename
+// undo), and the configure/rename + setkey/rename races
+// (see src/test/java/dev/workbench/it/LlmConfigIT.java). Hermetic: its own home + port;
+// the IT refuses to run without WORKBENCH_HOME so it can never touch the user's keys.
+tasks.register('llmConfigIT', JavaExec) {
+    group = 'verification'
+    description = 'LLM config IT: provider/model configuration — create gate, defaults, keys, unlisted pins, rename, persistence, failures, races'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.LlmConfigIT'
+    workingDir = repoRoot
+    dependsOn 'compileTestJava'
+    def llmcfgHome = new File(buildDir, 'tmp/llmconfigit-home')
+    doFirst { delete(llmcfgHome); llmcfgHome.mkdirs() }
+    environment 'WORKBENCH_HOME', llmcfgHome.absolutePath
+    environment 'WORKBENCH_PORT', '7815'   // never collide with the interactive server on 7800
+    environment 'WORKBENCH_LLM_LLMCFGIT_ENV_KEY', 'env-value-llmcfgit'   // the env-precedence seam (design §9)
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// M10b integration test: named layouts — save/list/apply/delete + restart persistence
+tasks.register('m10bIT', JavaExec) {
+    group = 'verification'
+    description = 'M10b integration test: layout.* ops, upsert, E_NOTFOUND, layouts.json across restart'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.M10bIT'
+    workingDir = repoRoot
+    def m10bhome = new File(buildDir, 'tmp/m10bit-home')
+    doFirst { delete(m10bhome) }
+    environment 'WORKBENCH_HOME', m10bhome.absolutePath
+    environment 'WORKBENCH_PORT', '7805'   // hermetic since 2026-09-10: never touch the live 7800 sidecar
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// M6 integration test: maps — seed, orientation, CRUD, verdicts, promote, export (see src/test/java/dev/workbench/it/M6IT.java)
+// Hermetic: WORKBENCH_HOME points at a throwaway sidecar root wiped pre-run, so the
+// suite's seed expectations never collide with the interactive server's live maps.
+tasks.register('m6IT', JavaExec) {
+    group = 'verification'
+    description = 'M6 integration test: MapStore ops, fcm seed, verdict proposals, flow.promote, export'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.M6IT'
+    workingDir = repoRoot
+    def m6home = new File(buildDir, 'tmp/m6it-home')
+    doFirst { delete(m6home) }
+    environment 'WORKBENCH_HOME', m6home.absolutePath
+    environment 'WORKBENCH_PORT', '7809'   // never collide with the interactive server on 7800
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// M12 integration test: the scope model — project-scoped runs/breakpoints/proposals, the
+// legacy fold, target filters, close/switch (see src/test/java/dev/workbench/it/M12IT.java).
+tasks.register('m12IT', JavaExec) {
+    group = 'verification'
+    description = 'M12 integration test: project-scoped runs, breakpoints and proposals + the legacy fold'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.M12IT'
+    workingDir = repoRoot
+    def m12home = new File(buildDir, 'tmp/m12it-home')
+    doFirst { delete(m12home) }
+    environment 'WORKBENCH_HOME', m12home.absolutePath
+    environment 'WORKBENCH_PORT', '7813'   // never collide with the interactive server on 7800
+    environment 'WORKBENCH_MOCK', '1'      // the fixture scene: a boot project to fold into, mock targets
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// M11 integration test: the EMPTY default workspace — no mock scene, projectless-op
+// honesty, close-last → empty (see src/test/java/dev/workbench/it/M11IT.java).
+// Hermetic home, own port, and WORKBENCH_MOCK=0 — the point of the suite.
+tasks.register('m11IT', JavaExec) {
+    group = 'verification'
+    description = 'M11 integration test: empty boot, projectless-op honesty, close-last → empty'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.M11IT'
+    workingDir = repoRoot
+    def m11home = new File(buildDir, 'tmp/m11it-home')
+    doFirst { delete(m11home) }
+    environment 'WORKBENCH_HOME', m11home.absolutePath
+    environment 'WORKBENCH_PORT', '7811'   // never collide with the interactive server on 7800
+    environment 'WORKBENCH_MOCK', '0'      // no fixture scene — that IS the test
+    environment 'WORKBENCH_CWD', repoRoot.absolutePath   // pin the fs.list blank-dir default (the production branch)
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars            // the auto-create success path opens a real apk
+        jvmArgs jebJvmArgs
+    }
+}
+
+// M5 integration test: frida live on emulator (see src/test/java/dev/workbench/it/M5IT.java)
+tasks.register('m5IT', JavaExec) {
+    group = 'verification'
+    description = 'M5 integration test: provision/attach/hook/trigger/hits/diff/coverage on emulator-5554'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.M5IT'
+    workingDir = repoRoot
+    def m5home = new File(buildDir, 'tmp/m5it-home')
+    doFirst { delete(m5home) }
+    environment 'WORKBENCH_HOME', m5home.absolutePath
+    environment 'WORKBENCH_PORT', '7806'   // hermetic since 2026-09-10: never touch the live 7800 sidecar
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// Native-symbol resolution IT: the idalib name→offset bridge + the H1 function-entry safety gate
+// (see src/test/java/dev/workbench/it/NativeResolveIT.java). Direct NativeSymbols.resolve — no server
+// or emulator. Needs a licensed idalib + a local libcrypto.so; SKIPs cleanly otherwise.
+tasks.register('nativeResolveIT', JavaExec) {
+    group = 'verification'
+    description = 'Native-symbol resolution IT: idalib name→offset bridge + H1 function-entry safety gate'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.NativeResolveIT'
+    workingDir = repoRoot
+    dependsOn 'compileTestJava'
+}
+
+// M4 integration test: tags/bookmarks/flows + sidecar persistence (see src/test/java/dev/workbench/it/M4IT.java)
+// Hermetic like m6IT: flow.promote writes maps into the sidecar root, and
+// without WORKBENCH_HOME that's the INTERACTIVE server's live one (map-r7 F3).
+tasks.register('m4IT', JavaExec) {
+    group = 'verification'
+    description = 'M4 integration test: tags/bookmarks/flows, rename survival, sidecar persistence'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.M4IT'
+    workingDir = repoRoot
+    def m4home = new File(buildDir, 'tmp/m4it-home')
+    doFirst { delete(m4home) }
+    environment 'WORKBENCH_HOME', m4home.absolutePath
+    environment 'WORKBENCH_PORT', '7808'
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// M3 integration test: strings classification, search index, classinfo (see src/test/java/dev/workbench/it/M3IT.java)
+tasks.register('m3IT', JavaExec) {
+    group = 'verification'
+    description = 'M3 integration test: two-layer string classifier, search index + cancel, classinfo'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.M3IT'
+    workingDir = repoRoot
+    def m3home = new File(buildDir, 'tmp/m3it-home')
+    doFirst { delete(m3home) }
+    environment 'WORKBENCH_HOME', m3home.absolutePath
+    environment 'WORKBENCH_PORT', '7803'   // hermetic since 2026-09-10: never touch the live 7800 sidecar
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+// Project-key IT: a JEB project is identified by the key stored in its .jdb2, one project per key
+// in a context. Old databases are keyed wb-t1, wb-t2 … per server run; the suite makes two under
+// one key and checks the reported collision is gone, a clashing load is refused up front and no
+// target is displaced (see src/test/java/dev/workbench/it/KeysIT.java). Hermetic home + port.
+tasks.register('keysIT', JavaExec) {
+    group = 'verification'
+    description = 'Project-key IT: unique keys for new databases, recorded keys, clashing loads refused'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.KeysIT'
+    workingDir = repoRoot
+    def keysHome = new File(buildDir, 'tmp/keysit-home')
+    doFirst { delete(keysHome); keysHome.mkdirs() }
+    environment 'WORKBENCH_HOME', keysHome.absolutePath
+    environment 'WORKBENCH_PORT', '7817'   // never collide with the interactive server on 7800
+    systemProperty 'workbench.test.replayPauseMs', '400'   // room to close a target in the middle of its history replay
+    environment 'WORKBENCH_MOCK', '0'
+    dependsOn 'compileTestJava'
+    if (hasEngine) {
+        classpath += engineJars
+        jvmArgs jebJvmArgs
+    }
+}
+
+tasks.named('check') {
+    dependsOn 'parityTest'
+}
+
+// Private Message Lab contract: no device start, no external service, isolated store and listener.
+tasks.register('messageLabIT', JavaExec) {
+    group = 'verification'
+    description = 'Offline Message Lab HTTP/MCP, scope, binding, artifact and project isolation checks'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.it.MessageLabIT'
+    workingDir = repoRoot
+    dependsOn 'compileTestJava'
+    def labHome = new File(buildDir, 'tmp/message-lab-it-home')
+    doFirst { delete(labHome); labHome.mkdirs() }
+    environment 'WORKBENCH_HOME', labHome.absolutePath
+    environment 'WORKBENCH_PORT', '7824'
+    environment 'WORKBENCH_MOCK', '1'
+    if (hasEngine) { classpath += engineJars; jvmArgs jebJvmArgs }
+}

@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<!--
+  Mockup E2 — Search view expanded (⌘⇧F project-wide)
+  Same shell as Mockup S/A2 (target strip, breadcrumb, activity rail, status bar);
+  the center surface is the maximized search view: big query input, scope chips,
+  content-type filters, class-grouped results + right-side context preview.
+  Self-contained: inline CSS + JS, no external dependencies, no network requests.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>64 65 78 0a 30 33 35 00 — workbench</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='12'%20fill='%230c0e10'/%3E%3Crect%20x='1.5'%20y='1.5'%20width='61'%20height='61'%20rx='10.5'%20fill='none'%20stroke='%2327322c'%20stroke-opacity='.9'/%3E%3Ctext%20x='32'%20y='28'%20font-family='monospace'%20font-size='12'%20fill='%233fb950'%20text-anchor='middle'%20letter-spacing='1'%3E64%2065%2078%3C/text%3E%3Ctext%20x='32'%20y='46'%20font-family='monospace'%20font-size='12'%20fill='%233fb950'%20text-anchor='middle'%20letter-spacing='1'%20opacity='.75'%3E0a%2030%2035%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg0:#101214; --bg1:#15181b; --bg2:#1a1e22; --bg3:#20252a; --bg4:#262c32;
+  --border:#272c31; --border-soft:#20252a;
+  --text:#c9d1d9; --text-dim:#7d8590; --text-faint:#545d66;
+  --accent:#2dd4bf; --accent-dim:#134e4a; --accent-glow:rgba(45,212,191,.14);
+  --blue:#58a6ff; --purple:#d2a8ff; --orange:#ffa657; --yellow:#e3b341;
+  --red:#f47067; --green:#7ee787; --pink:#f778ba;
+  --agent:#b892f6; --agent-bg:rgba(184,146,246,.10);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:12.5px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:var(--sans);background:var(--bg0);color:var(--text);
+  overflow:hidden;display:flex;flex-direction:column;font-size:12.5px;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--accent-dim)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#2c333a;border-radius:5px;border:2px solid var(--bg1)}
+::-webkit-scrollbar-track{background:transparent}
+kbd{
+  font-family:var(--mono);font-size:10px;color:var(--text-dim);
+  background:var(--bg2);border:1px solid var(--border);border-bottom-width:2px;
+  border-radius:4px;padding:0 4px;line-height:15px;display:inline-block;white-space:nowrap;
+}
+.icn{font-family:var(--mono);font-style:normal;font-size:15px;line-height:1}
+.dirtydot{width:7px;height:7px;border-radius:50%;background:var(--orange);display:inline-block}
+
+/* ============ TARGET STRIP ============ */
+#targets{
+  height:32px;min-height:32px;background:#0c0e10;border-bottom:1px solid var(--border);
+  display:flex;align-items:stretch;padding:0 8px;gap:2px;overflow-x:auto;
+}
+.tchip{
+  display:flex;align-items:center;gap:7px;padding:0 12px;margin-top:5px;
+  font-family:var(--mono);font-size:11px;color:var(--text-dim);cursor:pointer;white-space:nowrap;
+  background:var(--bg1);border:1px solid var(--border-soft);border-bottom:none;border-radius:7px 7px 0 0;
+}
+.tchip:hover{color:var(--text)}
+.tchip.active{background:var(--bg0);color:var(--text);border-color:var(--border);box-shadow:inset 0 2px 0 var(--accent);position:relative}
+.tchip.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--bg0)}
+.tchip .ft{font-size:11px}
+.eng{font-size:8.5px;letter-spacing:.06em;border-radius:3px;padding:1px 5px;font-weight:700}
+.eng.jeb{background:rgba(45,212,191,.14);color:var(--accent);border:1px solid rgba(45,212,191,.3)}
+.eng.jadx{background:rgba(255,166,87,.12);color:var(--orange);border:1px solid rgba(255,166,87,.3)}
+.eng.ida{background:rgba(88,166,255,.12);color:var(--blue);border:1px solid rgba(88,166,255,.3)}
+.tchip .adot{width:6px;height:6px;border-radius:50%;background:var(--agent);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.tchip .ddev{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.tchip.add{border-style:dashed;color:var(--text-faint);background:transparent}
+.tchip.add:hover{color:var(--accent);border-color:var(--accent-dim)}
+
+/* ============ TOP BAR ============ */
+#topbar{
+  height:42px;min-height:42px;background:var(--bg1);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;padding:0 12px;
+}
+.locbar{
+  display:flex;align-items:center;gap:5px;min-width:0;flex:0 2 auto;overflow:hidden;
+  font-family:var(--mono);font-size:11.5px;
+}
+.lseg{
+  color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;
+  cursor:pointer;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:5px;flex:0 1 auto;
+}
+.lseg:hover{background:var(--bg3);color:var(--text)}
+.lseg.tgt{background:var(--accent-glow);color:var(--accent);border:1px solid rgba(45,212,191,.25);flex:none}
+.lseg.cur{color:var(--text);font-weight:600;flex:none}
+.lseg.flash{background:var(--accent-dim);color:#99f6e4}
+.lsep{color:var(--text-faint);font-size:10px;flex:none}
+.navhist{display:flex;align-items:center;gap:2px;margin-left:4px}
+.navhist button{
+  background:transparent;border:1px solid transparent;color:var(--text-dim);border-radius:5px;
+  width:24px;height:24px;cursor:pointer;font-size:13px;
+}
+.navhist button:hover{background:var(--bg3);color:var(--text)}
+.crumbs{
+  display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:11px;color:var(--text-dim);
+  padding:3px 8px;border-radius:5px;background:var(--bg2);border:1px solid var(--border-soft);
+}
+.crumbs b{color:var(--text);font-weight:600}
+.crumbs .sep{color:var(--text-faint)}
+.jumpbox{
+  flex:0 1 420px;margin:0 auto;display:flex;align-items:center;gap:8px;
+  background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;
+  color:var(--text-faint);font-family:var(--mono);font-size:11.5px;cursor:text;
+}
+.jumpbox:hover{border-color:#31383f}
+.jumpbox .grow{flex:1}
+.proj{
+  display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:6px;padding:4px 9px;font-size:11.5px;color:var(--text);cursor:pointer;
+}
+.proj .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.proj .chev{color:var(--text-faint);font-size:9px}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);
+  color:var(--text);border-radius:6px;padding:4px 10px;font-size:11.5px;cursor:pointer;font-family:var(--sans);
+}
+.btn:hover{background:var(--bg3)}
+.btn.primary{background:var(--accent-dim);border-color:#155e57;color:#99f6e4}
+.btn.primary:hover{background:#165e56}
+
+/* ============ ACTIVITY RAIL ============ */
+#activity{
+  width:48px;min-width:48px;background:var(--bg1);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;padding-top:6px;gap:2px;
+}
+.actbtn{
+  width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  color:var(--text-faint);cursor:pointer;position:relative;font-size:17px;border:none;background:transparent;
+}
+.actbtn:hover{color:var(--text);background:var(--bg3)}
+.actbtn.active{color:var(--accent);background:var(--accent-glow)}
+.actbtn.active::before{content:"";position:absolute;left:-4px;top:8px;bottom:8px;width:2px;background:var(--accent);border-radius:2px}
+.actbtn .badge{
+  position:absolute;top:3px;right:3px;min-width:14px;height:14px;border-radius:7px;background:var(--accent-dim);
+  color:#99f6e4;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0 3px;
+}
+.actbtn .badge.agent{background:var(--agent);color:#1b1030}
+#activity .spacer{flex:1}
+
+/* ============ SEARCH SURFACE ============ */
+#main{flex:1;display:flex;min-height:0}
+#surface{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg0)}
+
+#queryrow{
+  display:flex;align-items:center;gap:10px;padding:12px 14px 10px;
+  background:var(--bg1);border-bottom:1px solid var(--border);
+}
+#qbox{
+  flex:1;display:flex;align-items:center;gap:10px;background:var(--bg2);
+  border:1px solid var(--accent-dim);border-radius:8px;padding:8px 12px;
+  box-shadow:0 0 0 3px rgba(45,212,191,.06);
+}
+#qbox.bad{border-color:rgba(244,112,103,.5);box-shadow:0 0 0 3px rgba(244,112,103,.07)}
+#qbox .qi{color:var(--accent);font-size:15px}
+#q{
+  flex:1;background:transparent;border:none;outline:none;color:var(--text);
+  font-family:var(--mono);font-size:15px;caret-color:var(--accent);
+}
+#q::placeholder{color:var(--text-faint)}
+.qtog{
+  font-family:var(--mono);font-size:10.5px;border-radius:4px;padding:2px 7px;cursor:pointer;
+  border:1px solid var(--border);color:var(--text-faint);background:var(--bg3);user-select:none;
+}
+.qtog:hover{color:var(--text)}
+.qtog.on{color:var(--accent);border-color:rgba(45,212,191,.45);background:var(--accent-glow)}
+
+#optrow{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:7px 14px;
+  background:var(--bg1);border-bottom:1px solid var(--border);
+}
+.optgrp{display:flex;align-items:center;gap:4px}
+.optgrp .clabel{font-size:10px;color:var(--text-faint);letter-spacing:.08em;text-transform:uppercase;margin-right:3px}
+.tchipf{
+  font-family:var(--mono);font-size:10px;border-radius:10px;padding:2px 8px;cursor:pointer;
+  border:1px solid var(--border);color:var(--text-faint);background:var(--bg2);user-select:none;
+}
+.tchipf:hover{color:var(--text)}
+.tchipf.on{color:var(--text);border-color:var(--text-dim);background:rgba(255,255,255,.05)}
+.tchipf.on.scope{color:var(--accent);border-color:rgba(45,212,191,.45);background:var(--accent-glow)}
+#stats{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--text-faint);white-space:nowrap}
+#stats b{color:var(--text-dim);font-weight:600}
+#idxnote{
+  font-family:var(--mono);font-size:10px;color:var(--text-faint);white-space:nowrap;
+  display:flex;align-items:center;gap:6px;
+}
+#idxnote .rebuild{color:var(--accent);cursor:pointer;border-bottom:1px dotted var(--accent-dim)}
+#idxnote .rebuild:hover{color:#99f6e4}
+.info-hint{
+  font-size:10.5px;color:var(--text-faint);cursor:help;white-space:nowrap;
+  border-bottom:1px dotted var(--text-faint);padding-bottom:1px;
+}
+.info-hint:hover{color:var(--text-dim)}
+
+/* ============ RESULTS ============ */
+#results{flex:1;overflow:auto;min-height:0;padding:6px 0 10px}
+.rgroup{margin:2px 10px 8px;border:1px solid var(--border-soft);border-radius:7px;overflow:hidden;background:var(--bg1)}
+.rgroup.tgt{margin-top:10px;border-color:var(--border)}
+.ghead{
+  display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;user-select:none;
+  background:var(--bg2);border-bottom:1px solid var(--border-soft);
+}
+.ghead:hover{background:var(--bg3)}
+.ghead .chev{color:var(--text-faint);font-size:9px;width:10px;transition:transform .12s}
+.ghead.closed .chev{transform:rotate(-90deg)}
+.ghead .cname{font-family:var(--mono);font-size:11.5px;color:var(--text);font-weight:600}
+.ghead .tname{font-family:var(--mono);font-size:11.5px;color:var(--text-dim)}
+.ghead .was{
+  font-family:var(--mono);font-size:9px;color:var(--text-faint);border:1px dashed var(--border);
+  border-radius:3px;padding:0 5px;
+}
+.ghead .hits{
+  margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--accent);
+  background:var(--accent-glow);border-radius:8px;padding:1px 8px;
+}
+.ghead .pkg{font-family:var(--mono);font-size:9.5px;color:var(--text-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rgroup .cls-sub{margin:0;border-top:1px solid var(--border-soft)}
+.rgroup .cls-sub .ghead{background:var(--bg1)}
+.hit{
+  display:flex;align-items:baseline;gap:10px;padding:3.5px 12px 3.5px 24px;cursor:pointer;
+  font-family:var(--mono);font-size:11.5px;border-left:2px solid transparent;
+}
+.hit:hover{background:var(--bg2)}
+.hit.sel{background:var(--accent-glow);border-left-color:var(--accent)}
+.hit .ln{color:var(--text-faint);font-size:10px;min-width:34px;text-align:right;flex:none;user-select:none}
+.hit .txt{color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hit.sel .txt{color:var(--text)}
+.hit .k{
+  flex:none;font-size:8.5px;letter-spacing:.05em;border-radius:3px;padding:0 4px;margin-left:auto;
+  font-family:var(--mono);border:1px solid;
+}
+.k.code{color:var(--blue);border-color:rgba(88,166,255,.3)}
+.k.str{color:#a5d6ff;border-color:rgba(165,214,255,.3)}
+.k.cmt{color:var(--green);border-color:rgba(126,231,135,.3)}
+mark{
+  background:rgba(227,179,65,.30);color:#f4d99b;border-radius:2px;padding:0 1px;
+}
+.gbody.closed{display:none}
+.empty{
+  padding:40px 20px;text-align:center;color:var(--text-faint);font-size:12px;
+  font-family:var(--mono);
+}
+.empty .sug{margin-top:8px;font-size:10.5px;color:var(--text-faint)}
+.empty .sug span{color:var(--accent);cursor:pointer;border-bottom:1px dotted var(--accent-dim)}
+
+#reshint{
+  display:flex;align-items:center;gap:14px;padding:5px 14px;flex:none;
+  background:var(--bg1);border-top:1px solid var(--border);
+  font-size:10.5px;color:var(--text-faint);font-family:var(--mono);
+}
+#reshint .sp{flex:1}
+
+/* ============ CONTEXT PREVIEW ============ */
+#preview{
+  width:390px;min-width:390px;background:var(--bg1);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;
+}
+.pv-head{
+  padding:10px 14px 6px;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--text-dim);
+  text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;
+}
+.pv-head .pv-pos{font-family:var(--mono);font-weight:400;letter-spacing:0;text-transform:none;color:var(--text-faint)}
+.pv-loc{
+  margin:0 14px 8px;font-family:var(--mono);font-size:11.5px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+}
+.pv-loc .cname{color:var(--text);font-weight:600}
+.pv-loc .at{color:var(--text-faint);font-size:10.5px}
+.pv-loc .was{
+  font-family:var(--mono);font-size:9px;color:var(--text-faint);border:1px dashed var(--border);
+  border-radius:3px;padding:0 5px;
+}
+.pv-code{
+  margin:0 14px 10px;background:var(--bg0);border:1px solid var(--border);border-radius:6px;
+  font-family:var(--mono);font-size:11px;line-height:1.6;overflow:hidden;
+}
+.pv-code .row{display:flex;white-space:pre;padding:0 10px 0 0}
+.pv-code .row .n{
+  min-width:38px;text-align:right;padding-right:10px;color:var(--text-faint);font-size:10px;
+  user-select:none;flex:none;
+}
+.pv-code .row .c{color:var(--text-dim);overflow:hidden;text-overflow:ellipsis}
+.pv-code .row.hitline{background:rgba(227,179,65,.07);box-shadow:inset 2px 0 0 var(--yellow)}
+.pv-code .row.hitline .c{color:var(--text)}
+.pv-sec{
+  padding:8px 14px 4px;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--text-dim);
+  text-transform:uppercase;border-top:1px solid var(--border-soft);display:flex;justify-content:space-between;
+}
+.pv-sec .n{font-family:var(--mono);font-weight:400;color:var(--text-faint)}
+.pv-meta{padding:5px 14px;font-family:var(--mono);font-size:10.5px;color:var(--text-dim)}
+.pv-meta .k2{color:var(--text-faint)}
+#pv-open{margin:12px 14px 14px;justify-content:center}
+#pv-open.flash{background:#1b7a6e}
+.pv-empty{padding:24px 14px;color:var(--text-faint);font-size:11.5px;text-align:center}
+
+/* ============ STATUS BAR ============ */
+#status{
+  height:24px;min-height:24px;background:var(--bg1);border-top:1px solid var(--border);
+  display:flex;align-items:center;padding:0 10px;gap:14px;font-size:10.5px;color:var(--text-dim);
+  font-family:var(--mono);
+}
+.st{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.st .heapbar{width:52px;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.st .heapbar i{display:block;height:100%;background:var(--yellow)}
+.spinner{width:9px;height:9px;border:1.5px solid var(--accent-dim);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.agentchip{
+  display:flex;align-items:center;gap:6px;background:var(--agent-bg);border:1px solid rgba(184,146,246,.3);
+  color:var(--agent);border-radius:10px;padding:1px 9px;font-size:10px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.follow{display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:auto}
+.follow .sw{width:22px;height:12px;border-radius:6px;background:var(--accent-dim);position:relative}
+.follow .sw::after{content:"";position:absolute;right:1.5px;top:1.5px;width:9px;height:9px;border-radius:50%;background:var(--accent)}
+</style>
+</head>
+<body>
+
+<!-- ================= TARGET STRIP ================= -->
+<div id="targets">
+  <div class="tchip active" title="gmail.apk · JEB — switch ⌘1">
+    <span class="ft" style="color:var(--orange)">▣</span> gmail.apk <span class="eng jeb">JEB</span> <span class="dirtydot"></span>
+  </div>
+  <div class="tchip" title="gmail.apk · JADX — switch ⌘2 · read-only · sidecar names">
+    <span class="ft" style="color:var(--orange)">▣</span> gmail.apk <span class="eng jadx">JADX</span>
+  </div>
+  <div class="tchip" title="libgmail.so · IDA — switch ⌘3 · agent active">
+    <span class="ft" style="color:var(--blue)">◈</span> libgmail.so <span class="eng ida">IDA</span> <span class="adot"></span>
+  </div>
+  <div class="tchip" title="wallet.apk · JADX — switch ⌘4 · device attached: pixel-7">
+    <span class="ft" style="color:var(--orange)">▣</span> wallet.apk <span class="eng jadx">JADX</span> <span class="ddev"></span>
+  </div>
+  <div class="tchip add" title="Open target…">+</div>
+</div>
+
+<!-- ================= TOP BAR ================= -->
+<div id="topbar">
+  <nav class="locbar" title="Current location — hierarchy, not history">
+    <span class="lseg tgt"><span class="eng jeb">JEB</span>gmail.apk</span><span class="lsep">›</span>
+    <span class="lseg cur" id="crumb-cur">Search: "cipher"</span>
+  </nav>
+  <div class="navhist" title="Navigation history">
+    <button title="Back (Alt+←)">‹</button>
+    <button title="Forward (Alt+→)">›</button>
+  </div>
+  <div class="crumbs" title="Navigation history · Alt+← / Alt+→">
+    <span>decryptPayload</span><span class="sep">→</span><span><b>search: cipher</b></span><span class="sep">▾</span>
+  </div>
+  <div class="jumpbox" title="Jump anywhere">
+    <span style="color:var(--accent)">➜</span>
+    <span class="grow">Jump to class, method, string, offset…</span>
+    <kbd>G</kbd>
+  </div>
+  <div class="proj" title="Project">
+    <span class="dot"></span> gmail_9.41.apk <span class="chev">▾</span>
+  </div>
+  <button class="btn primary" title="Save project (⌘S)"><span class="dirtydot"></span> Save</button>
+  <button class="btn" title="More actions">⋯</button>
+</div>
+
+<!-- ================= MAIN ================= -->
+<div id="main">
+
+  <!-- activity rail -->
+  <div id="activity">
+    <button class="actbtn" title="Explorer"><i class="icn">⛁</i></button>
+    <button class="actbtn active" title="Search (⌘⇧F)"><i class="icn">⌕</i></button>
+    <button class="actbtn" title="Strings"><i class="icn">❝</i></button>
+    <button class="actbtn" title="Bookmarks &amp; Tags"><i class="icn">⚑</i><span class="badge">14</span></button>
+    <button class="actbtn" title="Runs — dynamic analysis"><i class="icn">▶</i></button>
+    <button class="actbtn" title="Agents"><i class="icn">🤖</i><span class="badge agent">2</span></button>
+    <div class="spacer"></div>
+    <button class="actbtn" title="Settings"><i class="icn">⚙</i></button>
+  </div>
+
+  <!-- search surface -->
+  <div id="surface">
+    <div id="queryrow">
+      <div id="qbox" title="Project-wide search over the class-name index + decompiled bodies (⌘⇧F)">
+        <span class="qi">⌕</span>
+        <input id="q" value="cipher" spellcheck="false" autocomplete="off"
+               placeholder="search code, strings, comments…">
+        <span class="qtog" id="tg-regex" title="Regex mode — query is compiled as a Java-style regex against each indexed line. Off = literal substring.">.*</span>
+        <span class="qtog" id="tg-case" title="Match case — sensitive search. 'Cipher' (class refs) vs 'cipher' (locals/strings) split cleanly here.">Aa</span>
+        <kbd>⌘⇧F</kbd>
+      </div>
+    </div>
+    <div id="optrow">
+      <div class="optgrp" title="Scope — 'All targets' fans the query out to every open engine (JEB + IDA) and re-groups results per target">
+        <span class="clabel">scope</span>
+        <span class="tchipf scope on" id="sc-this">This target</span>
+        <span class="tchipf scope" id="sc-all">All targets</span>
+      </div>
+      <div class="optgrp" title="Content type — where the match was found. Multi-select; a hit is kept if its type is enabled.">
+        <span class="clabel">in</span>
+        <span class="tchipf on" data-kind="code">Code</span>
+        <span class="tchipf on" data-kind="str">Strings</span>
+        <span class="tchipf on" data-kind="cmt">Comments</span>
+      </div>
+      <span class="info-hint" title="Results stream from a pre-built trigram index over decompiled output — typing re-filters without re-decompiling. Group-by-class keeps xref-style density: a class with 6 hits is usually the one to open first.">ⓘ how search works</span>
+      <span id="stats"><b id="st-n">38</b> results in <b id="st-c">12</b> classes · <b id="st-ms">240</b> ms</span>
+      <span id="idxnote" title="Index freshness — rebuilt lazily when a target is saved or re-decompiled">index: 42,103 classes, built <span id="idx-age">3m ago</span> · <span class="rebuild" id="rebuild">rebuild</span></span>
+    </div>
+    <div id="results"></div>
+    <div id="reshint">
+      <span><kbd>F4</kbd> next match</span>
+      <span><kbd>⇧F4</kbd> prev match</span>
+      <span><kbd>↵</kbd> open in editor</span>
+      <span><kbd>esc</kbd> back to query</span>
+      <span class="sp"></span>
+      <span id="selinfo">match — of —</span>
+    </div>
+  </div>
+
+  <!-- context preview -->
+  <aside id="preview">
+    <div class="pv-head"><span>Context</span><span class="pv-pos" id="pv-pos">—</span></div>
+    <div class="pv-loc" id="pv-loc"><span class="pv-empty">click a result to preview context</span></div>
+    <div class="pv-code" id="pv-code" style="display:none"></div>
+    <div class="pv-sec" id="pv-sec" style="display:none"><span>Symbol</span></div>
+    <div class="pv-meta" id="pv-meta" style="display:none"></div>
+    <button class="btn primary" id="pv-open" style="display:none" title="Open at line in the editor dock (↵)">Open ↵</button>
+  </aside>
+</div>
+
+<!-- ================= STATUS BAR ================= -->
+<div id="status">
+  <span class="st" title="Indexed classes across project">◈ 42,103 classes indexed</span>
+  <span class="st" title="Search backend">trigram index · memory-mapped</span>
+  <span class="st" title="Target heap — gmail.apk·JEB"><span class="heapbar"><i style="width:52%"></i></span> heap 3.2g</span>
+  <span class="st" title="Global ceiling — 4 targets, 9.1 of 24 GB"><span class="heapbar" style="width:64px"><i style="width:38%;background:var(--red)"></i></span> Σ 9.1g / 24g</span>
+  <span class="st" title="Unsaved changes"><span class="dirtydot"></span> unsaved</span>
+  <span class="agentchip" title="Agent activity">🤖 agent reviewing <b>&nbsp;gmail.apk :: CipherBox</b></span>
+  <span class="follow" title="Follow live runtime events">Follow <span class="sw"></span></span>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ================================================================
+     Data model
+     CLS: one entry per result-groupable class.
+       t:    'jeb' | 'ida'   — which target/engine the class lives in
+       name: current (possibly analyst-renamed) symbol
+       was:  original obfuscated/native name, shown as a "was:" badge
+       pkg:  package / source file hint
+       l0:   line number of src[0]
+       src:  decompiled snippet (preview context + hit line source)
+     HITS: {c: class index, l: line index into src, k: 'code'|'str'|'cmt'}
+     The query 'cipher' matches exactly 38 hits in 12 JEB classes
+     (+9 hits in 3 IDA classes when scope = All targets).
+     ================================================================ */
+  var CLS = [
+    { t:"jeb", name:"MessageSyncHandler", was:"c", pkg:"com.google.android.gm.sync", l0:36, src:[
+      "public final class MessageSyncHandler implements Handler {  // was: c",
+      "  private static final String TAG = \"gmail-sync\";",
+      "  private final CipherBox cipher;  // was: field b",
+      "  private final SyncPolicy policy;",
+      "",
+      "  MessageSyncHandler(Account acct, SyncPolicy p) {",
+      "    this.cipher = CipherBox.forAccount(acct);",
+      "    this.policy = p;",
+      "  }",
+      "",
+      "  // re-key cipher every 24h per sync.policy",
+      "  void onMessage(Envelope env) throws SyncException {",
+      "    if (env.seq <= lastSeq) return;",
+      "    Cipher gc = cipher.borrow();",
+      "    byte[] pt = cipher.open(env.body, env.iv);",
+      "    if (pt == null) {",
+      "      Log.w(TAG, \"cipher mismatch, seq=\" + env.seq);",
+      "      throw new SyncException(\"decrypt failed\");",
+      "    }",
+      "    dispatch(Envelope.of(env, pt));",
+      "  }",
+      "}"
+    ]},
+    { t:"jeb", name:"CipherBox", was:"a.a.a.k", pkg:"com.google.android.gm.crypto", l0:11, src:[
+      "public final class CipherBox {  // was: a.a.a.k",
+      "  private static final String CIPHER = \"AES/GCM/NoPadding\";",
+      "  private final Cipher c;",
+      "  private final SecretKey key;",
+      "",
+      "  public static CipherBox forAccount(Account a) {",
+      "    Provider provider = Security.getProvider(\"AndroidKeyStore\");",
+      "    try {",
+      "      Cipher c = Cipher.getInstance(CIPHER, provider);",
+      "      c.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(128, iv));",
+      "      // aad binds cipher output to thread-id header",
+      "      c.updateAAD(threadIdHeader(a));",
+      "      return new CipherBox(c, key);",
+      "    } catch (GeneralSecurityException gse) {",
+      "      throw new IllegalStateException(gse);",
+      "    }",
+      "  }",
+      "}"
+    ]},
+    { t:"jeb", name:"KeyStoreWrapper", was:"a.a.a.q", pkg:"com.google.android.gm.crypto", l0:58, src:[
+      "final class KeyStoreWrapper {  // was: a.a.a.q",
+      "  private final KeyStore ks;",
+      "",
+      "  SecretKey unwrapCipherKey(byte[] wrapped) throws GeneralSecurityException {",
+      "    KeyStore.Entry e = ks.getEntry(\"gmail-cipher-key\", null);",
+      "    // falls back to wrapping cipher with device key",
+      "    if (e == null) throw new KeyStoreException(\"no entry\");",
+      "    return ((KeyStore.SecretKeyEntry) e).getSecretKey();",
+      "  }",
+      "}"
+    ]},
+    { t:"jeb", name:"MailSyncService", was:null, pkg:"com.google.android.gm.sync", l0:71, src:[
+      "public class MailSyncService extends Service {",
+      "  private MessageSyncHandler handler;",
+      "",
+      "  public int onStartCommand(Intent i, int flags, int startId) {",
+      "    handler = new MessageSyncHandler(account(), cipher);",
+      "    startForeground(1, notif(\"cipher sync active\"));",
+      "    SyncExecutor.submit(handler::drain);",
+      "    stopSelfIfIdle(\"cipher queue drained\");",
+      "    return START_STICKY;",
+      "  }",
+      "}"
+    ]},
+    { t:"jeb", name:"SyncEngine", was:"sync.e", pkg:"com.google.android.gm.sync", l0:44, src:[
+      "final class SyncEngine {  // was: sync.e",
+      "  void rotateKey() { cipher.rekey(days(1)); }",
+      "  MessageDigest md = MessageDigest.getInstance(\"SHA-256\");",
+      "  // fingerprint pins cipher to keystore entry",
+      "  void applyPolicy(SyncPolicy p) {",
+      "    syncPolicy.put(\"cipher.rotation\", \"24h\");",
+      "    p.onChanged(this::rotateKey);",
+      "  }",
+      "}"
+    ]},
+    { t:"jeb", name:"InviteManager", was:"d.b", pkg:"com.google.android.gm.invite", l0:19, src:[
+      "final class InviteManager {  // was: d.b",
+      "  static final String TOPIC_INVITE = \"invite.v2\";",
+      "  // invite.v2 payloads are cipher-sealed before fanout",
+      "  void onTopic(String topic, byte[] body) {",
+      "    if (\"invite.v2\".equals(topic)) deliver(cipher.sealInvite(body));",
+      "  }",
+      "}"
+    ]},
+    { t:"jeb", name:"GeminiClient", was:"ai.b", pkg:"com.google.android.gm.ai", l0:8, src:[
+      "public final class GeminiClient {  // was: ai.b",
+      "  private static final String MODEL = \"gemini-1.5-pro-002\";",
+      "  private final GeminiTransport transport;",
+      "",
+      "  GeminiClient(GeminiTransport t, Quota q) { this.transport = t; }",
+      "  // gemini classification is best-effort; never block sync",
+      "  public Classification classify(Thread thread) {",
+      "    JsonObject payload = thread.toSummaryJson();",
+      "    clsPayload.put(\"cipher_meta\", cipher.describe());",
+      "    Intent in = new Intent(\"gemini-classify\").putExtra(\"cipher\", hint);",
+      "    return Classification.from(transport.call(MODEL, payload));",
+      "  }",
+      "}"
+    ]},
+    { t:"jeb", name:"AttachmentCrypto", was:"f.h", pkg:"com.google.android.gm.attachment", l0:27, src:[
+      "final class AttachmentCrypto {  // was: f.h",
+      "  // attachments reuse the message cipher context",
+      "  OutputStream wrap(Attachment att, OutputStream out) {",
+      "    CipherOutputStream cos = new CipherOutputStream(out, cipher);",
+      "    String name = att.id + \".cipher\";",
+      "    return cos;",
+      "  }",
+      "}"
+    ]},
+    { t:"jeb", name:"ConversationProvider", was:"provider.g", pkg:"com.google.android.gm.provider", l0:133, src:[
+      "public class ConversationProvider extends ContentProvider {  // was: provider.g",
+      "  private int insertRow(SQLiteDatabase db, ContentValues values) {",
+      "    values.put(\"cipher_state\", row.cipherState);",
+      "    long id = db.insert(\"conversations\", null, values);",
+      "    cursor.setNotificationUri(cr, Uri.parse(\"content://com.google.android.gm.provider/cipher\"));",
+      "    return (int) id;",
+      "  }",
+      "}"
+    ]},
+    { t:"jeb", name:"AuthTokenProvider", was:"gms.auth.a", pkg:"com.google.android.gms.auth", l0:22, src:[
+      "final class AuthTokenProvider {  // was: gms.auth.a",
+      "  String headerFor(OauthClient oauth) {",
+      "    cipher.assertFresh(maxAge);",
+      "    String hdr = \"x-gm-cipher: \" + token.fp();",
+      "    return cipher.wrap(oauth.getToken(scopes));",
+      "  }",
+      "}"
+    ]},
+    { t:"jeb", name:"TlsConfig", was:"net.j", pkg:"com.google.android.gm.net", l0:40, src:[
+      "final class TlsConfig {  // was: net.j",
+      "  void apply(SSLSocket ssl) {",
+      "    // server cipher order is authoritative; do not reorder",
+      "    List<String> suites = Arrays.asList(\"TLS_AES_128_GCM_SHA256\");",
+      "    ssl.setEnabledCipherSuites(suites.toArray(new String[0]));",
+      "    for (String suite : ssl.getEnabledCipherSuites())",
+      "      if (suite.contains(\"CBC\")) throw new TlsException(\"weak cipher\");",
+      "  }",
+      "}"
+    ]},
+    { t:"jeb", name:"BackupCipherDelegate", was:"bk.m", pkg:"com.google.android.gm.backup", l0:15, src:[
+      "final class BackupCipherDelegate extends BackupAgent {  // was: bk.m",
+      "  // restore must rebuild cipher before reading prefs",
+      "  public void onBackup(ParcelFileDescriptor s, BackupDataOutput out) {",
+      "    Cipher bc = Cipher.getInstance(\"AES/GCM/NoPadding\");",
+      "    backup.put(\"cipher.blob\", bc.doFinal(state));",
+      "  }",
+      "}"
+    ]},
+    /* ---- libgmail.so · IDA (visible in All-targets scope) ---- */
+    { t:"ida", name:"cipher_init", was:"sub_2B110", pkg:"libgmail.so · .text", l0:2, src:[
+      "// ---- libgmail.so · decompiled by IDA ----",
+      "int64_t cipher_init(cipher_ctx *ctx, uint32_t mode) {",
+      "  if (!ctx) return -1;",
+      "  ctx->vtable = &cipher_ops_gcm;",
+      "  ctx->mode = mode;",
+      "  // mirrors CipherBox.forAccount in DEX",
+      "  return key_schedule(ctx->round_keys, ctx->key);",
+      "}"
+    ]},
+    { t:"ida", name:"sync_decrypt", was:"sub_1A3F0", pkg:"libgmail.so · .text", l0:2, src:[
+      "// ---- libgmail.so · decompiled by IDA ----",
+      "int sync_decrypt(uint8_t *in, size_t in_len, uint8_t *out) {",
+      "  cipher_ctx local_ctx;",
+      "  int rc;",
+      "  v7 = cipher_init(&local_ctx, 2);",
+      "  if (cipher_open(&local_ctx, in, in_len, out)) goto fail;",
+      "  rc = 0;",
+      "  goto done;",
+      "fail:",
+      "  __android_log_print(4, \"gm.so\", \"cipher_open failed rc=%d\", rc);",
+      "done:",
+      "  cipher_fini(&local_ctx);",
+      "  return rc;",
+      "}"
+    ]},
+    { t:"ida", name:"key_schedule", was:"sub_2B9C0", pkg:"libgmail.so · .text", l0:2, src:[
+      "// ---- libgmail.so · decompiled by IDA ----",
+      "static int key_schedule(uint8_t *round_keys, const uint8_t *k) {",
+      "  // 10 rounds for 128-bit cipher keys",
+      "  memcpy(round_keys, cipher_key_expand(k), 0xB0);",
+      "  return 0;",
+      "}"
+    ]}
+  ];
+
+  var HITS = [
+    /* MessageSyncHandler — 5 */
+    {c:0, l:2,  k:"code"}, {c:0, l:10, k:"cmt"},  {c:0, l:13, k:"code"},
+    {c:0, l:14, k:"code"}, {c:0, l:16, k:"str"},
+    /* CipherBox — 6 */
+    {c:1, l:1,  k:"str"},  {c:1, l:5,  k:"code"}, {c:1, l:8,  k:"code"},
+    {c:1, l:9,  k:"code"}, {c:1, l:10, k:"cmt"},  {c:1, l:12, k:"code"},
+    /* KeyStoreWrapper — 3 */
+    {c:2, l:3,  k:"code"}, {c:2, l:4,  k:"str"},  {c:2, l:5,  k:"cmt"},
+    /* MailSyncService — 3 */
+    {c:3, l:4,  k:"code"}, {c:3, l:5,  k:"str"},  {c:3, l:7,  k:"str"},
+    /* SyncEngine — 3 */
+    {c:4, l:1,  k:"code"}, {c:4, l:3,  k:"cmt"},  {c:4, l:5,  k:"str"},
+    /* InviteManager — 2 (l:1 also matches 'invite.v2') */
+    {c:5, l:1,  k:"str"},  {c:5, l:2,  k:"cmt"},  {c:5, l:4,  k:"code"},
+    /* GeminiClient — 2 cipher + 3 gemini-only (l:1/4/5) */
+    {c:6, l:1,  k:"str"},  {c:6, l:4,  k:"code"}, {c:6, l:5,  k:"cmt"},
+    {c:6, l:8,  k:"code"}, {c:6, l:9,  k:"str"},
+    /* AttachmentCrypto — 3 */
+    {c:7, l:1,  k:"cmt"},  {c:7, l:3,  k:"code"}, {c:7, l:4,  k:"str"},
+    /* ConversationProvider — 2 */
+    {c:8, l:2,  k:"code"}, {c:8, l:4,  k:"str"},
+    /* AuthTokenProvider — 3 */
+    {c:9, l:2,  k:"code"}, {c:9, l:3,  k:"str"},  {c:9, l:4,  k:"code"},
+    /* TlsConfig — 3 */
+    {c:10, l:2, k:"cmt"},  {c:10, l:4, k:"code"}, {c:10, l:6, k:"str"},
+    /* BackupCipherDelegate — 3 */
+    {c:11, l:1, k:"cmt"},  {c:11, l:3, k:"code"}, {c:11, l:4, k:"code"},
+    /* IDA: cipher_init — 3 */
+    {c:12, l:1, k:"code"}, {c:12, l:3, k:"code"}, {c:12, l:5, k:"cmt"},
+    /* IDA: sync_decrypt — 4 */
+    {c:13, l:4, k:"code"}, {c:13, l:5, k:"code"}, {c:13, l:9, k:"str"}, {c:13, l:11, k:"code"},
+    /* IDA: key_schedule — 2 */
+    {c:14, l:2, k:"cmt"},  {c:14, l:3, k:"code"}
+  ];
+
+  var TARGETS = {
+    jeb: { label:"gmail.apk",  eng:"jeb", badge:"JEB" },
+    ida: { label:"libgmail.so", eng:"ida", badge:"IDA" }
+  };
+
+  /* ---- state ---- */
+  var scope = "this";                      /* 'this' | 'all' */
+  var kinds = { code:true, str:true, cmt:true };
+  var useRegex = false, useCase = false;
+  var collapsed = {};                      /* group key -> true */
+  var sel = -1;                            /* index into flat visible hits */
+  var flat = [];                           /* flattened visible hits (for F4 cycling) */
+
+  var resultsEl = document.getElementById("results");
+  var qEl = document.getElementById("q");
+
+  function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function escRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+  function matcher(){
+    var q = qEl.value;
+    if (!q) return null;
+    if (useRegex){
+      try { return new RegExp(q, useCase ? "g" : "gi"); }
+      catch(e){ return "invalid"; }
+    }
+    return new RegExp(escRe(q), useCase ? "g" : "gi");
+  }
+
+  function highlight(text, re){
+    if (!re || re === "invalid") return esc(text);
+    re.lastIndex = 0;
+    var out = "", last = 0, m;
+    while ((m = re.exec(text)) !== null){
+      out += esc(text.slice(last, m.index)) + "<mark>" + esc(m[0]) + "</mark>";
+      last = m.index + m[0].length;
+      if (m[0].length === 0) re.lastIndex++;
+      if (out.length > 4000) break;
+    }
+    return out + esc(text.slice(last));
+  }
+
+  /* visible hits after scope + kind + query filtering */
+  function computeVisible(re){
+    var vis = [];
+    HITS.forEach(function(h, i){
+      var c = CLS[h.c];
+      if (scope === "this" && c.t !== "jeb") return;
+      if (!kinds[h.k]) return;
+      if (re && re !== "invalid"){
+        re.lastIndex = 0;
+        if (!re.test(c.src[h.l])) return;
+      }
+      vis.push(i);
+    });
+    return vis;
+  }
+
+  function render(){
+    var re = matcher();
+    document.getElementById("qbox").classList.toggle("bad", re === "invalid");
+    var vis = re === "invalid" ? [] : computeVisible(re);
+    flat = vis;
+    if (sel >= vis.length) sel = vis.length - 1;
+
+    resultsEl.innerHTML = "";
+    if (re === "invalid"){
+      resultsEl.innerHTML = '<div class="empty">invalid regex — <span style="color:var(--red)">' +
+        esc(qEl.value) + '</span><div class="sug">fix the pattern or toggle <b>.*</b> off for literal search</div></div>';
+    } else if (vis.length === 0){
+      resultsEl.innerHTML = '<div class="empty">no results for “' + esc(qEl.value || "") + '”' +
+        '<div class="sug">try <span data-try="gemini">gemini</span> · <span data-try="cipher">cipher</span> · <span data-try="invite.v2">invite.v2</span></div></div>';
+    } else if (scope === "this"){
+      renderByClass(vis, re, resultsEl);
+    } else {
+      /* group by target, then by class inside each target */
+      ["jeb","ida"].forEach(function(tk){
+        var tvis = vis.filter(function(i){ return CLS[HITS[i].c].t === tk; });
+        if (!tvis.length) return;
+        var t = TARGETS[tk];
+        var g = document.createElement("div");
+        g.className = "rgroup tgt";
+        var key = "tgt:" + tk;
+        var closed = !!collapsed[key];
+        g.innerHTML =
+          '<div class="ghead' + (closed ? " closed" : "") + '" data-key="' + key + '">' +
+            '<span class="chev">▾</span>' +
+            '<span class="eng ' + t.eng + '">' + t.badge + '</span>' +
+            '<span class="tname">' + t.label + '</span>' +
+            '<span class="hits">' + tvis.length + '</span>' +
+          '</div>' +
+          '<div class="gbody' + (closed ? " closed" : "") + '"></div>';
+        renderByClass(tvis, re, g.querySelector(".gbody"), true);
+        resultsEl.appendChild(g);
+      });
+    }
+
+    /* group-header collapse (delegate) */
+    resultsEl.querySelectorAll(".ghead").forEach(function(h){
+      h.addEventListener("click", function(){
+        var key = h.getAttribute("data-key");
+        collapsed[key] = !collapsed[key];
+        h.classList.toggle("closed");
+        h.nextElementSibling.classList.toggle("closed");
+      });
+    });
+    resultsEl.querySelectorAll("[data-try]").forEach(function(s){
+      s.addEventListener("click", function(){
+        qEl.value = s.getAttribute("data-try");
+        render();
+      });
+    });
+
+    /* stats — fake-but-deterministic timing */
+    var ncls = {};
+    vis.forEach(function(i){ ncls[HITS[i].c] = 1; });
+    var nc = Object.keys(ncls).length;
+    document.getElementById("st-n").textContent = vis.length;
+    document.getElementById("st-c").textContent = nc;
+    document.getElementById("st-ms").textContent = 164 + vis.length * 2 + (useRegex ? 38 : 0);
+
+    document.getElementById("crumb-cur").textContent = 'Search: "' + qEl.value + '"';
+    paintSel();
+  }
+
+  function renderByClass(vis, re, mount, nested){
+    var byCls = {};
+    vis.forEach(function(i){ (byCls[HITS[i].c] = byCls[HITS[i].c] || []).push(i); });
+    Object.keys(byCls).sort(function(a,b){ return CLS[a].name < CLS[b].name ? -1 : 1; }).forEach(function(ci){
+      var c = CLS[ci], idxs = byCls[ci];
+      var key = "cls:" + (nested ? c.t + ":" : "") + c.name;
+      var closed = !!collapsed[key];
+      var g = document.createElement("div");
+      g.className = nested ? "cls-sub" : "rgroup";
+      var head =
+        '<div class="ghead' + (closed ? " closed" : "") + '" data-key="' + key + '"' +
+        ' title="' + esc(c.pkg) + ' — collapse/expand (click)">' +
+          '<span class="chev">▾</span>' +
+          '<span class="cname">' + esc(c.name) + '</span>' +
+          (c.was ? '<span class="was" title="Renamed by analyst — original obfuscated symbol">was: ' + esc(c.was) + '</span>' : "") +
+          '<span class="pkg">' + esc(c.pkg) + '</span>' +
+          '<span class="hits">' + idxs.length + '</span>' +
+        '</div>';
+      var rows = idxs.map(function(i){
+        var h = HITS[i];
+        return '<div class="hit" data-i="' + i + '" title="open context (click) · F4 cycles matches">' +
+          '<span class="ln">' + (c.l0 + h.l) + '</span>' +
+          '<span class="txt">' + highlight(c.src[h.l], re) + '</span>' +
+          '<span class="k ' + h.k + '">' + (h.k === "str" ? "string" : h.k === "cmt" ? "comment" : "code") + '</span>' +
+        '</div>';
+      }).join("");
+      g.innerHTML = head + '<div class="gbody' + (closed ? " closed" : "") + '">' + rows + '</div>';
+      g.querySelectorAll(".hit").forEach(function(el){
+        el.addEventListener("click", function(){
+          sel = flat.indexOf(+el.getAttribute("data-i"));
+          paintSel();
+        });
+      });
+      mount.appendChild(g);
+    });
+  }
+
+  function paintSel(){
+    resultsEl.querySelectorAll(".hit").forEach(function(el){
+      el.classList.toggle("sel", +el.getAttribute("data-i") === flat[sel]);
+    });
+    var total = flat.length;
+    document.getElementById("selinfo").textContent =
+      total ? ("match " + (sel + 1) + " of " + total) : "match — of —";
+    if (sel >= 0 && flat[sel] !== undefined) showPreview(flat[sel], sel, total);
+    else clearPreview();
+    var selEl = resultsEl.querySelector(".hit.sel");
+    if (selEl) selEl.scrollIntoView({ block:"nearest" });
+  }
+
+  /* ---- context preview ---- */
+  function showPreview(hitIdx, pos, total){
+    var h = HITS[hitIdx], c = CLS[h.c];
+    var t = TARGETS[c.t];
+    var re = matcher();
+    document.getElementById("pv-pos").textContent = "match " + (pos + 1) + " / " + total;
+    document.getElementById("pv-loc").innerHTML =
+      '<span class="eng ' + t.eng + '">' + t.badge + '</span>' +
+      '<span class="cname">' + esc(c.name) + '</span>' +
+      (c.was ? '<span class="was">was: ' + esc(c.was) + '</span>' : "") +
+      '<span class="at">' + esc(c.pkg) + ':' + (c.l0 + h.l) + '</span>';
+
+    /* ~6 lines of context around the hit */
+    var lo = Math.max(0, h.l - 3), hi = Math.min(c.src.length - 1, h.l + 3);
+    if (hi - lo < 6){ if (lo === 0) hi = Math.min(c.src.length - 1, 6); else lo = Math.max(0, hi - 6); }
+    var rows = [];
+    for (var i = lo; i <= hi; i++){
+      rows.push(
+        '<div class="row' + (i === h.l ? " hitline" : "") + '">' +
+          '<span class="n">' + (c.l0 + i) + '</span>' +
+          '<span class="c">' + (highlight(c.src[i], re) || "&nbsp;") + '</span>' +
+        '</div>'
+      );
+    }
+    var code = document.getElementById("pv-code");
+    code.innerHTML = rows.join("");
+    code.style.display = "";
+
+    var sec = document.getElementById("pv-sec");
+    sec.style.display = "";
+    var meta = document.getElementById("pv-meta");
+    meta.style.display = "";
+    meta.innerHTML =
+      '<div><span class="k2">symbol </span>' + esc(c.name) + (c.was ? ' <span class="k2">(obf:</span> ' + esc(c.was) + '<span class="k2">)</span>' : "") + '</div>' +
+      '<div><span class="k2">engine </span>' + t.label + ' · ' + t.badge + '</div>' +
+      '<div><span class="k2">match  </span>' + (h.k === "str" ? "string literal" : h.k === "cmt" ? "comment" : "code") + ' · line ' + (c.l0 + h.l) + '</div>';
+    var open = document.getElementById("pv-open");
+    open.style.display = "";
+    open.textContent = "Open in " + t.badge + " view ↵";
+  }
+  function clearPreview(){
+    document.getElementById("pv-pos").textContent = "—";
+    document.getElementById("pv-loc").innerHTML = '<span class="pv-empty">click a result to preview context</span>';
+    ["pv-code","pv-sec","pv-meta","pv-open"].forEach(function(id){
+      document.getElementById(id).style.display = "none";
+    });
+  }
+
+  /* ---- scope chips ---- */
+  document.getElementById("sc-this").addEventListener("click", function(){
+    scope = "this";
+    this.classList.add("on");
+    document.getElementById("sc-all").classList.remove("on");
+    render();
+  });
+  document.getElementById("sc-all").addEventListener("click", function(){
+    scope = "all";
+    this.classList.add("on");
+    document.getElementById("sc-this").classList.remove("on");
+    render();
+  });
+
+  /* ---- content-type chips (multi-select) ---- */
+  document.querySelectorAll(".tchipf[data-kind]").forEach(function(chip){
+    chip.addEventListener("click", function(){
+      var k = chip.getAttribute("data-kind");
+      kinds[k] = !kinds[k];
+      chip.classList.toggle("on", kinds[k]);
+      render();
+    });
+  });
+
+  /* ---- regex / case toggles ---- */
+  document.getElementById("tg-regex").addEventListener("click", function(){
+    useRegex = !useRegex; this.classList.toggle("on", useRegex); render();
+  });
+  document.getElementById("tg-case").addEventListener("click", function(){
+    useCase = !useCase; this.classList.toggle("on", useCase); render();
+  });
+
+  /* ---- query input ---- */
+  qEl.addEventListener("input", render);
+  qEl.addEventListener("keydown", function(e){
+    if (e.key === "ArrowDown"){ e.preventDefault(); if (flat.length){ sel = 0; paintSel(); } }
+    if (e.key === "Escape"){ this.blur(); }
+  });
+
+  /* ---- index rebuild note ---- */
+  document.getElementById("rebuild").addEventListener("click", function(){
+    var age = document.getElementById("idx-age");
+    age.textContent = "rebuilding…";
+    var note = this;
+    note.style.pointerEvents = "none";
+    setTimeout(function(){
+      age.textContent = "just now";
+      note.style.pointerEvents = "";
+    }, 900);
+  });
+
+  /* ---- F4 / ⇧F4 cycling + Enter ---- */
+  function cycle(d){
+    if (!flat.length) return;
+    sel = (sel + d + flat.length) % flat.length;
+    paintSel();
+  }
+  document.addEventListener("keydown", function(e){
+    if (e.key === "F4"){ e.preventDefault(); cycle(e.shiftKey ? -1 : 1); }
+    else if (e.key === "Escape" && document.activeElement !== qEl){ qEl.focus(); qEl.select(); }
+    else if (e.key === "Enter" && document.activeElement !== qEl && sel >= 0){
+      var open = document.getElementById("pv-open");
+      open.classList.add("flash");
+      setTimeout(function(){ open.classList.remove("flash"); }, 260);
+    }
+  });
+  document.getElementById("pv-open").addEventListener("click", function(){
+    this.classList.add("flash");
+    var b = this;
+    setTimeout(function(){ b.classList.remove("flash"); }, 260);
+  });
+
+  /* ---- target strip + breadcrumb + follow (same as workbench) ---- */
+  document.querySelectorAll("#targets .tchip:not(.add)").forEach(function(chip){
+    chip.addEventListener("click", function(){
+      document.querySelectorAll("#targets .tchip").forEach(function(c){ c.classList.remove("active"); });
+      chip.classList.add("active");
+    });
+  });
+  document.querySelectorAll(".locbar .lseg").forEach(function(seg){
+    seg.addEventListener("click", function(){
+      seg.classList.add("flash");
+      setTimeout(function(){ seg.classList.remove("flash"); }, 250);
+    });
+  });
+  document.querySelector(".follow").addEventListener("click", function(){
+    var sw = this.querySelector(".sw");
+    var on = sw.style.background !== "var(--bg3)";
+    sw.style.background = on ? "var(--bg3)" : "var(--accent-dim)";
+  });
+
+  /* ---- init ---- */
+  render();
+  sel = 0;
+  paintSel();
+})();
+</script>
+</body>
+</html>

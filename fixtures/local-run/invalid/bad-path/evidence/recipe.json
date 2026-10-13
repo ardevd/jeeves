@@ -1,0 +1,9 @@
+{
+  "id": "fixture-local-v1",
+  "revision": 1,
+  "activity": "fixture-infrastructure",
+  "variant": "case-sensitive-symbols",
+  "family": "fixture-local-v1",
+  "target": "fixture/Probe",
+  "execution": "none; synthetic events only"
+}

@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>window.__WB_COURSE_ROOM="";</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workbench</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='2' fill='%23f4f2ec'/%3E%3Cg fill='%230072B2'%3E%3Crect x='3' y='3' width='4' height='2'/%3E%3Crect x='9' y='3' width='4' height='2'/%3E%3Crect x='3' y='7' width='4' height='2'/%3E%3Crect x='9' y='11' width='4' height='2'/%3E%3C/g%3E%3Crect x='9' y='7' width='4' height='2' fill='%23D55E00'/%3E%3Crect x='3' y='11' width='4' height='2' fill='%23D55E00'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/shell.css">
+</head>
+<body>
+<div class="deck">
+
+  <!-- ====================== TARGET STRIP ===================== -->
+  <div class="targets">
+    <!-- #mapchip is rendered from workspace.state.activeMap by chrome.js
+         renderMapChip — a mapless project has NO chip (map-lifecycle §1) -->
+    <div class="track-div"></div>
+    <!-- target chips are rendered from workspace.state by app.js renderChips, left of ＋ -->
+    <div class="tadd" id="tadd" data-pos="below" data-tip="Open target — ⌘O">+</div>
+  </div>
+
+  <!-- ======================== NAV BAR ======================== -->
+  <div class="navbar">
+    <div class="projwrap">
+      <div class="projchip" id="projchip" data-pos="below" data-tip="Project menu — ⌘⇧O">
+        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 4.5 8 1.8l6 2.7v7L8 14.2 2 11.5z"/><path d="M8 1.8v6.2M2 4.5l6 3.5 6-3.5"/></svg>
+        <span id="projname">—</span>
+        <span class="projchip-n num" id="projcount"></span>
+        <span style="color:var(--ink-faint);font-size:8px">▾</span>
+      </div>
+      <div class="projmenu" id="projmenu" hidden>
+        <div class="pm-head" id="pm-guide" style="color:var(--blue)" hidden>① pick or create a project — then choose the artifact</div>
+        <div class="pm-head">OPEN PROJECTS</div>
+        <div class="pm-list" id="pmlist"></div>
+        <div class="pm-sep"></div>
+        <div class="pm-head">MAPS</div>
+        <div class="pm-list" id="pmmaps"></div>
+        <div class="pm-item" id="pm-map-new"><span class="pm-name">＋ New map…</span></div>
+        <div class="pm-sep" id="pmknown-sep"></div>
+        <div class="pm-head" id="pmknown-head">ON DISK</div>
+        <div class="pm-list" id="pmknown"></div>
+        <!-- segW: the menu's one-line transient note (project.delete's orphan report,
+             chrome.js pmNote) — its own slot, outside the lists: a note inside a list
+             dies with that list's next async render -->
+        <div class="pm-note" id="pm-note" hidden></div>
+        <div class="pm-sep"></div>
+        <!-- labels say what the handlers do (P0.6): the launcher opens a TARGET;
+             project.open is open-or-create by name; ⌘⇧O toggles this menu (chip tip);
+             no ⌘⇧W handler exists (browser-reserved) so no keycap claims one -->
+        <div class="pm-item" id="pm-open"><span>Open target…</span></div>
+        <div class="pm-item" id="pm-new"><span>Open / new project by name…</span></div>
+        <div class="pm-item pm-danger" id="pm-close" aria-disabled="true"><span>Close project</span></div>
+      </div>
+    </div>
+    <div class="hist">
+      <div class="hbtn" data-pos="below" data-tip="Back — ⌘[">&#8249;</div>
+      <div class="hbtn off" data-pos="below" data-tip="Forward — ⌘]">&#8250;</div>
+    </div>
+    <div class="crumb" id="crumb"></div>
+    <div class="jumpwrap">
+      <div class="jumpbox" id="jumpbox" data-pos="below" data-tip="Jump anywhere — G">
+        <span class="cursor"></span>
+        <span class="grow">Jump anywhere…</span>
+        <kbd>G</kbd>
+      </div>
+      <div class="jdrop" id="jdrop" hidden>
+        <div class="jdrop-in">
+          <span style="color:var(--blue)">⌕</span>
+          <input id="jdrop-q" placeholder="Jump anywhere…" spellcheck="false" autocomplete="off">
+          <kbd>ESC</kbd>
+        </div>
+        <div id="jdrop-list"></div>
+        <div class="jdrop-foot">@symbol &nbsp;&gt;action &nbsp;·&nbsp; ⌘K palette</div>
+      </div>
+    </div>
+    <button class="btn" id="save-btn" data-pos="below" data-tip="Save active target — ⌘S"><span class="led g"></span>SAVE</button>
+  </div>
+
+  <!-- ========================= MAIN ========================== -->
+  <div class="main" id="main">
+
+    <!-- activity rail: TARGET scope on top, PROJECT scope below the rule -->
+    <nav class="rail">
+      <div class="rail-cap" data-tip="These views follow the VIEWED TARGET (the chip in the strip)">TARGET</div>
+      <div class="rbtn on" id="rail-explorer" data-tip="Explorer — ⌃1 · target">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 4h4l1.2 1.6H14V13H2z"/></svg>
+      </div>
+      <div class="rbtn" id="rail-search" data-tip="Search — ⌃2 · target">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="7" cy="7" r="4"/><path d="M10.2 10.2 14 14"/></svg>
+      </div>
+      <div class="rbtn" id="rail-strings" data-tip="Strings — ⌃3 · target">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 5h10M3 8h7M3 11h9"/></svg>
+      </div>
+      <div class="rail-div"></div>
+      <div class="rail-cap" data-tip="These views span the whole PROJECT — every target in it">PROJECT</div>
+      <div class="rbtn proj" id="rail-runs" data-tip="Runs — ⌃4 · project">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M4 3l9 5-9 5z"/></svg>
+      </div>
+      <div class="rbtn proj" id="rail-agents" data-tip="Agents — ⌃5 · 0 running · project">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="3" y="5" width="10" height="7" rx="1"/><path d="M8 5V2M5.5 8.5h.01M10.5 8.5h.01"/></svg>
+        <span class="rbadge" style="display:none"></span>
+      </div>
+      <div class="rbtn proj" id="rail-device" data-tip="Device — ⌃6 · project">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="4.5" y="2" width="7" height="12" rx="1.2"/><path d="M7 12.5h2"/></svg>
+      </div>
+      <span class="spring"></span>
+      <div class="rchev" id="side-chev" data-tip="Toggle side panel — ⌘B">◧</div>
+    </nav>
+
+    <!-- left stack: symbol tree + drop target -->
+    <aside class="stack" id="col-side">
+      <section class="bay" style="flex:1;min-height:220px">
+        <div class="filter">
+          <span style="color:var(--ink-faint);font-size:10px">⌕</span>
+          <input placeholder="Filter symbols…" spellcheck="false">
+          <kbd>/</kbd>
+        </div>
+        <!-- classes the tree has not loaded yet: a server-backed find under the filter box (app.ts treeFind) -->
+        <div id="tfind" hidden></div>
+        <div class="tree" id="tree"></div>
+      </section>
+    </aside>
+
+    <div class="split-v" id="split-side" data-tip="Drag to resize side panel — ⌘B collapses"></div>
+
+    <!-- disassembly -->
+    <section class="bay editor">
+      <div class="etabs"></div>   <!-- tabs: S.openTabs + renderTabs (app.js) -->
+      <div id="codewrap" class="mode-split" tabindex="0">
+      <div class="vpane" id="pane-java">
+      <div class="panehead">—<span class="phent"></span></div>
+      <div class="code" id="code" tabindex="0"></div>
+      </div>
+
+      <div class="psplit" id="psplit" data-pos="below" data-tip="Drag to resize panes"></div>
+
+      <div class="vpane" id="pane-smali">
+      <div class="panehead">—<span class="phent"></span></div>
+      <div id="smali" tabindex="0"></div>
+      </div>
+      </div>
+
+      <!-- map surface (center tab per GRAPHS_SPEC; hidden until ▤ tab active) -->
+      <div id="mapwrap" hidden>
+        <div class="mapbar">
+          <span class="mzoom">
+            <button class="mbtn" id="mz-out" data-tip="Zoom out">−</button>
+            <b id="mz-label">100%</b>
+            <button class="mbtn" id="mz-in" data-tip="Zoom in">＋</button>
+            <button class="mbtn" id="mz-fit" data-tip="Zoom to fit">FIT</button>
+          </span>
+          <span class="spring"></span>
+          <button class="mbtn" id="types-btn" data-tip="Map types — display &amp; configuration">⣿ TYPES</button>
+          <button class="mbtn" id="mapm-addnode" data-tip="Add node">＋NODE</button>
+          <button class="mbtn" id="mapm-addedge" data-tip="Add edge">＋EDGE</button>
+          <button class="mbtn" id="mapm-export" data-tip="Export poster (markdown)">EXPORT</button>
+        </div>
+        <div id="types-menu" hidden></div>
+        <div id="mapview" tabindex="0">
+          <div id="mapworld">
+            <svg id="mapedges" viewBox="0 0 1280 720"></svg>
+            <svg id="maplabels" viewBox="0 0 1280 720"></svg>
+          </div>
+          <!-- P0.1: the canvas's own empty state (map.js renderEmpty) — empty map /
+               all nodes hidden by TYPES / map failed to load. A zero-node map used
+               to be a blank grey surface, including right after NEW MAP -->
+          <div class="mapempty" id="mapempty" hidden></div>
+          <div id="minimap"><span class="mm-title">MAP</span></div>
+        </div>
+      </div>
+
+      <!-- agents view (⌃5 / rail icon; supervision console per AGENTS_SPEC) -->
+      <div id="agentswrap" hidden tabindex="0">
+        <!-- MISSIONS -->
+        <div class="ag-missions" id="ag-missions">
+          <div class="ag-mhead"><span class="mini-title">MISSIONS</span><button class="fchip" id="ag-dismissed-toggle" hidden data-tip="runs removed from the view with × — click to show or hide them"></button><button class="fchip ag-mclose" id="ag-missions-close" data-tip="hide the missions column — ▸ MISSIONS in the log bar brings it back">×</button></div>
+          <!-- the two configurable areas (views/agents.ts): the built-in reversing routine's
+               model/effort/caps, and the LLM endpoints + keys -->
+          <div class="ag-tools">
+            <button class="mbtn" id="ag-task-btn" data-tip="Reversing agent — which model, effort and caps run the right-click / ⚡ REVERSE routine (quick · deep)">⚡ REVERSING AGENT</button>
+            <button class="mbtn" id="ag-prov-btn" data-tip="LLM providers — add or edit providers, base URLs, model lists and API keys">⚙ PROVIDERS</button>
+          </div>
+          <div class="mcard new" id="ag-spawncard">
+            <span class="nm-title">＋ NEW MISSION</span>
+            <div class="nm-row">
+              <label class="nm-lbl" for="ag-spawn-subject">SUBJECT<span class="nm-hint">the class or method it is about</span></label>
+              <div class="nm-line">
+                <input id="ag-spawn-subject" placeholder="LX/15Q;->A0A(…)  ·  X.15Q  ·  blank = none" spellcheck="false">
+                <button class="mbtn nm-use" id="ag-spawn-use" data-tip="take the symbol under the caret, or the open class">◎ OPEN SYMBOL</button>
+              </div>
+            </div>
+            <div class="nm-row">
+              <label class="nm-lbl" for="ag-spawn-goal">GOAL<span class="nm-hint">free text · blank with a subject = reverse it</span></label>
+              <textarea id="ag-spawn-goal" rows="3" placeholder="e.g. explain what this class does and name its members · find where the media download URL is built · reverse the subject and its call tree" spellcheck="false"></textarea>
+            </div>
+            <div class="nm-row">
+              <span class="nm-lbl">DEPTH<span class="nm-hint">brief, turn cap and token budget come from ⚡ REVERSING AGENT</span></span>
+              <div class="nm-line nm-depth">
+                <button class="chip" data-depth="quick" data-tip="the subject alone — one pass: a rename and a comment · edits stay inside its class">QUICK</button>
+                <button class="chip on" data-depth="deep" data-tip="the subject and its call tree — 3 hops, every member it can name · edits anywhere in the viewed target">DEEP</button>
+              </div>
+            </div>
+            <div class="nm-row">
+              <label class="nm-lbl" for="ag-spawn-scopekind">EDITS ALLOWED IN<span class="nm-hint">edits outside are refused</span></label>
+              <div class="nm-line">
+                <select id="ag-spawn-scopekind" data-tip="the mission's write-scope — where its renames, comments and tags may land">
+                  <option value="target">the viewed target</option>
+                  <option value="class">the subject's class only</option>
+                  <option value="pkg">a package or class prefix…</option>
+                  <option value="project">the whole project (every target and map)</option>
+                </select>
+                <input id="ag-spawn-scope" placeholder="com.example.net  ·  X.15Q" spellcheck="false" hidden>
+              </div>
+            </div>
+            <details class="nm-adv">
+              <summary>PROVIDER · MODEL · EFFORT · CAPS<span class="nm-hint">blank = the depth's settings</span></summary>
+              <div class="spawnrow">
+                <select id="ag-spawn-provider" data-tip="provider — llm.providers; ⚙ PROVIDERS to add or configure one"></select>
+                <select id="ag-spawn-modelsel" data-tip="a model within the provider's family"></select>
+              </div>
+              <div class="spawnrow">
+                <select id="ag-spawn-effort" data-tip="effort — the claude CLI's --effort / an http provider's reasoning_effort; default = the provider's own"></select>
+                <input id="ag-spawn-budget" class="spawnbudget" type="number" min="1000" step="1000" placeholder="tokens" data-tip="token budget — the mission's own ceiling (cost-weighted: cache hits count 1/10); blank = the depth's" spellcheck="false">
+                <input id="ag-spawn-turns" class="spawnbudget" type="number" min="1" step="1" placeholder="turns" data-tip="turn cap — blank = the depth's" spellcheck="false">
+              </div>
+            </details>
+            <button class="mbtn" id="ag-spawn-btn" data-tip="spawn the mission — ⌘↵ in the goal does the same">SPAWN</button>
+            <div class="spawnmsg" id="ag-spawn-msg"></div>
+          </div>
+        </div>
+        <div class="split-v ag-msplit" id="ag-msplit" data-tip="Drag to resize the missions column"></div>
+        <!-- ACTIVITY STREAM: kind filter chips (agent.activity {kinds}) + the mission filter readout;
+             rows wrap (no clipping), a row inside a recorded turn opens that turn's transcript in the dock -->
+        <div class="ag-stream">
+          <div class="ag-filter" id="ag-filter">
+            <button class="fchip on" data-kinds="all">ALL</button>
+            <button class="fchip" data-kinds="tool,result">CALLS</button>
+            <button class="fchip" data-kinds="note">NOTES</button>
+            <button class="fchip" data-kinds="blocked">BLOCKED</button>
+            <span class="ag-filter-mission" id="ag-filter-mission" hidden><span id="ag-filter-agent"></span><button class="fchip" id="ag-filter-clear" data-tip="show every mission's rows">×</button></span>
+            <button class="fchip ag-bottom-open" id="ag-missions-open" hidden data-tip="show the missions column again">▸ MISSIONS</button>
+            <button class="fchip ag-bottom-open" id="ag-bottom-open" data-tip="open the EDITS pane below the log — every rename, comment and tag the agents made, applied or waiting for review">▴ EDITS <span class="dtab-n" id="ag-open-n"></span></button>
+            <span class="ag-filter-hint">click a turn's row to open its reasoning + calls below</span>
+          </div>
+          <div class="ag-feed" id="ag-feed"></div>
+          <!-- the log's own bottom pane — EDITS (wide rows: every agent write, applied or pending) and a
+               clicked turn's transcript (reasoning + tool calls). Opens on demand (an edit arriving, a
+               turn click, ▴ EDITS); × / Esc closes it; the bar drags. Never open while there is nothing
+               to show — the empty column at view-open was the complaint. -->
+          <div class="ag-bottom" id="ag-bottom" hidden>
+            <div class="split-h ag-bottom-split" id="ag-bottom-split" data-tip="Drag to resize"></div>
+            <div class="ag-bottom-tabs">
+              <button class="fchip on" data-agtab="props" id="ag-tab-props">EDITS <span class="dtab-n" id="ag-tab-props-n"></span></button>
+              <button class="fchip" data-agtab="turn" id="ag-tab-turn">TURN</button>
+              <span class="ag-bottom-scope" id="ag-bottom-scope"></span>
+              <button class="fchip ag-bottom-close" id="ag-bottom-close" data-tip="Close this pane — Esc">× CLOSE</button>
+            </div>
+            <div class="ag-bottom-body">
+              <div class="ag-bpanel" id="ag-bpanel-props">
+                <div class="ag-propwrap" id="propcol" tabindex="0">
+                  <div class="ag-prophead">
+                    <span id="prop-pending"></span>
+                    <span class="ag-prophint">↑↓ walk · ⌘A accept · ⌘X reject · ↶ revert an applied edit · ✎ rename again · click a location to open it</span>
+                    <span class="rv-switch" id="rv-switch" data-tip="what happens to an agent's renames, comments, tags and verdicts — REVIEW FIRST queues them here for a ✓; APPLY DIRECTLY applies them at once (they still list here, recorded in History with the agent as actor, revertable).">
+                      <span class="rv-lbl">AGENT WRITES</span>
+                      <button class="chip" data-mode="manual">REVIEW FIRST</button><button class="chip" data-mode="auto">APPLY DIRECTLY</button>
+                    </span>
+                    <button class="mbtn" id="review-all" data-tip="Accept every edit still waiting for review — one click; accepted renames and comments stay revertable">ACCEPT ALL ⌥R</button>
+                  </div>
+                  <div class="rv-opts" id="rv-opts" hidden>
+                    <span class="rv-lbl">APPLY DIRECTLY COVERS</span>
+                    <label><input type="checkbox" data-kind="rename"> renames</label>
+                    <label><input type="checkbox" data-kind="comment"> comments</label>
+                    <label><input type="checkbox" data-kind="tag"> tags</label>
+                    <label><input type="checkbox" data-kind="verdict"> verdicts</label>
+                    <span class="rv-lbl" style="margin-left:10px">ONLY AT CONFIDENCE ≥</span>
+                    <input type="number" id="rv-minconf" min="0" max="1" step="0.05" data-tip="0 = any. A write below the floor (or without a confidence) still queues for review." spellcheck="false">
+                    <span class="rv-note" id="rv-note"></span>
+                  </div>
+                  <div class="ag-proplist" id="proplist"></div>
+                </div>
+              </div>
+              <div class="ag-bpanel" id="ag-bpanel-turn" hidden>
+                <div class="dockhint" id="agt-empty">click a row in the activity stream — a turn's reasoning, what the model said, and every tool call with its arguments and result open here</div>
+                <div id="agt-wrap" hidden>
+                  <div class="agt-head" id="agt-head"></div>
+                  <div class="agt-body">
+                    <div class="agt-col" id="agt-left"></div>
+                    <div class="agt-col" id="agt-calls"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- PROPOSALS and a clicked turn's transcript open in the log's own bottom pane (#ag-bottom,
+             inside .ag-stream); the mission / proposal inspector is the right rail (#ag-insp) as
+             before. The old 300px proposals column sat empty and squeezed the stream (visual QA) -->
+      </div>
+
+      <!-- STRINGS view (⌃3) -->
+      <div id="stringswrap" class="viewwrap" hidden tabindex="0">
+        <div class="vtoolbar">
+          <input id="str-filter" type="text" placeholder="filter strings…  ( / )" spellcheck="false">
+          <button class="fchip on" data-st="url">URL</button>
+          <button class="fchip on" data-st="crypto">CRYPTO</button>
+          <button class="fchip on" data-st="intent">INTENT</button>
+          <button class="fchip on" data-st="permission">PERMISSION</button>
+          <button class="fchip on" data-st="content-uri">CONTENT-URI</button>
+          <button class="fchip on" data-st="path">PATH</button>
+          <button class="fchip on" data-st="base64">BASE64?</button>
+          <button class="fchip on" data-st="hex">HEX?</button>
+          <button class="fchip on" data-st="plain">PLAIN</button>
+          <button class="fchip" id="str-unreach">UNREACHABLE ONLY</button>
+          <select id="str-sort" class="vsel" data-tip="row order — priority: usage-confirmed crypto/url/intent/permission/content-uri/path first, guesses under them, plain last (ties by xrefs) · xrefs: most-referenced first · pool: the dex string pool's own order">
+            <option value="priority">by priority</option>
+            <option value="xrefs">by xrefs</option>
+            <option value="order">pool order</option>
+          </select>
+          <span class="vcount" id="str-count"></span>
+        </div>
+        <div class="vscroll" id="str-table"></div>
+      </div>
+
+      <!-- RUNS view (⌃4) -->
+      <div id="runswrap" class="viewwrap" hidden tabindex="0">
+        <div class="preflight"><b>Import / export local evidence</b> <span id="run-import-target"></span></div>
+        <div class="preflight">
+          <label>Bundle directory <input id="run-import-path" style="width:360px" placeholder="/absolute/path/to/run-bundle" aria-label="Canonical bundle directory"></label>
+          <button class="mbtn" id="run-import" data-tip="Validate and import the manifest-listed files; executes no hooks">IMPORT BUNDLE</button>
+          <label>New directory <input id="run-export-path" style="width:240px" placeholder="/absolute/path/to/new-export" aria-label="New export directory"></label>
+          <button class="mbtn" id="run-export" disabled data-tip="Export the inspected imported bundle's manifest and listed files; no upload">EXPORT INSPECTED RUN</button>
+          <span id="run-export-reason">Inspect an imported bundle to export</span><span id="run-bundle-result" role="status"></span>
+        </div>
+        <details class="preflight"><summary>Bundle format and recording prerequisites</summary>
+          <p>Choose the directory containing a Jeeves v1 manifest.json, events/ and its listed evidence/ files. Examples in the repository: fixtures/local-run/v1 (complete) and fixtures/local-run/external-partial (partial). The recorder is backend/runs/local_run.py; external controllers use schemas/jeeves-run-bundle-v1.schema.json and backend/runs/validate_bundle.py. Import needs no connected device and executes no scripts. Export copies the manifest and every file it lists to a new local directory, with no upload.</p>
+          <p>Application qualification candidate. Capture completion describes evidence collection, not successful message delivery. Independent controllers keep ownership of their devices.</p>
+        </details>
+        <details id="run-local-controls"><summary class="preflight">Optional local recording — qualification candidate</summary>
+        <div class="preflight">
+          <label>Installed server path on device <input id="run-server-path" placeholder="/data/local/tmp/frida-server" aria-label="Installed device server path" spellcheck="false"></label>
+          <label><input id="run-owner-confirmed" type="checkbox"> I control recording on this device; no other tool is recording or attached</label>
+          <span>Before starting: NOT HIBERNATION-SAFE — laptop must remain awake and connected during setup, recording and cleanup. DETACH stops this session; inspect its cleanup result before sleep.</span>
+        </div>
+        <div class="vtoolbar devbar">
+          <span class="led" id="dev-led"></span><b id="dev-name">— no device —</b><span id="dev-meta"></span><span id="dev-state" style="color:var(--org)"></span>
+          <select id="run-device" aria-label="Selected capture device"><option value="">Select a device…</option></select>
+          <input id="run-pkg" type="text" placeholder="package (e.g. com.example.app)" spellcheck="false" style="width:280px">
+          <span style="flex:1"></span>
+          <button class="mbtn" id="run-spawn" data-tip="Select a device, installed server path and ownership confirmation first" disabled>SPAWN</button>
+          <button class="mbtn" id="run-attach" data-tip="Select a device, installed server path and ownership confirmation first; bring the app to foreground" disabled>ATTACH</button>
+          <button class="mbtn" id="run-detach" data-tip="Detach every live session of this project (two-step)" disabled>DETACH</button>
+        </div>
+        <!-- preflight (audit decision 13): adb · devices (root capability) · frida sidecar · engine, from system.doctor -->
+        <div class="preflight" id="run-preflight" hidden></div>
+        </details>
+        <div class="runs-main">
+          <div class="runs-bpcol">
+            <div class="mini-title">BREAKPOINTS<span class="meta" id="bp-count"></span></div>
+            <div class="runs-bps" id="runs-bps"></div>
+          </div>
+          <div class="runs-feed">
+            <!-- P0.6: feed filter + ⏸ pause + count (mockup runs.html:442-446) -->
+            <div class="vtoolbar feedbar">
+              <input id="hit-filter" type="text" placeholder="filter hits…  (method / args / thread)" spellcheck="false">
+              <button class="mbtn" id="hit-pause" data-tip="Pause the live feed — hits keep being captured and counted; RESUME flushes them (Space)">⏸ PAUSE</button>
+              <span class="vcount" id="hit-count"></span>
+            </div>
+            <div class="rtab head"><span>TIME</span><span>METHOD</span><span>ARGS</span><span class="d">THREAD</span></div>
+            <div class="hitfeed" id="hit-feed"></div>
+            <div class="hit-detail" id="hit-detail" hidden></div>
+          </div>
+          <div class="runs-histcol">
+            <div class="mini-title">RUN HISTORY</div><div class="run-history-controls" id="run-count"></div>
+            <!-- the DIFF controls sit ABOVE the scrolling cards (persona pass 2026-09-10 H1: under 28 cards they were off-screen) -->
+            <div class="runs-diffbar">
+              <button class="mbtn" id="diff-btn" data-tip="Diff the two picked runs — ⌘-click two cards to pick A and B">⇄ DIFF A⇄B</button>
+              <span class="dockhint" id="diff-hint">⌘-click two run cards to pick A and B</span>
+              <div id="diff-panel" hidden></div>
+            </div>
+            <div class="runs-hist">
+              <div id="runs-cards"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEARCH view (⌃2) -->
+      <div id="searchwrap" class="viewwrap" hidden tabindex="0">
+        <div class="vtoolbar">
+          <input id="sq" class="sq-big" type="text" placeholder="search…" spellcheck="false">
+          <button class="fchip on" data-ss="target" id="ss-this">THIS TARGET</button>
+          <button class="fchip" data-ss="all">ALL TARGETS</button>
+          <span style="width:6px"></span>
+          <button class="fchip on" data-ct="code">CODE</button>
+          <button class="fchip on" data-ct="strings">STRINGS</button>
+          <button class="fchip on" data-ct="comments">COMMENTS</button>
+          <button class="fchip" data-sopt="regex" id="sopt-regex" data-tip="Regex query">.*</button>
+          <button class="fchip" data-sopt="case" id="sopt-case" data-tip="Case-sensitive">Aa</button>
+        </div>
+        <div class="vscroll" id="sresults"></div>
+        <div class="sstats" id="sstats"></div>
+      </div>
+
+      <!-- DEVICE view (⌃6) -->
+      <div id="devicewrap" class="viewwrap" hidden tabindex="0">
+        <div class="vtoolbar">
+          <!-- painted by views/device.js loadDevices / catalog loaders; past one attached
+               device the <b> serial yields to the selector (P0-3), bound to SERIAL -->
+          <span class="led"></span><b>—</b>
+          <select id="dev-select" class="dvsel" hidden data-pos="below"
+                  data-tip="Attached devices — pick the one to catalog"></select>
+          <span class="dev-meta"></span>
+          <button class="mbtn" id="dev-refresh" data-tip="Re-scan catalog (returns diff)">REFRESH</button>
+          <span class="pmeta num"></span>
+          <span style="flex:1"></span>
+          <button class="mbtn" id="dev-annotate" data-tip="Keyword scan — flags catalog entries whose name or path contains your keywords; the flags land as proposals in Agents ⌃5. A substring match, not an LLM.">KEYWORD SCAN</button>
+        </div>
+        <!-- tab strip (built by views/device.js — one tab per kind + ALL + the two
+             derived views, each with its live count); the filter narrows the active tab -->
+        <div class="vtoolbar dvtabbar">
+          <span class="dvtabs" id="dev-tabs" role="tablist"></span>
+          <input id="dev-filter" type="text" placeholder="filter…" spellcheck="false"
+                 data-tip="Free-text filter — narrows the active tab only">
+          <span class="vcount" id="dev-count"></span>
+        </div>
+        <div class="vscroll" id="dev-table"></div>
+      </div>
+
+      <!-- center-bottom mini dock (drop target, hidden until used) -->
+      <div id="cdock" class="tabdock" hidden>
+        <div class="docktabs">
+          <span class="bay-title">PANEL</span>
+          <span class="tabsrow" id="cdock-tabs"></span>
+        </div>
+        <div class="dockbody" id="cdock-panels"></div>
+      </div>
+
+      <!-- OPEN STATUS cards (2026-09-08): one NON-modal card per target.open in
+           flight, bottom-right of the center surface — js/ui/openstatus.js
+           clones the template, owns the target.info poll and the READY → strip
+           chain; the launcher closes on accept. Not a .wbmodal: modalUp() must
+           not see it, and Escape never reaches it (no hub.js escape entry).
+           The JUMP STATUS card (segU, js/ui/jumpstatus.js) shares this host:
+           "decompiling <X>" + phase + elapsed while a strings jump's
+           loadSymbol runs — same corner, same markup family (#jumpcard-tpl). -->
+      <div id="openstatus"></div>
+      <template id="oscard-tpl">
+        <div class="oscard loading" role="status">
+          <div class="os-head">
+            <span class="led o"></span>
+            <span class="os-name"></span>
+            <span class="os-eng"></span>
+            <button class="os-x" type="button" aria-label="Dismiss" data-tip="dismiss" hidden>×</button>
+          </div>
+          <div class="os-msg"></div>
+          <div class="os-aside warn os-warn" hidden></div>
+          <div class="os-aside" hidden></div>
+          <button class="btn os-undo" type="button" hidden data-tip="close this target and put the database from before the re-key back" data-pos="above">UNDO RE-KEY</button>
+          <div class="os-foot">
+            <span class="os-k os-phasek">phase</span><b class="os-phase"></b>
+            <span class="os-k">state</span><b class="os-state"></b>
+            <span class="os-k">elapsed</span><b class="os-time"></b>
+          </div>
+        </div>
+      </template>
+      <!-- JUMP STATUS card (segU): the open-status card's family minus the
+           aside — the head's tag is the jump's ORIGIN (strings), the name the
+           symbol being decompiled (tooltip = the raw addr). No × while loading:
+           a decompile is not interruptible, so it would read as a fake CANCEL. -->
+      <template id="jumpcard-tpl">
+        <div class="oscard jcard loading" role="status">
+          <div class="os-head">
+            <span class="led o"></span>
+            <span class="os-name"></span>
+            <span class="os-eng"></span>
+            <button class="os-x" type="button" aria-label="Dismiss" data-tip="dismiss" hidden>×</button>
+          </div>
+          <div class="os-msg"></div>
+          <div class="os-foot">
+            <span class="os-k">phase</span><b class="os-phase"></b>
+            <span class="os-k">state</span><b class="os-state"></b>
+            <span class="os-k">elapsed</span><b class="os-time"></b>
+          </div>
+        </div>
+      </template>
+    </section>
+
+    <div class="split-v" id="split-right" data-tip="Drag to resize inspector rail"></div>
+
+    <!-- right stack: inspector (draggable) -->
+    <aside class="stack" id="col-right">
+      <section class="panel" data-panel="inspector" data-title="INSPECTOR">
+        <div class="p-head p-drag" data-panel="inspector" data-tip="Drag to re-dock — left/right rail, dock, center-bottom, or float">
+          <span class="grip">⠿</span><button class="p-dockback">⤓ DOCK</button>
+        </div>
+        <div class="p-body">
+          <div class="kv" id="class-info">
+            <!-- rows are rendered from class.info on class load (views/code.js); COVERAGE from runs.coverage -->
+          </div>
+          <!-- RELATION: single scrollable surface, sections stack -->
+          <div class="sel-scroll" id="sel-scroll">
+            <!-- MAP section: populated on map-node selection -->
+            <div id="map-rel" hidden>
+              <div class="mini-title">MAP<span class="meta"></span></div>
+              <div class="symhead">
+                <div class="sym-name" id="mr-label">—</div>
+                <div class="sym-sig" id="mr-kind">—</div>
+                <div class="mr-line">
+                  <!-- P0.2: the verdict chip is a registry-driven picker (map.js renderVerdictPick →
+                       map.setverdict); a human used to be able only to accept/reject an agent's -->
+                  <select class="vchip vpick" id="mr-verdict" data-tip="Set verdict — applies directly (map.setverdict)" disabled><option value="">—</option></select>
+                  <span class="mr-agent"><span id="mr-agent-text"></span><span id="mr-actions"><button class="mbtn" id="mr-accept">accept ✓</button> <button class="mbtn" id="mr-reject">reject ✗</button></span></span>
+                  <span class="tx" id="mr-del" role="button" aria-label="Delete node" title="Delete node (⌫ / Delete on the canvas) — two-step">×</span>
+                </div>
+                <!-- P0.2: inline delete confirm — the projmenu's row-becomes-the-confirm idiom (map.js armConfirm) -->
+                <div class="pm-confirm" id="mr-confirm" hidden></div>
+                <div class="mr-gates" id="mr-gates"></div>
+              </div>
+              <div class="mini-title">CODE EXCERPT</div>
+              <div class="mr-code">
+                <div class="mr-code-head" id="mr-code-head" data-tip="Jump to code">—</div>
+                <div class="mr-code-body" id="mr-code-body"></div>
+              </div>
+              <div class="mini-title">FIELDS</div>
+              <div class="mr-fields" id="mr-fields"></div>
+              <div class="mini-title">CHAIN</div>
+              <div id="mr-chain"></div>
+              <!-- P0.2: the selected node's edges (map.js renderEdgeRows); hover-× → map.rmedge, two-step -->
+              <div class="mini-title">EDGES</div>
+              <div id="mr-edges"></div>
+            </div>
+            <!-- MAP overview: shown when the map tab is active with no selection -->
+            <div id="map-overview" hidden>
+              <div class="mini-title">MAP<span class="meta" id="mo-title">overview</span></div>
+              <div class="symhead">
+                <div class="sym-name" id="mo-name">—</div>
+                <div class="sym-sig" id="mo-sig" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="">—</div>
+              </div>
+              <div class="mini-title">VERDICTS</div>
+              <div class="mr-fields" id="mo-verdicts"></div>
+              <div class="mini-title">EVIDENCE</div>
+              <div class="selx">
+                <div class="xrow"><span class="led g"></span><span id="mo-proven">—</span></div>
+              </div>
+              <span class="dockhint">click a node to inspect · dbl-click to open code</span>
+            </div>
+            <!-- RETAINED METHODPARAMETERS (ui/params.ts): the method under the caret's dex metadata, a
+                 SEPARATE list — never a mapping onto the arguments; the analyst maps names explicitly -->
+            <div id="mp-sec" hidden>
+              <div class="mini-title mp-title"><span class="mp-toggle" id="mp-toggle" title="collapse the list (the title line stays)">▾</span>RETAINED METHODPARAMETERS<span class="meta" id="mp-n"></span><button class="mbtn mp-copy" id="mp-copy" data-tip="copy the list with its provenance and its unverified status">COPY</button></div>
+              <div class="mp-head" id="mp-head">argument mapping unverified</div>
+              <div class="mp-list" id="mp-list"></div>
+              <div class="mp-foot" id="mp-foot"></div>
+              <div class="mp-actions"><button class="mbtn" id="mp-bulk" data-tip="Preview every retained name against the argument at the same position — nothing applies until you accept the concrete list">APPLY LIST BY POSITION…</button></div>
+            </div>
+            <div id="class-rel">
+            <div class="mini-title">RELATION</div>
+            <div class="symhead">
+              <div class="sym-row">
+                <div class="sym-name" id="rel-name">—</div>
+                <!-- reverse the pane's symbol with an agent: quick / deep (ui/reverse.ts, navigation.ts) -->
+                <button class="mbtn" id="rel-reverse" data-tip="Reverse this symbol with an agent — quick (the method alone) or deep (its call tree); also on the right-click menu">⚡ REVERSE</button>
+              </div>
+              <div class="sym-sig" id="rel-sig">—</div>
+            </div>
+            <div class="mini-title">XREFS TO<span class="meta" id="rel-xrefs-n"></span></div>
+            <div class="selx" id="rel-xrefs"></div>
+            <div class="mini-title">CALLEES<span class="meta" id="rel-callees-n"></span></div>
+            <div class="selx" id="rel-callees"></div>
+            <div class="mini-title">IMPLEMENTATIONS<span class="meta" id="rel-impls-n"></span></div>
+            <div class="selx" id="rel-impls"></div>
+            </div><!-- /class-rel -->
+          </div>
+          <!-- REVIEW INSPECTOR: shown while the agents view (⌃5) is active -->
+          <div id="ag-insp" hidden>
+            <div id="agi-proposal" hidden>
+              <div class="mini-title">EDIT</div>
+              <div class="symhead">
+                <div class="mr-line"><span class="vchip vc-identity" id="agi-kind">RENAME</span><span class="pmeta" id="agi-conf">—</span></div>
+                <div class="agi-rat" id="agi-rat"></div>
+              </div>
+              <div class="mini-title" id="agi-code-title">CODE EXCERPT</div>
+              <div class="mr-code">
+                <div class="mr-code-body" id="agi-code"></div>
+              </div>
+              <div class="mini-title">EVIDENCE</div>
+              <div class="selx" id="agi-ev"></div>
+              <div class="mr-line" style="padding:4px 10px 10px">
+                <button class="mbtn" id="agi-accept" data-tip="Accept this edit — ⌘A">✓ ACCEPT</button>
+                <button class="mbtn" id="agi-reject" data-tip="Reject this edit — ⌘X">✗ REJECT</button>
+                <button class="mbtn" id="agi-revert" hidden data-tip="Undo this applied edit (History keeps it for redo)">↶ REVERT</button>
+                <button class="mbtn" id="agi-redo" hidden data-tip="Apply this reverted edit again">↷ REDO</button>
+                <span class="pstamp" id="agi-stamp" hidden></span>
+              </div>
+            </div>
+            <div id="agi-mission" hidden>
+              <div class="mini-title">MISSION</div>
+              <div class="symhead">
+                <div class="sym-name" id="agm-goal">—</div>
+                <div class="sym-sig" id="agm-model">—</div>
+              </div>
+              <!-- P0.3: WHY a blocked mission blocked (Mission.reason) — shown only while state=blocked (views/agents.js showMissionInspector) -->
+              <div id="agm-reason-sec" hidden>
+                <div class="mini-title">REASON</div>
+                <div class="selx"><div class="xrow" id="agm-reason">—</div></div>
+              </div>
+              <div class="mini-title">TOKEN BUDGET</div>
+              <div class="selx"><div class="xrow" id="agm-budget">—</div></div>
+              <!-- raise a LIVE mission's own token ceiling. Paused AT the ceiling it prefills the raise the
+                   next turn needs and the button resumes in the same call (agent.resume {budget}); the
+                   second button makes the amount the DEFAULT for future missions of this depth
+                   (task.configure) — this mission only vs the default, spelled out (user request) -->
+              <div class="agm-topup" id="agm-topup-row" hidden>
+                <input id="agm-topup" type="number" min="1000" step="1000" spellcheck="false" data-tip="new token ceiling — this mission only">
+                <button class="mbtn" id="agm-topup-btn" data-tip="raise THIS mission's ceiling to the amount (and resume if it is paused there) — future missions unchanged">↑ RAISE THIS MISSION</button>
+                <button class="mbtn" id="agm-topup-default" hidden data-tip="make the amount the default token budget for future missions of this depth (⚡ REVERSING AGENT settings) — this mission is not changed">SET AS DEFAULT</button>
+                <span class="agm-topup-hint" id="agm-topup-hint"></span>
+              </div>
+              <div class="mini-title">TURNS</div>
+              <div class="selx"><div class="xrow" id="agm-turns">—</div></div>
+              <!-- the turn cap, raised exactly like the token budget: this mission (agent.resume {turns} /
+                   agent.setturns) or the depth's default (task.configure {turns}) -->
+              <div class="agm-topup" id="agm-turnup-row" hidden>
+                <input id="agm-turnup" type="number" min="1" step="1" spellcheck="false" data-tip="new turn cap — this mission only">
+                <button class="mbtn" id="agm-turnup-btn" data-tip="raise THIS mission's turn cap to the amount (and resume if it is paused there) — future missions unchanged">↑ RAISE THIS MISSION</button>
+                <button class="mbtn" id="agm-turnup-default" hidden data-tip="make the amount the default turn cap for future missions of this depth (⚡ REVERSING AGENT settings) — this mission is not changed">SET AS DEFAULT</button>
+                <span class="agm-topup-hint" id="agm-turnup-hint"></span>
+              </div>
+              <div class="mini-title">SCOPE</div>
+              <div class="selx"><div class="xrow" id="agm-scope">—</div></div>
+              <div class="mini-title">PROGRESS</div>
+              <div id="agm-prog"></div>
+              <div class="mr-line" style="padding:6px 10px">
+                <!-- agent.pause/resume/stop on the inspected mission (views/agents.js paintMissionCtrl) -->
+                <button class="mbtn" id="agm-pause" disabled data-tip="no mission inspected">⏸ PAUSE</button>
+                <button class="mbtn" id="agm-stop" disabled data-tip="no mission inspected">⏹ STOP</button>
+              </div>
+            </div>
+            <div id="agi-summary" hidden>
+              <div class="mini-title">AGENTS</div>
+              <div class="selx" id="agi-sumrows"></div>
+            </div>
+          </div>
+          <!-- STRING detail (strings view rail) -->
+          <div id="str-insp" class="vinsp" hidden>
+            <div class="mini-title">STRING</div>
+            <div class="symhead">
+              <div class="sym-sig" id="strd-val" style="word-break:break-all"></div>
+              <div class="mr-line" id="strd-chips"></div>
+            </div>
+            <div class="mini-title">XREFS</div>
+            <div class="selx" id="strd-xrefs"></div>
+            <div class="mr-line" style="padding:4px 10px">
+              <button class="mbtn" id="strd-jump" data-tip="Jump to first use — ↵ (select a string first)" disabled>JUMP TO FIRST USE</button>
+            </div>
+          </div>
+          <!-- RUN detail / summary (runs view rail) -->
+          <div id="run-insp" class="vinsp" hidden>
+            <div class="mini-title">RUN</div>
+            <div class="selx" id="rund-body"></div>
+          </div>
+          <!-- SEARCH context (search view rail) -->
+          <div id="srch-insp" class="vinsp" hidden>
+            <div class="mini-title">CONTEXT</div>
+            <div class="mr-code">
+              <div class="mr-code-body" id="srch-ctx"></div>
+            </div>
+            <div class="mr-line" style="padding:4px 10px">
+              <button class="mbtn" id="srch-open" data-tip="Open in editor — ↵">OPEN</button>
+            </div>
+          </div>
+          <!-- DEVICE entry detail (device view rail) -->
+          <div id="dev-insp" class="vinsp" hidden>
+            <div class="mini-title">ENTRY</div>
+            <div class="symhead">
+              <div class="sym-name" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+              <div class="sym-sig" id="dev-id"></div>
+            </div>
+            <div class="mini-title">IDENTITY</div>
+            <div class="selx" id="dev-identity"></div>
+            <div class="mini-title" id="dev-comptitle" hidden>COMPONENTS<span class="meta" id="dev-compmeta"></span></div>
+            <div class="selx" id="dev-comps" hidden></div>
+            <div class="mini-title">ANNOTATION</div>
+            <div class="selx" id="dev-annot"></div>
+            <div class="mini-title">PULL</div>
+            <div class="selx" id="dev-pull"></div>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <!-- ========================= DOCK ========================== -->
+  <section class="dock tabdock" id="dock">
+    <div class="split-h" id="split-dock" data-tip="Drag to resize dock — ⌘J collapses"></div>
+    <div class="docktabs">
+      <span class="tabsrow" id="dock-tabs"></span>
+      <!-- text written by updateDockScope() (target · coverage run · scope) -->
+      <span class="dock-scope" id="dock-scope"></span>
+      <button class="dchev" id="dock-chev" data-tip="Collapse dock — ⌘J">▾</button>
+    </div>
+    <div class="dockbody" id="dock-panels">
+
+      <section class="panel active" data-panel="runtime" data-title="RUNTIME">
+        <div class="p-head p-drag" data-panel="runtime"><span class="grip">⠿</span>RUNTIME<button class="p-dockback">⤓ DOCK</button></div>
+        <div class="p-body">
+          <div id="dock-run-rows"><span class="dockhint">no target open — RUNTIME shows the viewed target's runs</span></div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="relall" data-title="RELATION">
+        <div class="p-head p-drag" data-panel="relall"><span class="grip">⠿</span>RELATION<button class="p-dockback">⤓ DOCK</button></div>
+        <div class="p-body">
+          <div id="dock-rel-head" class="dockhint">the INSPECTOR's RELATION sections cap at 300 rows — "open all in the dock" lists every row here</div>
+          <div id="dock-rel-rows"></div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="outline" data-title="OUTLINE">
+        <div class="p-head p-drag" data-panel="outline"><span class="grip">⠿</span>OUTLINE<button class="p-dockback">⤓ DOCK</button></div>
+        <div class="p-body">
+          <div id="outline-head" class="mini-title">OUTLINE <span class="meta">open a class — O in the code view, or ⌘K → Outline</span></div>
+          <div id="outline-rows"></div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="tags" data-title="TAGS">
+        <div class="p-head p-drag" data-panel="tags"><span class="grip">⠿</span>TAGS<button class="p-dockback">⤓ DOCK</button></div>
+        <div class="p-body">
+          <div style="padding:2px 6px 4px;display:flex;gap:4px" id="tags-families"></div>
+          <div id="tags-rows"></div>
+          <div class="dockhint">T tags the symbol under the caret · family:tag · double-click a row to go there</div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="flows" data-title="FLOWS">
+        <div class="p-head p-drag" data-panel="flows"><span class="grip">⠿</span>FLOWS<button class="p-dockback">⤓ DOCK</button></div>
+        <div class="p-body">
+          <div style="padding:2px 6px 4px;display:flex;gap:4px;align-items:center">
+            <span class="dockhint">SOURCE → SINK · single-target</span>
+            <button class="hundo" id="flow-add-btn" style="margin-left:auto">+ ADD FLOW</button>
+          </div>
+          <div id="flows-rows"></div>
+          <div id="flow-detail"></div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="bookmarks" data-title="BOOKMARKS">
+        <div class="p-head p-drag" data-panel="bookmarks"><span class="grip">⠿</span>BOOKMARKS<button class="p-dockback">⤓ DOCK</button></div>
+        <div class="p-body">
+          <span class="dockhint">⌘D toggles a bookmark at the caret line</span>
+          <div id="bm-rows"></div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="history" data-title="HISTORY">
+        <div class="p-head p-drag" data-panel="history"><span class="grip">⠿</span>HISTORY<button class="p-dockback">⤓ DOCK</button></div>
+        <div class="p-body">
+          <span class="dockhint">rename/comment ops are undoable — agent ops land here too</span>
+          <div id="history-rows"></div>
+        </div>
+      </section>
+
+    </div>
+  </section>
+
+  <!-- dock restore strip -->
+  <div id="dock-restore">▴ DOCK · ⌘J</div>
+
+  <!-- ================== STATUS RIBBON (single) ================ -->
+  <footer class="status">
+    <span class="sitem" id="state-item" data-tip="Backend link"><span class="led" id="state-led"></span><span class="lbl">STATE</span><b id="state-v">—</b></span>
+    <!-- sidecar persist issues: shown only when workspace.state.sidecarIssues > 0 (app.js renderSidecarIssues) -->
+    <span class="sitem" id="sidecar-item" hidden data-tip-wrap><span class="led o"></span><span class="lbl">⚠</span><b id="sidecar-n">—</b></span>
+    <span class="sitem" id="tgt-item"><span class="lbl">TGT</span><b id="tgt-n">—</b></span>
+    <span class="sitem" id="cls-item" data-tip="follows the viewed target"><span class="lbl">CLS</span><b id="cls-n">—</b></span>
+    <span class="sitem" id="engine-item" data-tip="follows the viewed target"><span class="lbl">ENGINE</span><b id="engine-n">—</b></span>
+    <span class="sitem" id="dev-item" data-tip="Attached devices — DEVICE ⌃6"><span class="lbl">DEV</span><b id="dev-n">—</b><span class="led b" id="dev-led-ribbon"></span></span>
+    <span class="sitem" id="heap-item" data-tip="follows the viewed target"><span class="lbl">HEAP</span><b id="heap-n">—</b><span class="gauge" id="heap-gauge" data-fill="0" data-segs="12"></span></span>
+    <!-- course room (classroom integration): shown only when the backend runs in course mode — ui/course.ts -->
+    <span class="sitem" id="course-item" hidden role="button" tabindex="0" style="cursor:pointer" data-tip-wrap data-tip="Course room"><span class="lbl">COURSE</span><b id="course-room">—</b><span class="led b" id="course-led"></span><b id="course-v">CODE —</b><span class="led b" id="course-led2"></span><b id="course-v2">AGENT —</b></span>
+    <span class="sitem spacer" style="border:none"></span>
+    <span class="sitem" id="hints-item" role="button" tabindex="0" style="cursor:pointer" data-tip="Keyboard shortcuts — press ?"><span class="lbl">?</span><b>HINTS</b></span>
+    <span class="sitem" data-tip="Okabe–Ito CVD-safe palette — blue #0072B2 selection · vermillion #D55E00 markup · bluish-green #009E73 live · orange #E69F00 caution · reddish-purple #CC79A7 agent"><span class="lbl">👁</span><b>OKABE–ITO</b></span>
+    <span class="sitem" data-tip="Color theme — light is default">
+      <span class="lbl">THEME</span>
+      <span class="themesw" id="themesw"><span class="tknob"></span><span class="op on">LIGHT</span><span class="op">DARK</span></span>
+    </span>
+    <span class="sitem"><span class="led p"></span><span class="lbl">AGT</span><b id="agt-n">—</b></span>
+    <span class="sitem" id="agentchip-item" hidden><span class="agentchip" id="agentchip" role="button" tabindex="0"><span class="led p"></span>🤖</span></span>
+    <span class="sitem">
+      <span class="tswitch" id="follow-sw" data-bound role="button" tabindex="0" data-tip="Follow agent"><span class="lbl">FOLLOW</span><span class="track"><span class="knob"></span></span></span>
+    </span>
+    <span class="sitem" data-tip="Agent edits waiting for review in this PROJECT — Agents ⌃5, the EDITS pane"><span class="lbl">PENDING</span><b id="props-n">—</b></span>
+    <span class="sitem" style="border:none"><span class="led o"></span><span class="lbl dirty">UNSAVED</span><b class="dirty" id="unsaved-n">—</b></span>
+  </footer>
+</div>
+
+<!-- ==================== DROP-ZONE OVERLAY ==================== -->
+<div id="zones">
+  <div class="zone" data-zone="left"><span>LEFT RAIL</span></div>
+  <div class="zone" data-zone="right"><span>RIGHT RAIL</span></div>
+  <div class="zone" data-zone="dock"><span>DOCK</span></div>
+  <div class="zone" data-zone="cdock"><span>CENTER-BOTTOM</span></div>
+  <div class="zone" data-zone="float"><span>FLOATING</span></div>
+</div>
+<div id="float-layer"></div>
+
+<!-- ==================== COMMAND PALETTE ==================== -->
+<div class="overlay" id="overlay">
+  <div class="palette">
+    <div class="bay-title">COMMAND / JUMP ANYWHERE<span class="meta">⌘K</span></div>
+    <div class="pal-in">
+      <span style="color:var(--blue)">⌕</span>
+      <input id="pal-input" placeholder="Type a command, symbol, string, or address…" spellcheck="false" autocomplete="off">
+      <kbd>ESC</kbd>
+    </div>
+    <!-- rows are rendered from the COMMANDS table (js/ui/palette.js) on open -->
+    <div class="pal-list" id="pal-list"></div>
+    <div class="pal-foot">
+      <span>↑↓ SELECT</span><span>↵ EXECUTE</span><span>ESC CLOSE</span>
+      <span style="margin-left:auto" id="pal-count"></span>
+    </div>
+  </div>
+</div>
+
+
+<script type="module" src="js/app.js"></script>
+
+  <!-- ============ RENAME / COMMENT DIALOG (M2) ============ -->
+  <div class="wbmodal" id="editmodal" hidden>
+    <div class="wbm-card">
+      <div class="wbm-title" id="wbm-title">RENAME</div>
+      <div class="wbm-sym" id="wbm-sym"></div>
+      <input id="wbm-input" type="text" spellcheck="false" autocomplete="off">
+      <div class="wbm-err" id="wbm-err"></div>
+      <div class="wbm-row">
+        <button class="btn" id="wbm-cancel">CANCEL <kbd>Esc</kbd></button>
+        <button class="btn live" id="wbm-ok">APPLY <kbd>⏎</kbd></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ KEYBOARD SHORTCUTS (?) ============ -->
+  <div class="wbmodal" id="keyhelp" hidden>
+    <div class="wbm-card kh-card" tabindex="-1" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+      <div class="wbm-title">KEYBOARD SHORTCUTS<span class="kh-esc">ESC / ? CLOSES</span></div>
+      <!-- rows are rendered from the KEYMAP table (js/ui/keymap.js) at init -->
+      <div class="kh-cols" tabindex="-1"></div>
+    </div>
+  </div>
+
+  <!-- ============ TARGET LAUNCHER (M2) ============ -->
+  <div class="wbmodal" id="launcher" hidden>
+    <div class="wbm-card">
+      <div class="wbm-title">OPEN TARGET</div>
+      <!-- zone 1 (WORKBENCH_SPEC §2.4, audit decision 18): the target store by last use — 1-9 pick a row -->
+      <div class="wbm-recent" id="launch-recent" hidden>
+        <div class="wbm-recent-head">RECENT TARGETS <span class="dim">1–9 opens · from the target store</span></div>
+        <div class="wbm-recent-list" id="launch-recent-list"></div>
+      </div>
+      <div class="wbm-sym">path to an APK / DEX / .jdb2 — type detected from magic bytes, engine: JEB</div>
+      <input id="launch-path" type="text" spellcheck="false" autocomplete="off" placeholder="/path/to/app.apk">
+      <!-- BROWSE pane (review 2026-09-08 §1): tips are data-tip (B6), the · toggle
+           shows dotfiles (B2), the count reads "N entries · M openable" (B7), and
+           the list is one tab stop — a listbox whose cursor row is aria-activedescendant (B1) -->
+      <div class="wbm-fs" id="launch-fs" hidden>
+        <div class="wbm-fsbar">
+          <button class="btn" id="launch-up" data-tip="parent directory · ⌫ or ←" data-pos="below">↑ UP</button>
+          <button class="btn" id="launch-dots" aria-label="dotfiles" aria-pressed="false" data-tip="show dotfiles (hidden by default)" data-pos="below">·</button>
+          <span class="wbm-fsdir" id="launch-fsdir" data-tip-wrap></span>
+          <span class="wbm-fscount" id="launch-fscount"></span>
+        </div>
+        <div class="wbm-fslist" id="launch-fslist" tabindex="0" role="listbox"
+             aria-label="directory listing — ↑↓ move, ⏎ descends a dir or picks a file, ⌫ parent, type to jump"></div>
+      </div>
+      <!-- pre-accept refusals only (E_SYNTAX / E_NOTFOUND / E_UNSUPPORTED / E_BUSY);
+           the analysis progress moved OUT of this dialog into the open-status
+           card (js/ui/openstatus.js, 2026-09-08) -->
+      <div class="wbm-err" id="launch-err"></div>
+      <div class="wbm-row">
+        <button class="btn" id="launch-browse" data-tip="browse the machine the server runs on" data-pos="below">BROWSE…</button>
+        <span class="spring"></span>
+        <button class="btn" id="launch-cancel">CANCEL <kbd>Esc</kbd></button>
+        <button class="btn live" id="launch-open">OPEN <kbd>⏎</kbd></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAG DIALOG (M4) ============ -->
+  <div class="wbmodal" id="tagmodal" hidden>
+    <div class="wbm-card">
+      <div class="wbm-title">TAG SYMBOL</div>
+      <div class="wbm-sym" id="tagm-sym"></div>
+      <input id="tagm-name" type="text" spellcheck="false" autocomplete="off" placeholder="family:tag (e.g. crypto:aes)">
+      <input id="tagm-note" type="text" spellcheck="false" autocomplete="off" placeholder="note (optional)" style="margin-top:6px">
+      <div class="wbm-err" id="tagm-err"></div>
+      <div class="wbm-row">
+        <button class="btn" id="tagm-cancel">CANCEL <kbd>Esc</kbd></button>
+        <button class="btn live" id="tagm-ok">TAG <kbd>⏎</kbd></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ FLOW DIALOG (M4) ============ -->
+  <div class="wbmodal" id="flowmodal" hidden>
+    <div class="wbm-card">
+      <div class="wbm-title">ADD FLOW</div>
+      <div class="wbm-sym">source → sink over the active target's symbols</div>
+      <input id="flowm-name" type="text" spellcheck="false" autocomplete="off" placeholder="flow name">
+      <input id="flowm-source" type="text" spellcheck="false" autocomplete="off" placeholder="source symbol" style="margin-top:6px">
+      <input id="flowm-sink" type="text" spellcheck="false" autocomplete="off" placeholder="sink symbol" style="margin-top:6px">
+      <input id="flowm-hops" type="text" spellcheck="false" autocomplete="off" placeholder="hops (csv, optional)" style="margin-top:6px">
+      <div class="wbm-err" id="flowm-err"></div>
+      <div class="wbm-row">
+        <button class="btn" id="flowm-cancel">CANCEL <kbd>Esc</kbd></button>
+        <button class="btn live" id="flowm-ok">ADD <kbd>⏎</kbd></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MAP DIALOG (M6) ============ -->
+  <div class="wbmodal" id="mapmodal" hidden>
+    <div class="wbm-card">
+      <div class="wbm-title" id="mapm-title">ADD NODE</div>
+      <input id="mapm-f0" type="text" spellcheck="false" autocomplete="off">
+      <input id="mapm-f1" type="text" spellcheck="false" autocomplete="off" style="margin-top:6px">
+      <input id="mapm-f2" type="text" spellcheck="false" autocomplete="off" style="margin-top:6px">
+      <input id="mapm-f3" type="text" spellcheck="false" autocomplete="off" style="margin-top:6px">
+      <div class="wbm-err" id="mapm-err"></div>
+      <div class="wbm-row">
+        <button class="btn" id="mapm-cancel">CANCEL <kbd>Esc</kbd></button>
+        <button class="btn live" id="mapm-ok">OK <kbd>⏎</kbd></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DEVICE ANNOTATE-MISSION DIALOG (QA 24 — replaces native prompt) ============ -->
+  <div class="wbmodal" id="devmodal" hidden>
+    <div class="wbm-card">
+      <div class="wbm-title">KEYWORD SCAN</div>
+      <div class="wbm-sym">space-separated keywords matched against entry names and paths (a substring scan, not an LLM) — flagged entries become proposals to review in Agents (⌃5)</div>
+      <input id="devm-input" type="text" spellcheck="false" autocomplete="off" placeholder="keywords, e.g. gms push mtalk crypto">
+      <div class="wbm-err" id="devm-err"></div>
+      <div class="wbm-row">
+        <button class="btn" id="devm-cancel">CANCEL <kbd>Esc</kbd></button>
+        <button class="btn live" id="devm-ok">SPAWN <kbd>⏎</kbd></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ APPLY RETAINED NAME(S) TO ARGUMENT(S) (ui/params.ts): the analyst's explicit mapping ============ -->
+  <div class="wbmodal" id="mpmodal" hidden>
+    <div class="wbm-card mp-card">
+      <div class="wbm-title"><span id="mpm-title">APPLY RETAINED NAME TO ARGUMENT</span><span class="kh-esc">Esc cancels</span></div>
+      <div class="wbm-sym" id="mpm-sym"></div>
+      <div class="mp-warn">The entries are a compiler's record, in the annotation's order — not a verified mapping onto the arguments; the counts matching proves nothing (WhatsApp keeps permuted and stale lists). Applying is your decision; it is recorded as such and undoable.</div>
+      <div id="mpm-body"></div>
+      <div class="wbm-err" id="mpm-err"></div>
+      <div class="wbm-row">
+        <button class="btn" id="mpm-cancel">CANCEL <kbd>Esc</kbd></button>
+        <button class="btn live" id="mpm-ok" disabled>APPLY <kbd>⏎</kbd></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ COURSE ROOM card (classroom integration — ui/course.ts; only in course mode) ============ -->
+  <div class="wbmodal" id="coursemodal" hidden>
+    <div class="wbm-card course-card">
+      <div class="wbm-title"><span id="crs-title">COURSE</span><span class="kh-esc">Esc closes</span></div>
+      <div class="wbm-sym" id="crs-sym">the classroom room this workbench serves — its health, a finding for the board, a word to the instructor</div>
+      <div class="crs-status">
+        <div class="crs-line"><span class="led b" id="crs-led"></span><b id="crs-state">—</b><span id="crs-summary"></span></div>
+        <div class="crs-fix" id="crs-fix"></div>
+        <div class="crs-deps" id="crs-deps"></div>
+      </div>
+      <div class="crs-sec">SHARE A FINDING <span class="crs-h">composed here with its provenance (the classroom's activity, the target's bytes, the symbol's ORIGINAL descriptor) · YOU publish it on the classroom's Findings page, under your own account — the room never posts for you</span></div>
+      <div class="crs-grid">
+        <select id="crs-kind" aria-label="card type"><option value="finding">finding</option><option value="tool">tool</option><option value="comparison">comparison</option><option value="workflow">workflow</option><option value="image">image</option></select>
+        <input id="crs-title-in" placeholder="title" spellcheck="false" autocomplete="off">
+      </div>
+      <input id="crs-symbol" placeholder="symbol — prefilled with the open class or method; its ORIGINAL descriptor goes with the finding" spellcheck="false" autocomplete="off">
+      <textarea id="crs-body" rows="3" spellcheck="false" placeholder="what you found, in your words — this becomes the finding's Details; the provenance (activity, target bytes, original symbol, revision) travels beside it as fields"></textarea>
+      <div class="crs-fields" id="crs-fields" hidden></div>
+      <div class="crs-note" id="crs-share-note" aria-live="polite"></div>
+      <div class="wbm-row"><span class="spring"></span><button class="btn" id="crs-preview">PREVIEW</button><a class="btn live" id="crs-publish" href="#" target="_blank" rel="noopener">TO FINDINGS PAGE ↗</a></div>
+      <div class="crs-sec">ASK THE INSTRUCTOR <span class="crs-h">private · your words go to the clipboard and the classroom's Messages page opens — you send it there; nothing is sent from here</span></div>
+      <textarea id="crs-help" rows="2" spellcheck="false" placeholder="where you are stuck — the activity and the symbol above are added as one context line"></textarea>
+      <div class="crs-note" id="crs-help-note" aria-live="polite"></div>
+      <div class="wbm-row"><span class="spring"></span><button class="btn" id="crs-copy" hidden>COPY TEXT</button><a class="btn live" id="crs-send" href="#" target="_blank" rel="noopener">TO MESSAGES ↗</a></div>
+      <div class="crs-sec" id="crs-ready-sec">READINESS <span class="crs-h">I'm ready · I need help · Not ready yet — on the Today page; your instructor sees it there. Nothing here marks it.</span></div>
+      <div class="wbm-row" id="crs-ready-row"><span class="spring"></span><a class="btn" id="crs-ready-link" href="#" target="_blank" rel="noopener">MARK READINESS ON TODAY ↗</a></div>
+      <div class="wbm-err" id="crs-err"></div>
+      <div class="wbm-row"><button class="btn" id="crs-close">CLOSE <kbd>Esc</kbd></button></div>
+    </div>
+  </div>
+
+  <!-- ============ NAMED LAYOUTS DIALOG (save / apply / delete) ============ -->
+  <div class="wbmodal" id="layoutmodal" hidden>
+    <div class="wbm-card">
+      <div class="wbm-title" id="laym-title">SAVE LAYOUT</div>
+      <div class="wbm-sym" id="laym-sym">panel/dock arrangement · persisted per workspace</div>
+      <input id="laym-input" type="text" spellcheck="false" autocomplete="off" placeholder="layout name">
+      <div id="laym-list"></div>
+      <div class="wbm-err" id="laym-err"></div>
+      <div class="wbm-row">
+        <button class="btn" id="laym-cancel">CANCEL <kbd>Esc</kbd></button>
+        <button class="btn live" id="laym-ok">SAVE <kbd>⏎</kbd></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ LLM PROVIDERS DIALOG (multi-LLM) ============ -->
+  <!-- close-target dialog (app.ts confirmClose): shown ONLY when a close would write
+       unsaved edits — the count of symbols renamed / commented since the last save, and
+       a save / discard / cancel choice. A close with nothing to write is silent. -->
+  <div class="wbmodal" id="closemodal" hidden>
+    <div class="wbm-card">
+      <div class="wbm-title" id="close-title">CLOSE TARGET</div>
+      <div class="wbm-sym" id="close-msg"></div>
+      <div class="wbm-row">
+        <span class="spring"></span>
+        <button class="btn" id="close-cancel">CANCEL <kbd>Esc</kbd></button>
+        <button class="btn" id="close-discard" data-tip="close without writing — these edits will not come back">DISCARD</button>
+        <button class="btn" id="close-save">SAVE &amp; CLOSE</button>
+      </div>
+    </div>
+  </div>
+  <div class="wbmodal" id="savemodal" hidden>
+    <div class="wbm-card sv-card">
+      <div class="wbm-title" id="sv-title">SAVING</div>
+      <div class="wbm-sym" id="sv-msg">writing the project database — the workbench waits for the write</div>
+      <div class="sv-bar indet" id="sv-bar"><i id="sv-fill"></i></div>
+      <div class="sv-meta"><span id="sv-bytes"></span><span class="spring"></span><span id="sv-time">0.0 s</span></div>
+      <div class="wbm-row" id="sv-row" hidden>
+        <span class="spring"></span>
+        <button class="btn" id="sv-close">CLOSE <kbd>Esc</kbd></button>
+      </div>
+    </div>
+  </div>
+  <div class="wbmodal" id="llmmodal" hidden>
+    <div class="wbm-card llm-card">
+      <div class="wbm-title">⚙ LLM PROVIDERS</div>
+      <div class="wbm-sym">the endpoints missions run on — label, baseUrl, model list, LOCAL (loopback, no key), API key. Keys are write-only (never displayed, stored chmod 600 in backend/.workbench/llm-keys.json); a key can also come from the server's environment as WORKBENCH_LLM_&lt;ID&gt;_KEY, which wins over the stored one. Which model a task uses is picked elsewhere: NEW MISSION or ⚡ REVERSING AGENT.</div>
+      <div class="llmhint">One provider per vendor/endpoint — its key lives here. Add model versions to the provider's list and mark the default.</div>
+      <div class="llm-scroll">
+      <div id="llm-rows"></div>
+      <!-- a new OpenAI-compatible provider (views/agents.ts initProviderAdd → llm.configure + llm.setkey) -->
+      <div class="llmrow llmadd" id="llm-add">
+        <div class="llmhead"><span class="llmlabel">＋ ADD PROVIDER</span><span class="llmdriver">OpenAI-compatible endpoint (chat/completions)</span></div>
+        <input id="llm-new-id" placeholder="id — the vendor, e.g. zai (names the key WORKBENCH_LLM_<ID>_KEY); model versions go in the list, not the id" spellcheck="false">
+        <input id="llm-new-label" placeholder="label — shown in the pickers" spellcheck="false">
+        <input id="llm-new-base" placeholder="baseUrl — https://host/v1" spellcheck="false">
+        <div class="llmlist" id="llm-new-list" aria-label="models"></div>
+        <input id="llm-new-key" type="password" placeholder="API key — optional now, write-only" spellcheck="false" autocomplete="off">
+        <label class="llmlocal"><input type="checkbox" id="llm-new-local"> LOCAL — loopback, no key needed</label>
+        <div class="llmacts"><button class="mbtn" id="llm-new-add">ADD</button></div>
+      </div>
+      </div><!-- /.llm-scroll -->
+      <div class="wbm-err" id="llm-err"></div>
+      <div class="wbm-note" id="llm-note" aria-live="polite"></div>
+      <div class="wbm-row">
+        <button class="btn" id="llm-close">CLOSE <kbd>Esc</kbd></button>
+      </div>
+    </div>
+  </div>
+  <!-- the REVERSING AGENT window: the built-in routine's model/effort/caps per depth
+       (views/agents.ts openTaskDialog → task.list / task.configure) -->
+  <div class="wbmodal" id="taskmodal" hidden>
+    <div class="wbm-card task-card">
+      <div class="wbm-title">⚡ REVERSING AGENT</div>
+      <div class="wbm-sym">the built-in routine behind right-click → ⚡ Reverse and the RELATION button — which model runs each depth, how hard it thinks, where it stops. The model has no default: an unconfigured depth spawns nothing. Effort, turn cap and budget blank = the depth's default.</div>
+      <div class="taskgrid" id="task-grid"></div>
+      <div class="wbm-err" id="task-err"></div>
+      <div class="wbm-row">
+        <span class="wbm-note" id="task-note"></span>
+        <button class="btn" id="task-save">SAVE</button>
+        <button class="btn" id="task-close">CLOSE <kbd>Esc</kbd></button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

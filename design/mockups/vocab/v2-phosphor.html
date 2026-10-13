@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  MOCKUP: v2-phosphor.html
+  VOCABULARY 2: 'PHOSPHOR' — modern terminal romance (Warp/Ghostty/Charm)
+  Nameless reverse-engineering workbench · scene: gmail.apk analysis
+  Self-contained: inline CSS+JS, zero external refs, system mono stack only.
+  ============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>v2 · phosphor — gmail.apk</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a0e14'/%3E%3Ctext x='5' y='15' font-family='monospace' font-size='11' fill='%234ade80'%3E4a%3C/text%3E%3Ctext x='5' y='27' font-family='monospace' font-size='11' fill='%2322d3ee'%3Ede%3C/text%3E%3Crect x='21' y='18' width='6' height='10' fill='%234ade80'/%3E%3C/svg%3E">
+<style>
+/* ---------------------------------------------------------------------------
+   PHOSPHOR tokens
+   base:   deep navy #0a0e14 family — never pure black
+   raise:  elevation by lightness steps only (no drop shadows)
+   accent: phosphor green #4ade80 · auxiliary cyan #22d3ee
+   text:   off-white ~87% (rgba(230,237,243,.87)) — never #FFF
+   type:   mono-first, everywhere; tabular-nums on numeric readouts
+   motion: opacity/transform only, <=150ms hover feedback
+--------------------------------------------------------------------------- */
+:root{
+  --bg0:#0a0e14;            /* app base */
+  --bg1:#0e131c;            /* block level 1 */
+  --bg2:#121926;            /* block level 2 / hover */
+  --bg3:#18212f;            /* active cell */
+  --line:#1d2837;           /* hairline inside blocks */
+  --ink:rgba(230,237,243,.87);
+  --ink-dim:rgba(230,237,243,.52);
+  --ink-faint:rgba(230,237,243,.32);
+  --grn:#4ade80;
+  --grn-dim:rgba(74,222,128,.55);
+  --grn-wash:rgba(74,222,128,.09);
+  --cyn:#22d3ee;
+  --cyn-dim:rgba(34,211,238,.55);
+  --cyn-wash:rgba(34,211,238,.08);
+  --amb:#fbbf24;
+  --red:#f87171;
+  --pur:#c084fc;
+  --r:10px;                 /* block radius */
+  --r-sm:6px;
+  --mono:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --glow:0 0 12px rgba(74,222,128,.45),0 0 2px rgba(74,222,128,.8);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  background:var(--bg0);
+  color:var(--ink);
+  font-family:var(--mono);
+  font-size:12px;
+  line-height:1.45;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:rgba(74,222,128,.28);color:#eafff2}
+button{font-family:var(--mono);background:none;border:none;color:inherit;cursor:pointer;font-size:inherit}
+.num{font-variant-numeric:tabular-nums}
+
+/* kbd — inverse-video cells */
+kbd{
+  font-family:var(--mono);
+  font-size:10px;
+  background:var(--grn);
+  color:#07130c;
+  border-radius:3px;
+  padding:0 4px;
+  line-height:15px;
+  display:inline-block;
+  font-weight:700;
+  letter-spacing:.02em;
+}
+kbd.cy{background:var(--cyn);color:#06222a}
+kbd.ghost{background:var(--bg3);color:var(--ink-dim);font-weight:400}
+
+/* dots: ● ○ status grammar */
+.dot-g{color:var(--grn)} .dot-c{color:var(--cyn)} .dot-a{color:var(--amb)} .dot-x{color:var(--ink-faint)}
+
+/* ============================ APP SHELL ================================== */
+#app{
+  display:grid;
+  grid-template-rows:36px 38px 1fr 200px 26px;
+  height:100vh;
+  gap:8px;
+  padding:8px;
+}
+.block{background:var(--bg1);border-radius:var(--r);border:1px solid var(--line)}
+
+/* ============================ TARGET STRIP =============================== */
+#targets{
+  display:flex;align-items:center;gap:6px;
+  padding:0 8px;
+  background:var(--bg0);
+}
+.tchip{
+  display:flex;align-items:center;gap:7px;
+  padding:5px 12px;
+  border-radius:var(--r-sm);
+  background:var(--bg1);
+  border:1px solid var(--line);
+  color:var(--ink-dim);
+  transition:background 120ms,color 120ms,border-color 120ms;
+  white-space:nowrap;
+}
+.tchip:hover{background:var(--bg2);color:var(--ink)}
+.tchip.active{
+  background:var(--bg3);
+  border-color:rgba(74,222,128,.4);
+  color:var(--grn);
+  text-shadow:var(--glow);            /* glow: primary accent only */
+}
+.tchip .eng{color:var(--ink-faint)}
+.tchip.active .eng{color:var(--grn-dim)}
+.tchip .close{color:var(--ink-faint);margin-left:2px}
+.tchip .close:hover{color:var(--red)}
+#tadd{
+  width:26px;height:26px;border-radius:var(--r-sm);
+  background:var(--bg1);border:1px solid var(--line);
+  color:var(--ink-dim);font-size:14px;line-height:1;
+  transition:background 120ms,color 120ms;
+}
+#tadd:hover{background:var(--bg2);color:var(--grn)}
+
+/* ============================ TOP BAR ==================================== */
+#topbar{
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
+  align-items:center;
+  gap:10px;
+  padding:0 12px;
+}
+#hist{display:flex;gap:4px;align-items:center}
+.hbtn{
+  width:22px;height:22px;border-radius:var(--r-sm);
+  color:var(--ink-dim);background:var(--bg2);
+  transition:background 120ms,color 120ms;
+}
+.hbtn:hover{background:var(--bg3);color:var(--grn)}
+#crumb{
+  color:var(--ink-dim);font-size:11px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  margin-left:8px;
+}
+#crumb b{color:var(--ink);font-weight:400}
+#crumb .sep{color:var(--ink-faint);margin:0 5px}
+#crumb .was{color:var(--ink-faint);text-decoration:line-through}
+
+/* jump-anywhere box */
+#jump{
+  display:flex;align-items:center;gap:8px;
+  width:420px;height:26px;
+  background:var(--bg0);
+  border:1px solid var(--line);
+  border-radius:var(--r-sm);
+  padding:0 10px;
+  color:var(--ink-faint);
+  cursor:text;
+  transition:border-color 120ms;
+}
+#jump:hover{border-color:var(--grn-dim)}
+#jump .prompt{color:var(--grn-dim)}
+.cursor{
+  display:inline-block;width:7px;height:14px;
+  background:var(--grn);
+  vertical-align:-2px;
+  animation:blink 1.06s steps(1) infinite;
+}
+@keyframes blink{50%{opacity:0}}
+
+#topright{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.chip{
+  display:flex;align-items:center;gap:6px;
+  padding:3px 9px;border-radius:var(--r-sm);
+  background:var(--bg2);border:1px solid var(--line);
+  color:var(--ink-dim);font-size:11px;
+}
+.tgl{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:3px 9px;border-radius:var(--r-sm);
+  border:1px solid var(--line);background:var(--bg2);
+  color:var(--ink-dim);font-size:11px;
+  transition:all 120ms;
+}
+.tgl.on{border-color:rgba(34,211,238,.5);color:var(--cyn);background:var(--cyn-wash)}
+#savebtn{
+  display:flex;align-items:center;gap:6px;
+  padding:3px 12px;border-radius:var(--r-sm);
+  background:var(--grn);color:#07130c;font-weight:700;font-size:11px;
+  transition:opacity 120ms;
+}
+#savebtn:hover{opacity:.85}
+#savebtn .dirty{color:#07130c}
+
+/* ============================ MAIN ROW =================================== */
+#main{
+  display:grid;
+  grid-template-columns:44px 232px 1fr 264px;
+  gap:8px;
+  min-height:0;
+}
+
+/* activity rail */
+#rail{
+  display:flex;flex-direction:column;align-items:center;
+  padding:8px 0;gap:4px;
+}
+.ricon{
+  width:32px;height:32px;border-radius:var(--r-sm);
+  display:flex;align-items:center;justify-content:center;
+  color:var(--ink-faint);font-size:13px;
+  transition:background 120ms,color 120ms;
+  position:relative;
+}
+.ricon:hover{background:var(--bg2);color:var(--ink)}
+.ricon.active{background:var(--bg3);color:var(--grn)}
+.ricon.active::before{
+  content:"▸";position:absolute;left:-3px;color:var(--grn);font-size:9px;
+}
+.rsep{flex:1}
+
+/* side panel — package tree */
+#side{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.phead{
+  padding:9px 12px 7px;
+  font-size:10px;letter-spacing:.14em;
+  color:var(--ink-faint);text-transform:uppercase;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.phead .cnt{color:var(--grn-dim)}
+#filter{
+  margin:0 10px 8px;
+  display:flex;align-items:center;gap:7px;
+  background:var(--bg0);border:1px solid var(--line);
+  border-radius:var(--r-sm);padding:4px 9px;
+  color:var(--ink-faint);cursor:text;
+  transition:border-color 120ms;
+}
+#filter:hover,#filter:focus-within{border-color:var(--grn-dim)}
+#filter input{
+  background:none;border:none;outline:none;
+  color:var(--ink);font-family:var(--mono);font-size:11px;
+  width:100%;caret-color:transparent;
+}
+#tree{overflow-y:auto;padding:0 6px 10px;flex:1}
+.tnode{user-select:none}
+.trow{
+  display:flex;align-items:center;gap:6px;
+  padding:2.5px 8px;border-radius:5px;
+  color:var(--ink-dim);cursor:pointer;white-space:nowrap;
+  transition:background 120ms,color 120ms;
+}
+.trow:hover{background:var(--bg2);color:var(--ink)}
+.trow.sel{background:var(--grn-wash);color:var(--grn)}
+.trow .guide{color:var(--ink-faint);opacity:.7}
+.trow .tw{width:11px;color:var(--ink-faint);text-align:center;flex:none}
+.trow .ic{flex:none;width:13px;text-align:center}
+.ic-pkg{color:var(--amb)} .ic-cls{color:var(--cyn)} .ic-int{color:var(--pur)}
+.trow .was{color:var(--ink-faint);font-size:10px;text-decoration:line-through;margin-left:2px}
+.trow .tagdot{margin-left:auto;font-size:9px}
+.tkids{margin-left:11px;border-left:1px solid transparent}
+.tnode.closed>.tkids{display:none}
+.tnode.closed>.trow .tw::before{content:"▸"}
+.tnode:not(.closed)>.trow .tw::before{content:"▾"}
+
+/* ============================ CENTER ===================================== */
+#center{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+#edtabs{
+  display:flex;gap:6px;padding:8px 10px 0;
+}
+.etab{
+  padding:4px 11px;border-radius:var(--r-sm) var(--r-sm) 0 0;
+  background:var(--bg0);border:1px solid var(--line);border-bottom:none;
+  color:var(--ink-dim);font-size:11px;
+  display:flex;align-items:center;gap:6px;
+  transition:background 120ms,color 120ms;
+}
+.etab:hover{background:var(--bg2);color:var(--ink)}
+.etab.active{background:var(--bg2);color:var(--ink);border-color:var(--line)}
+.etab.active .fn{color:var(--grn)}
+.etab.agent{border-color:rgba(34,211,238,.35)}
+.etab.agent .fn{color:var(--cyn)}
+#codehead{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 12px;
+  background:var(--bg2);
+  border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);
+  font-size:11px;color:var(--ink-dim);
+}
+#codehead .fqcn{color:var(--ink)}
+#codehead .fqcn .cls{color:var(--cyn)}
+.hbtns{margin-left:auto;display:flex;gap:6px}
+.hbtn2{
+  display:flex;align-items:center;gap:6px;
+  padding:2px 9px;border-radius:var(--r-sm);
+  background:var(--bg1);border:1px solid var(--line);
+  color:var(--ink-dim);font-size:11px;
+  transition:all 120ms;
+}
+.hbtn2:hover{border-color:var(--grn-dim);color:var(--grn)}
+#codewrap{flex:1;overflow:auto;background:var(--bg1)}
+#code{border-collapse:collapse;width:100%;font-size:12px;line-height:1.6}
+#code td{padding:0;vertical-align:top;white-space:pre}
+.gm{                            /* glyph margin */
+  width:30px;min-width:30px;text-align:center;
+  color:var(--ink-faint);font-size:9px;
+  border-left:3px solid transparent;
+  user-select:none;
+}
+.ln{                            /* line numbers */
+  width:38px;min-width:38px;text-align:right;
+  padding-right:12px !important;
+  color:var(--ink-faint);user-select:none;
+  font-variant-numeric:tabular-nums;
+}
+.lc{padding-left:8px !important;padding-right:20px !important;color:var(--ink)}
+tr.cov .gm{border-left-color:rgba(74,222,128,.55)}
+tr.cov2 .gm{border-left-color:rgba(34,211,238,.55)}
+tr.cur{background:rgba(74,222,128,.06)}
+tr.cur .ln{color:var(--grn);text-shadow:var(--glow)}  /* glow: current line no. only */
+tr.cur .gm{border-left-color:var(--grn)}
+#code tr:hover .lc{background:rgba(255,255,255,.02)}
+
+/* syntax */
+.k{color:var(--grn)}            /* keyword — phosphor */
+.t{color:var(--cyn)}            /* types — cyan aux */
+.s{color:var(--amb)}            /* strings */
+.c{color:var(--ink-faint);font-style:italic}
+.n{color:var(--pur)}            /* numbers */
+.f{color:var(--ink)}            /* calls */
+.a{color:var(--cyn-dim)}        /* annotations */
+.st{text-decoration:line-through;color:var(--ink-faint)}
+.rn{color:var(--grn)}
+.bp{color:var(--red)} .tg{color:var(--amb)}
+
+/* ============================ RIGHT INSPECTOR ============================ */
+#insp{display:flex;flex-direction:column;gap:8px;min-height:0;overflow:hidden}
+.ipanel{background:var(--bg1);border-radius:var(--r);border:1px solid var(--line);overflow:hidden;display:flex;flex-direction:column}
+.ipanel.grow{flex:1;min-height:0}
+.ibody{padding:4px 10px 10px;overflow-y:auto;font-size:11px}
+.kv{display:flex;gap:8px;padding:2.5px 0;color:var(--ink-dim)}
+.kv .k2{width:74px;flex:none;color:var(--ink-faint)}
+.kv .v2{color:var(--ink)}
+.kv .v2.grn{color:var(--grn)} .kv .v2.cyn{color:var(--cyn)}
+.flags{display:flex;flex-wrap:wrap;gap:4px;padding:4px 0 2px}
+.fchip{
+  padding:1px 7px;border-radius:4px;font-size:10px;
+  background:var(--bg2);border:1px solid var(--line);color:var(--ink-dim);
+}
+.fchip.g{border-color:rgba(74,222,128,.35);color:var(--grn)}
+.xrow{
+  display:flex;gap:6px;padding:2.5px 4px;border-radius:5px;
+  color:var(--ink-dim);cursor:pointer;transition:background 120ms,color 120ms;
+}
+.xrow:hover{background:var(--bg2);color:var(--ink)}
+.xrow .xk{color:var(--cyn-dim);flex:none;width:34px}
+.xrow .xl{color:var(--ink-faint);margin-left:auto;font-variant-numeric:tabular-nums}
+
+/* ============================ BOTTOM DOCK ================================ */
+#dock{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+#docktabs{
+  display:flex;gap:2px;padding:7px 10px 0;
+  border-bottom:1px solid var(--line);
+}
+.dtab{
+  padding:4px 12px;border-radius:var(--r-sm) var(--r-sm) 0 0;
+  color:var(--ink-faint);font-size:11px;
+  transition:background 120ms,color 120ms;
+  display:flex;align-items:center;gap:6px;
+}
+.dtab:hover{color:var(--ink);background:var(--bg2)}
+.dtab.active{color:var(--grn);background:var(--bg2)}
+.dtab .cnt{color:var(--ink-faint);font-size:10px}
+.dtab.active .cnt{color:var(--grn-dim)}
+#dockbody{flex:1;overflow-y:auto;padding:8px 12px;font-size:11px}
+.xg{margin-bottom:6px}
+.xg-head{
+  display:flex;align-items:center;gap:7px;
+  padding:3px 6px;border-radius:5px;cursor:pointer;
+  color:var(--ink);transition:background 120ms;
+}
+.xg-head:hover{background:var(--bg2)}
+.xg-head .tw{color:var(--grn-dim);width:11px}
+.xg-head .cnt{color:var(--ink-faint);margin-left:auto;font-variant-numeric:tabular-nums}
+.xg.closed>.xg-kids{display:none}
+.xg.closed>.xg-head .tw::before{content:"▸"}
+.xg:not(.closed)>.xg-head .tw::before{content:"▾"}
+.xg-kids{margin-left:16px}
+.xleaf{
+  display:flex;gap:7px;padding:2.5px 6px;border-radius:5px;
+  color:var(--ink-dim);cursor:pointer;transition:background 120ms,color 120ms;
+}
+.xleaf:hover{background:var(--bg2);color:var(--ink)}
+.xleaf .guide{color:var(--ink-faint)}
+.xleaf .fn2{color:var(--cyn)}
+.xleaf .ln2{color:var(--ink-faint);margin-left:auto;font-variant-numeric:tabular-nums}
+.dock-empty{color:var(--ink-faint);padding:14px 6px}
+.dpane{display:none}
+.dpane.active{display:block}
+
+/* ============================ STATUS BAR ================================= */
+#status{
+  display:flex;align-items:center;gap:16px;
+  padding:0 12px;font-size:11px;color:var(--ink-dim);
+}
+#status .sep{color:var(--ink-faint)}
+#status .val{color:var(--ink)}
+#status .grow{flex:1}
+.st-chip{display:flex;align-items:center;gap:6px}
+.mem{width:90px;height:5px;border-radius:3px;background:var(--bg3);overflow:hidden}
+.mem>i{display:block;height:100%;width:38%;background:var(--grn);border-radius:3px}
+
+/* ============================ COMMAND PALETTE ============================ */
+#pal-backdrop{
+  position:fixed;inset:0;
+  background:rgba(6,9,13,.6);
+  display:none;align-items:flex-start;justify-content:center;
+  padding-top:14vh;z-index:50;
+}
+#pal-backdrop.open{display:flex}
+#pal{
+  width:560px;background:var(--bg1);
+  border:1px solid rgba(74,222,128,.35);
+  border-radius:var(--r);
+  overflow:hidden;
+}
+#pal-input{
+  display:flex;align-items:center;gap:9px;
+  padding:11px 14px;border-bottom:1px solid var(--line);
+}
+#pal-input .prompt{color:var(--grn)}
+#pal-input input{
+  flex:1;background:none;border:none;outline:none;
+  color:var(--ink);font-family:var(--mono);font-size:13px;
+  caret-color:transparent;
+}
+#pal-list{max-height:300px;overflow-y:auto;padding:6px}
+.prow{
+  display:flex;align-items:center;gap:10px;
+  padding:6px 10px;border-radius:var(--r-sm);
+  color:var(--ink-dim);cursor:pointer;
+}
+.prow .pi{width:16px;text-align:center;color:var(--grn-dim);flex:none}
+.prow.sel{background:var(--grn-wash);color:var(--ink)}
+.prow.sel .pi{color:var(--grn)}
+.prow .pk{margin-left:auto;display:flex;gap:4px}
+#pal-foot{
+  display:flex;gap:14px;padding:7px 14px;
+  border-top:1px solid var(--line);
+  color:var(--ink-faint);font-size:10px;
+}
+
+/* scrollbars */
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:5px;border:2px solid var(--bg1)}
+::-webkit-scrollbar-track{background:transparent}
+
+/* tooltip */
+[data-tip]{position:relative}
+[data-tip]:hover::after{
+  content:attr(data-tip);
+  position:absolute;bottom:calc(100% + 7px);left:50%;
+  transform:translateX(-50%);
+  background:var(--bg3);color:var(--ink);
+  border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:3px 9px;font-size:10px;white-space:nowrap;
+  z-index:60;pointer-events:none;
+}
+.tip-r[data-tip]:hover::after{left:auto;right:0;transform:none}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ══ TARGET STRIP ══ -->
+  <div id="targets" role="tablist" aria-label="analysis targets">
+    <button class="tchip active" data-tip="reanalyze ⇧R"><span>gmail.apk</span><span class="eng">[JEB]</span></button>
+    <button class="tchip"><span>gmail.apk</span><span class="eng">[JADX]</span><span class="close">×</span></button>
+    <button class="tchip"><span class="dot-c">●</span><span>libgmail.so</span><span class="eng">[IDA]</span><span class="close">×</span></button>
+    <button class="tchip"><span class="dot-a">●</span><span>wallet.apk</span><span class="eng">[JADX]</span><span class="close">×</span></button>
+    <button id="tadd" data-tip="open target ⌘O">+</button>
+  </div>
+
+  <!-- ══ TOP BAR ══ -->
+  <header id="topbar" class="block">
+    <div style="display:flex;align-items:center;min-width:0">
+      <div id="hist">
+        <button class="hbtn" data-tip="back ⌘[">‹</button>
+        <button class="hbtn" data-tip="forward ⌘]">›</button>
+      </div>
+      <div id="crumb">
+        <b>gmail.apk</b><span class="sep">›</span>com.google.android.gm.sync<span class="sep">›</span><b>MessageSyncHandler</b> <span class="was">c</span><span class="sep">›</span><b>onMessage</b>
+      </div>
+    </div>
+
+    <div id="jump" data-tip="jump anywhere">
+      <span class="prompt">❯</span><span class="cursor"></span>
+      <span style="flex:1"></span>
+      <kbd>G</kbd>
+    </div>
+
+    <div id="topright">
+      <span class="chip"><span class="dot-c">●</span>🤖 at sync.c</span>
+      <button class="tgl on" id="followTgl" data-tip="follow agent ⌘⇧F">Follow</button>
+      <button id="savebtn" data-tip="save session ⌘S">Save <span class="dirty">●</span></button>
+    </div>
+  </header>
+
+  <!-- ══ MAIN ══ -->
+  <div id="main">
+
+    <!-- activity rail -->
+    <nav id="rail" class="block">
+      <button class="ricon active" data-tip="explorer ⌘1">▤</button>
+      <button class="ricon" data-tip="search ⌘2">⌕</button>
+      <button class="ricon" data-tip="strings ⌘3">❝</button>
+      <button class="ricon" data-tip="tags ⌘4">⌗</button>
+      <button class="ricon" data-tip="runs ⌘5">▶</button>
+      <button class="ricon" data-tip="agents ⌘6">🤖</button>
+      <div class="rsep"></div>
+      <button class="ricon" data-tip="settings">⚙</button>
+    </nav>
+
+    <!-- side: package tree -->
+    <aside id="side" class="block">
+      <div class="phead">explorer <span class="cnt num">42,103</span></div>
+      <div id="filter"><span style="color:var(--grn-dim)">/</span><input id="filterIn" placeholder="filter classes…" aria-label="filter classes"><span class="cursor" id="filterCur"></span></div>
+      <div id="tree">
+        <div class="tnode">
+          <div class="trow"><span class="tw"></span><span class="ic ic-pkg">◆</span><span>com.google.android.gm</span></div>
+          <div class="tkids">
+            <div class="tnode">
+              <div class="trow"><span class="guide">├</span><span class="tw"></span><span class="ic ic-pkg">◆</span><span>sync</span></div>
+              <div class="tkids">
+                <div class="tnode">
+                  <div class="trow sel"><span class="guide">│&nbsp;&nbsp;├</span><span class="ic ic-cls">C</span><span>MessageSyncHandler</span><span class="was">c</span><span class="tagdot dot-g">●</span></div>
+                </div>
+                <div class="tnode"><div class="trow"><span class="guide">│&nbsp;&nbsp;├</span><span class="ic ic-cls">C</span><span>MailSyncService</span><span class="tagdot dot-c">●</span></div></div>
+                <div class="tnode"><div class="trow"><span class="guide">│&nbsp;&nbsp;├</span><span class="ic ic-cls">C</span><span>SyncAdapter</span></div></div>
+                <div class="tnode"><div class="trow"><span class="guide">│&nbsp;&nbsp;└</span><span class="ic ic-cls">C</span><span>d</span></div></div>
+              </div>
+            </div>
+            <div class="tnode closed">
+              <div class="trow"><span class="guide">├</span><span class="tw"></span><span class="ic ic-pkg">◆</span><span>provider</span></div>
+              <div class="tkids">
+                <div class="tnode"><div class="trow"><span class="guide">│&nbsp;&nbsp;└</span><span class="ic ic-cls">C</span><span>MailProvider</span></div></div>
+              </div>
+            </div>
+            <div class="tnode closed">
+              <div class="trow"><span class="guide">├</span><span class="tw"></span><span class="ic ic-pkg">◆</span><span>ui</span></div>
+              <div class="tkids">
+                <div class="tnode"><div class="trow"><span class="guide">│&nbsp;&nbsp;└</span><span class="ic ic-cls">C</span><span>ConversationActivity</span></div></div>
+              </div>
+            </div>
+            <div class="tnode">
+              <div class="trow"><span class="guide">├</span><span class="tw"></span><span class="ic ic-pkg">◆</span><span>crypto</span></div>
+              <div class="tkids">
+                <div class="tnode"><div class="trow"><span class="guide">│&nbsp;&nbsp;├</span><span class="ic ic-cls">C</span><span>InviteCipher</span><span class="was">b</span><span class="tagdot dot-a">●</span></div></div>
+                <div class="tnode"><div class="trow"><span class="guide">│&nbsp;&nbsp;└</span><span class="ic ic-cls">C</span><span>g</span></div></div>
+              </div>
+            </div>
+            <div class="tnode closed">
+              <div class="trow"><span class="guide">└</span><span class="tw"></span><span class="ic ic-pkg">◆</span><span>util</span></div>
+              <div class="tkids">
+                <div class="tnode"><div class="trow"><span class="guide">&nbsp;&nbsp;&nbsp;└</span><span class="ic ic-cls">C</span><span>h</span></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- center: editor -->
+    <section id="center" class="block">
+      <div id="edtabs">
+        <button class="etab active"><span class="fn">MessageSyncHandler.java</span><span class="dot-g">●</span></button>
+        <button class="etab agent"><span class="fn">sync.c</span><span style="color:var(--cyn-dim)">🤖</span></button>
+      </div>
+      <div id="codehead">
+        <span class="fqcn">com.google.android.gm.sync.<span class="cls">MessageSyncHandler</span></span>
+        <span class="hbtns">
+          <button class="hbtn2">Rename <kbd>F2</kbd></button>
+          <button class="hbtn2">Comment <kbd>;</kbd></button>
+          <button class="hbtn2">Find refs <kbd>X</kbd></button>
+        </span>
+      </div>
+      <div id="codewrap">
+        <table id="code"><tbody id="codebody"></tbody></table>
+      </div>
+    </section>
+
+    <!-- right: inspector -->
+    <aside id="insp">
+      <div class="ipanel">
+        <div class="phead">class info</div>
+        <div class="ibody">
+          <div class="kv"><span class="k2">name</span><span class="v2 grn">MessageSyncHandler</span></div>
+          <div class="kv"><span class="k2">original</span><span class="v2"><span class="st">c</span> <span style="color:var(--ink-faint)">→ renamed</span></span></div>
+          <div class="kv"><span class="k2">super</span><span class="v2 cyn">java.lang.Object</span></div>
+          <div class="kv"><span class="k2">interfaces</span><span class="v2">SyncCallback, Parcelable</span></div>
+          <div class="kv"><span class="k2">flags</span><span class="v2">
+            <span class="flags">
+              <span class="fchip g">public</span><span class="fchip">final</span><span class="fchip">dex:classes2</span>
+            </span></span></div>
+          <div class="kv"><span class="k2">methods</span><span class="v2 num">14 <span style="color:var(--ink-faint)">(3 renamed)</span></span></div>
+          <div class="kv"><span class="k2">fields</span><span class="v2 num">7</span></div>
+          <div class="kv"><span class="k2">xrefs</span><span class="v2 num">61</span></div>
+        </div>
+      </div>
+      <div class="ipanel grow">
+        <div class="phead">selection · <span style="color:var(--cyn)">onMessage</span></div>
+        <div class="ibody">
+          <div class="xrow"><span class="xk">call</span><span>MailSyncService.onStartCommand</span><span class="xl">:88</span></div>
+          <div class="xrow"><span class="xk">call</span><span>SyncAdapter.onPerformSync</span><span class="xl">:141</span></div>
+          <div class="xrow"><span class="xk">call</span><span>g.run</span><span class="xl">:37</span></div>
+          <div class="xrow"><span class="xk">read</span><span>d.handle</span><span class="xl">:12</span></div>
+          <div class="xrow"><span class="xk">over</span><span>SyncCallback.onMessage</span><span class="xl">iface</span></div>
+          <div class="xrow"><span class="xk">agent</span><span style="color:var(--cyn)">🤖 hypothesis: protobuf frame</span><span class="xl">new</span></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ══ BOTTOM DOCK ══ -->
+  <section id="dock" class="block">
+    <div id="docktabs" role="tablist">
+      <button class="dtab active" data-pane="xrefs">Xrefs <span class="cnt num">61</span></button>
+      <button class="dtab" data-pane="callees">Callees <span class="cnt num">9</span></button>
+      <button class="dtab" data-pane="runtime">Runtime <span class="cnt dot-c">●</span></button>
+      <button class="dtab" data-pane="tags">Tags <span class="cnt num">4</span></button>
+      <button class="dtab" data-pane="flows">Flows</button>
+      <button class="dtab" data-pane="bookmarks">Bookmarks <span class="cnt num">2</span></button>
+      <button class="dtab" data-pane="history">History</button>
+    </div>
+    <div id="dockbody">
+      <div class="dpane active" id="pane-xrefs">
+        <div class="xg">
+          <div class="xg-head"><span class="tw"></span><span class="fn2" style="color:var(--cyn)">MailSyncService.onStartCommand</span><span style="color:var(--ink-faint)">provider/MailSyncService.java</span><span class="cnt num">3</span></div>
+          <div class="xg-kids">
+            <div class="xleaf"><span class="guide">├</span><span>→</span><span class="fn2">onMessage</span><span>(msg, flags)</span><span class="ln2">:88</span></div>
+            <div class="xleaf"><span class="guide">├</span><span>→</span><span class="fn2">onMessage</span><span>(msg, 0x2)</span><span class="ln2">:104</span></div>
+            <div class="xleaf"><span class="guide">└</span><span>→</span><span class="fn2">decryptInvite</span><span>(payload)</span><span class="ln2">:117</span></div>
+          </div>
+        </div>
+        <div class="xg closed">
+          <div class="xg-head"><span class="tw"></span><span class="fn2" style="color:var(--cyn)">SyncAdapter.onPerformSync</span><span style="color:var(--ink-faint)">sync/SyncAdapter.java</span><span class="cnt num">2</span></div>
+          <div class="xg-kids">
+            <div class="xleaf"><span class="guide">└</span><span>→</span><span class="fn2">onMessage</span><span>(msg, flags)</span><span class="ln2">:141</span></div>
+          </div>
+        </div>
+        <div class="xg closed">
+          <div class="xg-head"><span class="tw"></span><span class="fn2" style="color:var(--cyn)">g.run</span><span style="color:var(--ink-faint)">util/h.java · obfuscated</span><span class="cnt num">1</span></div>
+          <div class="xg-kids">
+            <div class="xleaf"><span class="guide">└</span><span>→</span><span class="fn2">onMessage</span><span>(msg, 0x0)</span><span class="ln2">:37</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="dpane" id="pane-callees"><div class="dock-empty">❯ 9 callees — Cipher.getInstance, GeminiClient.classify, Log.d, …</div></div>
+      <div class="dpane" id="pane-runtime"><div class="dock-empty"><span class="dot-c">●</span> frida attached · 3 hooks live · last hit 12s ago @ onMessage:31</div></div>
+      <div class="dpane" id="pane-tags"><div class="dock-empty">#crypto <span class="dot-a">●</span> · #entry-point <span class="dot-g">●</span> · #agent-verified <span class="dot-c">●</span> · #needs-review <span class="dot-x">○</span></div></div>
+      <div class="dpane" id="pane-flows"><div class="dock-empty">❯ no flow selected — press <kbd class="ghost">F</kbd> on a symbol to trace</div></div>
+      <div class="dpane" id="pane-bookmarks"><div class="dock-empty">▸ onMessage:31 — "gcm path" · ▸ InviteCipher:9</div></div>
+      <div class="dpane" id="pane-history"><div class="dock-empty">12:04 sync.MessageSyncHandler → 11:58 crypto.InviteCipher → 11:41 provider.MailProvider</div></div>
+    </div>
+  </section>
+
+  <!-- ══ STATUS BAR ══ -->
+  <footer id="status" class="block">
+    <span class="st-chip"><span class="dot-g">●</span><span class="val num">42,103</span>&nbsp;classes</span>
+    <span class="sep">·</span>
+    <span>engine <span class="val">jeb 5.x</span></span>
+    <span class="sep">·</span>
+    <span>heap <span class="val num">3.2g</span></span>
+    <span class="sep">·</span>
+    <span class="st-chip">Σ <span class="val num">9.1g/24g</span><span class="mem"><i></i></span></span>
+    <span class="grow"></span>
+    <span class="st-chip"><span class="dot-c">●</span>🤖 2 agents</span>
+    <span class="sep">·</span>
+    <span>Follow <span class="val" id="followState">on</span></span>
+    <span class="sep">·</span>
+    <span class="st-chip"><span class="dot-a">●</span>unsaved</span>
+  </footer>
+</div>
+
+<!-- ══ COMMAND PALETTE ══ -->
+<div id="pal-backdrop">
+  <div id="pal" role="dialog" aria-label="command palette">
+    <div id="pal-input"><span class="prompt">❯</span><input id="palIn" placeholder="type a command or jump to a symbol…" aria-label="command palette input"><span class="cursor"></span></div>
+    <div id="pal-list">
+      <div class="prow sel"><span class="pi">→</span>Jump to symbol…<span class="pk"><kbd>G</kbd></span></div>
+      <div class="prow"><span class="pi">✎</span>Rename MessageSyncHandler<span class="pk"><kbd>F2</kbd></span></div>
+      <div class="prow"><span class="pi">⌗</span>Find references to onMessage<span class="pk"><kbd>X</kbd></span></div>
+      <div class="prow"><span class="pi">▶</span>Attach runtime (frida)<span class="pk"><kbd class="cy">⌘R</kbd></span></div>
+      <div class="prow"><span class="pi">🤖</span>Ask agent: explain decryptInvite<span class="pk"><kbd class="cy">⌘⏎</kbd></span></div>
+      <div class="prow"><span class="pi">◆</span>Export decompilation (java)<span class="pk"></span></div>
+      <div class="prow"><span class="pi">●</span>Save session<span class="pk"><kbd>⌘S</kbd></span></div>
+    </div>
+    <div id="pal-foot"><span><kbd class="ghost">↑↓</kbd> navigate</span><span><kbd class="ghost">⏎</kbd> run</span><span><kbd class="ghost">esc</kbd> close</span></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ---------- code lines: [lineNo, glyphHTML, classes, codeHTML] ---------- */
+const L = [];
+const push=(g,cls,h)=>L.push([g,cls,h]);
+push('','',`<span class="k">package</span> com.google.android.gm.sync;`);
+push('','',``);
+push('','',`<span class="k">import</span> javax.crypto.Cipher;`);
+push('','',`<span class="k">import</span> javax.crypto.spec.GCMParameterSpec;`);
+push('','',`<span class="k">import</span> com.google.android.gm.crypto.InviteCipher;`);
+push('','',`<span class="k">import</span> com.google.android.gm.net.GeminiClient;`);
+push('','',``);
+push('','',`<span class="c">// renamed 2026-07-19 · agent:gemini · 84% conf</span>`);
+push('','cov',`<span class="k">public final class</span> <span class="t">MessageSyncHandler</span> <span class="k">implements</span> <span class="t">SyncCallback</span>, <span class="t">Parcelable</span> {`);
+push('','cov',`    <span class="k">private static final</span> <span class="t">String</span> TAG = <span class="s">"MsgSync"</span>;`);
+push('','cov',`    <span class="k">private static final</span> <span class="t">String</span> CIPHER_SPEC = <span class="s">"AES/GCM/NoPadding"</span>;`);
+push('','',`    <span class="k">private final</span> <span class="t">InviteCipher</span> cipher;`);
+push('','',`    <span class="k">private final</span> <span class="t">GeminiClient</span> gemini;`);
+push('','',``);
+push('','cov',`    <span class="k">public</span> <span class="f">MessageSyncHandler</span>(<span class="t">Context</span> ctx) {`);
+push('','cov',`        <span class="k">this</span>.cipher = <span class="k">new</span> <span class="f">InviteCipher</span>(ctx);`);
+push('','cur',`        <span class="k">this</span>.gemini = <span class="t">GeminiClient</span>.<span class="f">forTarget</span>(<span class="s">"gmail.apk"</span>);`);
+push('','',`    }`);
+push('','',``);
+push('','',`    <span class="a">@Override</span>`);
+push('◆','',`    <span class="c">// was: <span class="st">c</span>(Message, int) — entry point from MailSyncService</span>`);
+push('','cov',`    <span class="k">public void</span> <span class="rn">onMessage</span>(<span class="t">Message</span> msg, <span class="k">int</span> flags) {`);
+push('','cov',`        <span class="k">if</span> (msg == <span class="k">null</span> || msg.payload == <span class="k">null</span>) {`);
+push('','cov',`            <span class="k">return</span>;`);
+push('','',`        }`);
+push('','cov2',`        <span class="t">String</span> kind = gemini.<span class="f">classify</span>(msg);`);
+push('','',`        <span class="k">switch</span> (kind) {`);
+push('','cov2',`            <span class="k">case</span> <span class="s">"invite.v2"</span>:`);
+push('■','cov2',`                <span class="t">byte</span>[] plain = cipher.<span class="f">decryptInvite</span>(msg.payload);`);
+push('','cov2',`                <span class="f">handleInvite</span>(plain, msg.sender);`);
+push('','cov2',`                <span class="k">break</span>;`);
+push('','',`            <span class="k">case</span> <span class="s">"sync.ack"</span>:`);
+push('','',`                <span class="t">Log</span>.<span class="f">d</span>(TAG, <span class="s">"ack seq="</span> + msg.seq);`);
+push('','',`                <span class="k">break</span>;`);
+push('','',`            <span class="k">default</span>:`);
+push('','',`                <span class="f">dispatchUnknown</span>(msg, flags &amp; <span class="n">0x2</span>);`);
+push('','',`        }`);
+push('','',`    }`);
+
+const body=document.getElementById('codebody');
+L.forEach(([g,cls,h],i)=>{
+  const tr=document.createElement('tr');
+  if(cls) tr.className=cls;
+  const glyph=g==='◆'?`<span class="bp">◆</span>`:g==='■'?`<span class="tg">■</span>`:'';
+  tr.innerHTML=`<td class="gm">${glyph}</td><td class="ln">${i+1}</td><td class="lc">${h||' '}</td>`;
+  body.appendChild(tr);
+});
+
+/* ---------- target strip ---------- */
+document.querySelectorAll('.tchip').forEach(c=>{
+  c.addEventListener('click',e=>{
+    if(e.target.classList.contains('close'))return;
+    document.querySelectorAll('.tchip').forEach(x=>x.classList.remove('active'));
+    c.classList.add('active');
+  });
+});
+
+/* ---------- tree expand/collapse ---------- */
+document.querySelectorAll('.tnode > .trow').forEach(r=>{
+  r.addEventListener('click',()=>{
+    const n=r.parentElement;
+    if(n.querySelector('.tkids')) n.classList.toggle('closed');
+    document.querySelectorAll('.trow.sel').forEach(x=>x.classList.remove('sel'));
+    r.classList.add('sel');
+  });
+});
+
+/* ---------- dock tabs ---------- */
+document.querySelectorAll('.dtab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('.dtab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.dpane').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('pane-'+t.dataset.pane).classList.add('active');
+  });
+});
+
+/* ---------- xref groups expand/collapse ---------- */
+document.querySelectorAll('.xg-head').forEach(h=>{
+  h.addEventListener('click',()=>h.parentElement.classList.toggle('closed'));
+});
+
+/* ---------- follow toggle ---------- */
+const ft=document.getElementById('followTgl'),fs=document.getElementById('followState');
+ft.addEventListener('click',()=>{
+  ft.classList.toggle('on');
+  fs.textContent=ft.classList.contains('on')?'on':'off';
+});
+
+/* ---------- command palette ---------- */
+const bd=document.getElementById('pal-backdrop'),palIn=document.getElementById('palIn');
+let selIdx=0;
+const rows=()=>[...document.querySelectorAll('.prow')];
+function openPal(){bd.classList.add('open');palIn.value='';setTimeout(()=>palIn.focus(),0);}
+function closePal(){bd.classList.remove('open');}
+function moveSel(d){
+  const rs=rows();if(!rs.length)return;
+  rs[selIdx].classList.remove('sel');
+  selIdx=(selIdx+d+rs.length)%rs.length;
+  rs[selIdx].classList.add('sel');
+}
+rows().forEach((r,i)=>r.addEventListener('click',()=>{selIdx=i;closePal();}));
+bd.addEventListener('click',e=>{if(e.target===bd)closePal();});
+document.getElementById('jump').addEventListener('click',openPal);
+
+document.addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){
+    e.preventDefault();
+    bd.classList.contains('open')?closePal():openPal();
+    return;
+  }
+  if(!bd.classList.contains('open'))return;
+  if(e.key==='Escape')closePal();
+  else if(e.key==='ArrowDown'){e.preventDefault();moveSel(1);}
+  else if(e.key==='ArrowUp'){e.preventDefault();moveSel(-1);}
+  else if(e.key==='Enter'){e.preventDefault();closePal();}
+});
+
+/* ---------- filter input cursor (hide fake cursor when typing) ---------- */
+const fi=document.getElementById('filterIn'),fc=document.getElementById('filterCur');
+fi.addEventListener('input',()=>{fc.style.display=fi.value?'none':'';});
+fi.addEventListener('focus',()=>{fc.style.display=fi.value?'none':'';});
+fi.addEventListener('blur',()=>{fc.style.display='';});
+</script>
+</body>
+</html>

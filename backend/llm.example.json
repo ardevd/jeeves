@@ -1,0 +1,32 @@
+{
+  "providers": {
+    "deepseek": {
+      "baseUrl": "https://api.deepseek.com",
+      "model": "deepseek-v4-pro",
+      "label": "DeepSeek",
+      "extraParams": {
+        "thinking": {
+          "type": "enabled"
+        },
+        "reasoning_effort": "high"
+      }
+    },
+    "openrouter": {
+      "baseUrl": "https://openrouter.ai/api",
+      "model": "anthropic/claude-sonnet-4",
+      "label": "OpenRouter"
+    },
+    "ollama": {
+      "baseUrl": "http://127.0.0.1:11434",
+      "model": "qwen3:32b",
+      "label": "Ollama (local)",
+      "local": true
+    },
+    "my-local-llama": {
+      "baseUrl": "http://127.0.0.1:8080",
+      "model": "local-model",
+      "label": "llama.cpp (local)",
+      "local": true
+    }
+  }
+}

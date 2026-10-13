@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>V4 · BLUEPRINT — RE Workbench Mockup</title>
+<!-- ============================================================================
+  MOCKUP:  design/mockups/vocab/v4-blueprint.html
+  VOCABULARY 4: 'BLUEPRINT' — the contrarian LIGHT-mode engineering-schematic.
+  Base #f4f2ec warm paper + faint construction grid · ink-navy #1c2430 ·
+  hairline 1px ink borders (no shadows) · blueprint blue #0b5cad = action,
+  drafting red #c0342b = markup/annotation · radius 2px · motion = opacity/
+  transform only. Self-contained: inline CSS+JS, system fonts, zero externals.
+============================================================================ -->
+<style>
+/* ---------- tokens ---------- */
+:root{
+  --paper:#f4f2ec;          /* committed warm off-white */
+  --panel:#f8f6f1;          /* elevation step 1 (lightness, not shadow) */
+  --panel-2:#efede6;        /* elevation step 2 / recessed */
+  --ink:#1c2430;
+  --ink-dim:#4d5765;
+  --ink-faint:#7d8794;
+  --line:rgba(28,36,48,.20);
+  --line-soft:rgba(28,36,48,.11);
+  --line-strong:rgba(28,36,48,.38);
+  --grid:rgba(28,36,48,.045);
+  --dot:rgba(28,36,48,.12);
+  --blue:#0b5cad;
+  --blue-ink:#0a4e91;
+  --blue-soft:rgba(11,92,173,.09);
+  --blue-line:rgba(11,92,173,.45);
+  --red:#c0342b;
+  --red-soft:rgba(192,52,43,.08);
+  --comment:#79828f;
+  --current:rgba(11,92,173,.07);
+  --sel:rgba(11,92,173,.16);
+  --radius:2px;
+  --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono","DejaVu Sans Mono",monospace;
+}
+body.dark{
+  --paper:#171b21;          /* simple dark variant, never pure #000 */
+  --panel:#1b2027;
+  --panel-2:#14181e;
+  --ink:#d6dbe2;            /* ~87% off-white */
+  --ink-dim:#9aa3b0;
+  --ink-faint:#6c7684;
+  --line:rgba(214,219,226,.18);
+  --line-soft:rgba(214,219,226,.10);
+  --line-strong:rgba(214,219,226,.36);
+  --grid:rgba(214,219,226,.04);
+  --dot:rgba(214,219,226,.12);
+  --blue:#5b9fe6;
+  --blue-ink:#7fb6ee;
+  --blue-soft:rgba(91,159,230,.13);
+  --blue-line:rgba(91,159,230,.5);
+  --red:#e06a5c;
+  --red-soft:rgba(224,106,92,.12);
+  --comment:#7a8494;
+  --current:rgba(91,159,230,.12);
+  --sel:rgba(91,159,230,.24);
+}
+/* ---------- base ---------- */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font:12px/1.45 var(--ui);color:var(--ink);background:var(--paper);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:52px 52px;overflow:hidden;
+}
+.dotbg{background-image:radial-gradient(var(--dot) 1px,transparent 1.3px);background-size:16px 16px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+kbd{
+  font:600 9.5px var(--mono);color:var(--ink-dim);background:var(--panel);
+  border:1px solid var(--line-strong);border-radius:var(--radius);padding:0 4px 1px;
+}
+svg{display:block}
+/* panel annotation titles — read like drawing labels */
+.ptitle{
+  display:flex;align-items:center;gap:6px;padding:5px 10px 4px;
+  font:600 9.5px/1 var(--ui);letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-dim);border-bottom:1px solid var(--line);
+  background:var(--panel);user-select:none;flex:0 0 auto;
+}
+.ptitle::before{content:"┤";color:var(--blue);font-family:var(--mono);font-weight:400}
+.ptitle .tick{margin-left:auto;color:var(--ink-faint);font-family:var(--mono);letter-spacing:0}
+/* tooltips (element-based so kbd hints stay styled) */
+.tt{position:relative}
+.tt .tip{
+  position:absolute;bottom:calc(100% + 7px);left:50%;transform:translate(-50%,3px);
+  white-space:nowrap;background:var(--panel);border:1px solid var(--line-strong);
+  border-radius:var(--radius);padding:3px 7px;font:10px/1.6 var(--ui);color:var(--ink);
+  opacity:0;pointer-events:none;transition:opacity .12s,transform .12s;z-index:60;
+}
+.tt .tip b{font-weight:600}
+.tt:hover .tip{opacity:1;transform:translate(-50%,0)}
+/* ---------- app frame ---------- */
+#app{display:grid;height:100vh;grid-template-rows:38px 30px 1fr 168px 24px}
+/* ---------- top bar ---------- */
+#topbar{
+  display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;
+  padding:0 10px;background:var(--panel);border-bottom:1px solid var(--line-strong);
+}
+#topbar .left,#topbar .right{display:flex;align-items:center;gap:8px;min-width:0}
+#topbar .right{justify-content:flex-end}
+.favicon{border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--paper);flex:0 0 auto}
+.hist{display:flex;gap:2px}
+.hist button{
+  width:20px;height:20px;border:1px solid var(--line);border-radius:var(--radius);
+  color:var(--ink-dim);font-family:var(--mono);font-size:11px;line-height:1;
+  display:grid;place-items:center;background:var(--paper);
+}
+.hist button:hover{color:var(--blue);border-color:var(--blue-line)}
+.crumb{
+  font:11px var(--mono);color:var(--ink-dim);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;min-width:0;
+}
+.crumb b{color:var(--ink);font-weight:600}
+.crumb .sep{color:var(--ink-faint);padding:0 3px}
+.crumb .was{color:var(--red);font-size:10px}
+.jump{
+  display:flex;align-items:center;gap:8px;width:340px;max-width:38vw;
+  border:1px solid var(--line-strong);border-radius:var(--radius);
+  background:var(--paper);padding:3px 8px;color:var(--ink-faint);
+}
+.jump input{
+  flex:1;border:0;outline:0;background:none;color:var(--ink);
+  font:11.5px var(--mono);
+}
+.jump input::placeholder{color:var(--ink-faint)}
+.jump.focus{border-color:var(--blue);outline:1px dashed var(--blue-line);outline-offset:2px}
+.tbtn{
+  display:flex;align-items:center;gap:5px;height:22px;padding:0 8px;
+  border:1px solid var(--line);border-radius:var(--radius);background:var(--paper);
+  color:var(--ink-dim);font:600 10px var(--ui);letter-spacing:.06em;text-transform:uppercase;
+}
+.tbtn:hover{border-color:var(--blue-line);color:var(--blue)}
+.tbtn .dot{width:6px;height:6px;border-radius:50%;background:var(--red)}
+.agentchip{
+  display:flex;align-items:center;gap:6px;height:22px;padding:0 8px;
+  border:1px dashed var(--blue-line);border-radius:var(--radius);
+  font:10.5px var(--mono);color:var(--blue-ink);background:var(--blue-soft);
+}
+.follow{
+  height:22px;padding:0 8px;border:1px solid var(--line);border-radius:var(--radius);
+  font:600 10px var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim);
+  background:var(--paper);
+}
+.follow.on{border-color:var(--blue);color:#fff;background:var(--blue)}
+body.dark .follow.on{color:#0d1117}
+/* ---------- target strip ---------- */
+#strip{
+  display:flex;align-items:flex-end;gap:2px;padding:0 8px;background:var(--panel-2);
+  border-bottom:1px solid var(--line-strong);
+}
+.tchip{
+  display:flex;align-items:center;gap:6px;height:24px;padding:0 10px;
+  border:1px solid var(--line);border-bottom:0;border-radius:var(--radius) var(--radius) 0 0;
+  background:var(--panel-2);color:var(--ink-dim);font:10.5px var(--mono);cursor:pointer;
+}
+.tchip:hover{color:var(--ink)}
+.tchip.active{background:var(--paper);color:var(--ink);border-color:var(--line-strong);
+  box-shadow:inset 0 2px 0 var(--blue)}
+.tchip .eng{color:var(--ink-faint)}
+.tchip.active .eng{color:var(--blue)}
+.tchip .adot{width:6px;height:6px;border-radius:50%;background:var(--blue);animation:pulse 1.6s infinite}
+.tchip .dev{width:6px;height:6px;border:1px solid var(--ink-dim);border-radius:1px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.tchip.add{border:1px dashed var(--line-strong);border-bottom:0;background:none;
+  color:var(--ink-faint);padding:0 8px}
+.tchip.add:hover{color:var(--blue);border-color:var(--blue-line)}
+/* ---------- main grid ---------- */
+#main{display:grid;grid-template-columns:42px 236px 1fr 272px;min-height:0;border-bottom:1px solid var(--line-strong)}
+/* activity rail */
+#rail{
+  display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;
+  background:var(--panel);border-right:1px solid var(--line);
+}
+#rail button{
+  width:30px;height:30px;display:grid;place-items:center;border-radius:var(--radius);
+  color:var(--ink-faint);border:1px solid transparent;
+}
+#rail button:hover{color:var(--ink)}
+#rail button.active{color:var(--blue);border-color:var(--blue-line);background:var(--blue-soft)}
+#rail button.active svg{stroke:var(--blue)}
+#rail svg{stroke:currentColor;fill:none;stroke-width:1.4}
+/* sidebar */
+#sidebar{display:flex;flex-direction:column;min-height:0;background:var(--paper);border-right:1px solid var(--line)}
+#sidebar .filter{padding:6px 8px;border-bottom:1px solid var(--line-soft);background:var(--panel)}
+#sidebar .filter input{
+  width:100%;border:1px solid var(--line);border-radius:var(--radius);background:var(--paper);
+  padding:3px 7px;font:11px var(--mono);color:var(--ink);outline:0;
+}
+#sidebar .filter input:focus{border-color:var(--blue)}
+#tree{flex:1;overflow:auto;padding:4px 0 12px;font:11.5px var(--mono)}
+.tnode{user-select:none}
+.trow{
+  display:flex;align-items:center;gap:5px;height:21px;padding-right:8px;
+  cursor:pointer;white-space:nowrap;color:var(--ink-dim);
+}
+.trow:hover{background:var(--blue-soft);color:var(--ink)}
+.trow.sel{background:var(--sel);color:var(--ink);box-shadow:inset 2px 0 0 var(--blue)}
+.twisty{width:14px;text-align:center;color:var(--ink-faint);flex:0 0 auto;font-size:10px}
+.tnode.open > .trow .twisty{color:var(--blue)}
+.kids{display:none}
+.tnode.open > .kids{display:block}
+.pkg{color:var(--blue-ink)}
+.cls{color:var(--ink)}
+.trow .obf{color:var(--ink-faint)}
+.was{color:var(--red);font-size:9.5px;margin-left:4px}
+.tdot{width:5px;height:5px;margin-left:auto;flex:0 0 auto;border-radius:1px}
+.tdot.b{background:var(--blue)}.tdot.r{background:var(--red)}.tdot.n{border:1px solid var(--ink-faint)}
+/* center */
+#center{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--paper)}
+#etabs{display:flex;align-items:flex-end;gap:2px;padding:0 8px;background:var(--panel-2);
+  border-bottom:1px solid var(--line-strong);flex:0 0 auto}
+.etab{display:flex;align-items:center;gap:7px;height:25px;padding:0 11px;
+  border:1px solid var(--line);border-bottom:0;border-radius:var(--radius) var(--radius) 0 0;
+  background:var(--panel-2);color:var(--ink-dim);font:11px var(--mono);cursor:pointer}
+.etab.active{background:var(--paper);color:var(--ink);border-color:var(--line-strong);
+  box-shadow:inset 0 2px 0 var(--blue)}
+.etab.agent{box-shadow:inset 0 2px 0 var(--red);color:var(--red)}
+.etab .x{color:var(--ink-faint);font-size:10px}
+.etab .x:hover{color:var(--red)}
+#chead{
+  display:flex;align-items:center;gap:10px;padding:5px 12px;flex:0 0 auto;
+  border-bottom:1px dashed var(--line-strong);background:var(--panel);
+}
+#chead .fqcn{font:11.5px var(--mono);color:var(--ink)}
+#chead .fqcn .p{color:var(--ink-faint)}
+#chead .ops{margin-left:auto;display:flex;gap:6px}
+.opbtn{display:flex;align-items:center;gap:6px;height:20px;padding:0 8px;
+  border:1px solid var(--line);border-radius:var(--radius);background:var(--paper);
+  color:var(--ink-dim);font:600 10px var(--ui)}
+.opbtn:hover{border-color:var(--blue-line);color:var(--blue)}
+/* code */
+#code{flex:1;overflow:auto;font:12px/1.6 var(--mono);font-variant-numeric:tabular-nums;padding:6px 0 18px}
+.row{display:grid;grid-template-columns:26px 46px 1fr;min-width:max-content}
+.row:hover{background:var(--blue-soft)}
+.row.cur{background:var(--current);box-shadow:inset 2px 0 0 var(--blue)}
+.gm{position:relative;text-align:center;color:var(--ink-faint);font-size:9px;line-height:19.2px;user-select:none}
+.gm .cov{position:absolute;left:2px;top:4px;bottom:4px;width:3px;background:var(--blue);opacity:.55;border-radius:1px}
+.gm .bp{color:var(--red);font-size:11px}
+.gm .tg{color:var(--blue);font-size:10px}
+.ln{text-align:right;padding-right:10px;color:var(--ink-faint);user-select:none;font-size:10.5px;line-height:19.2px}
+.row.cur .ln{color:var(--blue);font-weight:600}
+.cl{white-space:pre;padding-right:24px}
+.k{color:var(--ink);font-weight:700}          /* keywords: heavy ink */
+.s{color:var(--blue-ink)}                      /* strings: blueprint blue */
+.c{color:var(--comment);font-style:italic}     /* comments: drafting gray */
+.a{color:var(--blue)}                          /* annotations */
+.rw{color:var(--red);text-decoration:line-through;text-decoration-thickness:1px}
+.rarr{color:var(--red);font-size:10px;padding:0 2px}
+.rn{color:var(--ink);font-weight:700;border-bottom:1px dashed var(--red)}
+.rnote{
+  color:var(--red);font-size:9.5px;margin-left:18px;letter-spacing:.04em;
+  border-left:1px dashed var(--red);padding-left:8px;user-select:none;
+}
+/* inspector */
+#insp{display:flex;flex-direction:column;min-height:0;background:var(--paper);border-left:1px solid var(--line)}
+.inspbody{flex:1;overflow:auto}
+.spec{padding:7px 12px;border-bottom:1px dashed var(--line);font:11px var(--mono)}
+.spec .k2{display:grid;grid-template-columns:74px 1fr;gap:3px 8px;line-height:1.7}
+.spec dt{color:var(--ink-faint)}
+.spec dd{color:var(--ink)}
+.spec dd .p{color:var(--ink-faint)}
+.flag{display:inline-block;border:1px solid var(--line-strong);border-radius:var(--radius);
+  padding:0 4px;font-size:9.5px;color:var(--ink-dim);margin-right:3px}
+.xitem{display:flex;gap:6px;padding:4px 12px;font:10.5px var(--mono);color:var(--ink-dim);cursor:pointer}
+.xitem:hover{background:var(--blue-soft);color:var(--ink)}
+.xitem .arw{color:var(--blue)}
+.xitem .ln2{margin-left:auto;color:var(--ink-faint)}
+/* dock */
+#dock{display:grid;grid-template-rows:26px 1fr;background:var(--paper)}
+#dtabs{display:flex;align-items:flex-end;gap:2px;padding:0 8px;background:var(--panel-2);
+  border-bottom:1px solid var(--line-strong)}
+.dtab{height:21px;padding:0 12px;border:1px solid var(--line);border-bottom:0;
+  border-radius:var(--radius) var(--radius) 0 0;background:var(--panel-2);
+  color:var(--ink-dim);font:600 10px var(--ui);letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+.dtab:hover{color:var(--ink)}
+.dtab.active{background:var(--paper);color:var(--blue);border-color:var(--line-strong);
+  box-shadow:inset 0 2px 0 var(--blue)}
+.dpanel{display:none;overflow:auto;padding:6px 0 10px;font:11px var(--mono)}
+.dpanel.active{display:block}
+.ghead{display:flex;align-items:center;gap:6px;padding:3px 12px;color:var(--ink);
+  font-weight:600;cursor:pointer;user-select:none}
+.ghead:hover{background:var(--blue-soft)}
+.ghead .n{margin-left:auto;color:var(--ink-faint);font-weight:400;font-size:10px}
+.ghead .twisty{width:12px}
+.kids2{display:none}
+.tnode.open > .kids2{display:block}
+.xref{display:flex;gap:7px;padding:2px 12px 2px 34px;color:var(--ink-dim);cursor:pointer}
+.xref:hover{background:var(--blue-soft);color:var(--ink)}
+.xref .arw{color:var(--blue)}
+.xref .site{margin-left:auto;color:var(--ink-faint);font-size:10px}
+.dnote{padding:8px 14px;color:var(--ink-faint);font:10.5px var(--ui)}
+.tagchip{display:inline-flex;align-items:center;gap:5px;margin:3px 4px;padding:2px 8px;
+  border:1px solid var(--line-strong);border-radius:var(--radius);font:10px var(--mono);color:var(--ink-dim)}
+.tagchip i{width:6px;height:6px;border-radius:1px;font-style:normal}
+.rtable{width:100%;border-collapse:collapse}
+.rtable td{padding:2px 12px;border-bottom:1px dashed var(--line-soft);color:var(--ink-dim)}
+.rtable td:last-child{text-align:right;color:var(--ink)}
+/* status bar */
+#status{
+  display:flex;align-items:center;gap:0;padding:0 10px;background:var(--panel);
+  border-top:1px solid var(--line-strong);font:10.5px var(--mono);
+  font-variant-numeric:tabular-nums;color:var(--ink-dim);user-select:none;
+}
+#status .seg{padding:0 9px;border-right:1px solid var(--line)}
+#status .seg:first-child{padding-left:0}
+#status .sp{flex:1}
+#status .dirty{color:var(--red)}
+.sfollow{border-left:1px solid var(--line);padding-left:9px;cursor:pointer}
+.sfollow.on{color:var(--blue)}
+/* command palette */
+#pal-backdrop{
+  position:fixed;inset:0;background:rgba(244,242,236,.72);display:none;z-index:100;
+}
+body.dark #pal-backdrop{background:rgba(13,17,23,.7)}
+#pal-backdrop.open{display:block}
+#pal{
+  position:absolute;top:14vh;left:50%;transform:translateX(-50%);width:520px;max-width:90vw;
+  background:var(--panel);border:1px solid var(--line-strong);border-radius:var(--radius);
+  outline:1px dashed var(--line);outline-offset:3px;
+}
+#pal .pin{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line-strong)}
+#pal .pin::before{content:"┤";color:var(--blue);font-family:var(--mono)}
+#pal .pin input{flex:1;border:0;outline:0;background:none;color:var(--ink);font:13px var(--mono)}
+#pal .pin input::placeholder{color:var(--ink-faint)}
+#pal .plist{max-height:300px;overflow:auto;padding:4px 0}
+.pitem{display:flex;align-items:center;gap:10px;padding:5px 14px;cursor:pointer;
+  font:11.5px var(--mono);color:var(--ink-dim)}
+.pitem .cat{font:600 9px var(--ui);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--blue);width:64px;flex:0 0 auto}
+.pitem kbd{margin-left:auto}
+.pitem.sel{background:var(--sel);color:var(--ink);box-shadow:inset 2px 0 0 var(--blue)}
+.pfoot{display:flex;gap:14px;padding:5px 14px;border-top:1px dashed var(--line-strong);
+  font:9.5px var(--ui);color:var(--ink-faint)}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ======================= top bar ======================= -->
+  <header id="topbar">
+    <div class="left">
+      <!-- nameless product: favicon glyph only — phosphor hex bytes, blueprint palette -->
+      <svg class="favicon" width="20" height="20" viewBox="0 0 20 20" aria-label="app">
+        <rect x="0.5" y="0.5" width="19" height="19" fill="none"/>
+        <text x="3" y="9" font-family="ui-monospace,Menlo,monospace" font-size="6.5" fill="#0b5cad">4F</text>
+        <text x="3" y="16.5" font-family="ui-monospace,Menlo,monospace" font-size="6.5" fill="#c0342b">7A</text>
+        <rect x="12.6" y="11" width="4" height="4" fill="none" stroke="#0b5cad" stroke-width="0.8"/>
+      </svg>
+      <div class="hist">
+        <button class="tt" title="">‹<span class="tip"><b>Back</b> <kbd>⌘[</kbd></span></button>
+        <button class="tt" title="">›<span class="tip"><b>Forward</b> <kbd>⌘]</kbd></span></button>
+      </div>
+      <div class="crumb" id="crumb">gmail.apk<span class="sep">›</span>com.google.android.gm.sync<span class="sep">›</span><b>MessageSyncHandler</b><span class="was"> (was: c)</span><span class="sep">›</span><b>onMessage</b></div>
+    </div>
+    <div class="jump" id="jump">
+      <span style="color:var(--blue)">┤</span>
+      <input id="jumpInput" placeholder="jump anywhere — class, method, string, address…" spellcheck="false">
+      <kbd>G</kbd>
+    </div>
+    <div class="right">
+      <button class="tbtn tt" id="darkToggle">◐ dark<span class="tip"><b>Flip dark variant</b> (visual only)</span></button>
+      <button class="tbtn tt" id="saveBtn"><span class="dot"></span>save<span class="tip"><b>Save session</b> — 3 unsaved renames <kbd>⌘S</kbd></span></button>
+      <span class="agentchip tt">🤖 at sync.c<span class="tip">Agent <b>scout-1</b> is reading <b>sync.c</b> in JEB</span></span>
+      <button class="follow tt" id="followBtn">follow<span class="tip"><b>Tail the agent</b> — mirror its navigation <kbd>⌘⇧F</kbd></span></button>
+    </div>
+  </header>
+
+  <!-- ======================= target strip ======================= -->
+  <nav id="strip">
+    <div class="tchip active">gmail.apk <span class="eng">· JEB</span></div>
+    <div class="tchip">gmail.apk <span class="eng">· JADX</span></div>
+    <div class="tchip"><span class="adot"></span>libgmail.so <span class="eng">· IDA</span></div>
+    <div class="tchip"><span class="dev"></span>wallet.apk <span class="eng">· JADX</span></div>
+    <div class="tchip add tt">+<span class="tip"><b>Open target</b> <kbd>⌘O</kbd></span></div>
+  </nav>
+
+  <!-- ======================= main ======================= -->
+  <div id="main">
+
+    <aside id="rail">
+      <button class="active tt" data-rail="explorer"><svg width="15" height="15" viewBox="0 0 15 15"><path d="M2 2.5h4l1.2 1.6H13v8.4H2z"/></svg><span class="tip"><b>Explorer</b> <kbd>⌘1</kbd></span></button>
+      <button class="tt" data-rail="search"><svg width="15" height="15" viewBox="0 0 15 15"><circle cx="6.5" cy="6.5" r="4"/><path d="M9.5 9.5 13 13"/></svg><span class="tip"><b>Search</b> <kbd>⌘2</kbd></span></button>
+      <button class="tt" data-rail="strings"><svg width="15" height="15" viewBox="0 0 15 15"><path d="M3 4h9M3 7.5h9M3 11h5.5"/></svg><span class="tip"><b>Strings</b> <kbd>⌘3</kbd></span></button>
+      <button class="tt" data-rail="tags"><svg width="15" height="15" viewBox="0 0 15 15"><path d="M2.5 2.5h5L13 8l-5 5-5.5-5.5z"/><circle cx="5.5" cy="5.5" r="1"/></svg><span class="tip"><b>Tags</b> <kbd>⌘4</kbd></span></button>
+      <button class="tt" data-rail="runs"><svg width="15" height="15" viewBox="0 0 15 15"><path d="M4 3l8 4.5L4 12z"/></svg><span class="tip"><b>Runs</b> <kbd>⌘5</kbd></span></button>
+      <button class="tt" data-rail="agents"><svg width="15" height="15" viewBox="0 0 15 15"><rect x="3" y="4.5" width="9" height="7" rx="1"/><path d="M7.5 2v2.5M5 8h1M9 8h1"/></svg><span class="tip"><b>Agents</b> <kbd>⌘6</kbd></span></button>
+    </aside>
+
+    <aside id="sidebar" class="dotbg">
+      <div class="ptitle">explorer <span class="tick">├─ tree</span></div>
+      <div class="filter"><input placeholder="filter classes…  ( / )" spellcheck="false"></div>
+      <div id="tree">
+        <div class="tnode open">
+          <div class="trow"><span class="twisty">▾</span><span class="pkg">com.google.android.gm</span></div>
+          <div class="kids">
+            <div class="tnode open">
+              <div class="trow" style="padding-left:14px"><span class="twisty">▾</span><span class="pkg">sync</span><span class="tdot b"></span></div>
+              <div class="kids">
+                <div class="trow sel" style="padding-left:28px"><span class="twisty"></span><span class="cls">MessageSyncHandler</span><span class="was">was: c</span><span class="tdot b"></span></div>
+                <div class="trow" style="padding-left:28px"><span class="twisty"></span><span class="cls">MailSyncService</span><span class="tdot n"></span></div>
+                <div class="trow" style="padding-left:28px"><span class="twisty"></span><span class="obf">d</span></div>
+                <div class="trow" style="padding-left:28px"><span class="twisty"></span><span class="obf">g</span><span class="tdot r"></span></div>
+              </div>
+            </div>
+            <div class="tnode">
+              <div class="trow" style="padding-left:14px"><span class="twisty">▸</span><span class="pkg">provider</span></div>
+              <div class="kids">
+                <div class="trow" style="padding-left:28px"><span class="twisty"></span><span class="cls">MailContract</span></div>
+                <div class="trow" style="padding-left:28px"><span class="twisty"></span><span class="obf">a</span></div>
+              </div>
+            </div>
+            <div class="tnode">
+              <div class="trow" style="padding-left:14px"><span class="twisty">▸</span><span class="pkg">ui</span><span class="tdot n"></span></div>
+              <div class="kids">
+                <div class="trow" style="padding-left:28px"><span class="twisty"></span><span class="cls">ConversationView</span></div>
+              </div>
+            </div>
+            <div class="tnode open">
+              <div class="trow" style="padding-left:14px"><span class="twisty">▾</span><span class="pkg">crypto</span><span class="tdot r"></span></div>
+              <div class="kids">
+                <div class="trow" style="padding-left:28px"><span class="twisty"></span><span class="cls">InviteCipher</span><span class="was">was: b</span><span class="tdot r"></span></div>
+                <div class="trow" style="padding-left:28px"><span class="twisty"></span><span class="obf">h</span></div>
+              </div>
+            </div>
+            <div class="tnode">
+              <div class="trow" style="padding-left:14px"><span class="twisty">▸</span><span class="pkg">util</span></div>
+              <div class="kids">
+                <div class="trow" style="padding-left:28px"><span class="twisty"></span><span class="cls">GeminiClient</span><span class="tdot b"></span></div>
+                <div class="trow" style="padding-left:28px"><span class="twisty"></span><span class="obf">e</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <section id="center">
+      <div id="etabs">
+        <div class="etab active">MessageSyncHandler.java <span class="x">✕</span></div>
+        <div class="etab agent tt">🤖 sync.c <span class="x">✕</span><span class="tip">Opened by agent <b>scout-1</b> — follow to co-navigate</span></div>
+      </div>
+      <div id="chead">
+        <span class="fqcn"><span class="p">com.google.android.gm.sync.</span>MessageSyncHandler <span class="was">was: c</span></span>
+        <div class="ops">
+          <button class="opbtn tt">rename <kbd>F2</kbd><span class="tip"><b>Rename class</b> — redlined until saved <kbd>F2</kbd></span></button>
+          <button class="opbtn tt">comment <kbd>;</kbd><span class="tip"><b>Annotate</b> <kbd>;</kbd></span></button>
+          <button class="opbtn tt">find refs <kbd>X</kbd><span class="tip"><b>Cross-references</b> <kbd>X</kbd></span></button>
+        </div>
+      </div>
+      <div id="code" class="dotbg">
+        <div class="row"><span class="gm"></span><span class="ln">1</span><span class="cl"><span class="k">package</span> com.google.android.gm.sync;</span></div>
+        <div class="row"><span class="gm"></span><span class="ln">2</span><span class="cl"></span></div>
+        <div class="row"><span class="gm"></span><span class="ln">3</span><span class="cl"><span class="k">import</span> com.google.android.gm.crypto.InviteCipher;</span></div>
+        <div class="row"><span class="gm"></span><span class="ln">4</span><span class="cl"><span class="k">import</span> com.google.android.gm.util.GeminiClient;</span></div>
+        <div class="row"><span class="gm"></span><span class="ln">5</span><span class="cl"></span></div>
+        <div class="row"><span class="gm"></span><span class="ln">6</span><span class="cl"><span class="c">// decompiled by jeb · names recovered via rename map</span></span></div>
+        <div class="row"><span class="gm"></span><span class="ln">7</span><span class="cl"><span class="k">public class</span> <b>MessageSyncHandler</b> <span class="k">extends</span> Handler <span class="k">implements</span> MailObserver {</span></div>
+        <div class="row"><span class="gm"><span class="cov"></span></span><span class="ln">8</span><span class="cl">    <span class="k">private static final</span> String TRANSFORM = <span class="s">"AES/GCM/NoPadding"</span>;</span></div>
+        <div class="row"><span class="gm"><span class="cov"></span></span><span class="ln">9</span><span class="cl">    <span class="k">private final</span> Mailbox mMailbox;</span></div>
+        <div class="row"><span class="gm"><span class="cov"></span></span><span class="ln">10</span><span class="cl">    <span class="k">private final</span> InviteCipher mCipher;  <span class="c">// was: b</span></span></div>
+        <div class="row"><span class="gm"></span><span class="ln">11</span><span class="cl"></span></div>
+        <div class="row"><span class="gm"><span class="cov"></span></span><span class="ln">12</span><span class="cl">    <span class="a">@Override</span></span></div>
+        <div class="row"><span class="gm"><span class="cov"></span></span><span class="ln">13</span><span class="cl">    <span class="k">public void</span> <span class="rw">c</span><span class="rarr">→</span><span class="rn">onMessage</span>(SyncMessage message) {<span class="rnote">┤ was: c · renamed 2m ago</span></span></div>
+        <div class="row"><span class="gm"><span class="cov"></span></span><span class="ln">14</span><span class="cl">        <span class="k">if</span> (message == <span class="k">null</span>) {</span></div>
+        <div class="row"><span class="gm"></span><span class="ln">15</span><span class="cl">            <span class="k">return</span>;</span></div>
+        <div class="row"><span class="gm"><span class="cov"></span></span><span class="ln">16</span><span class="cl">        }</span></div>
+        <div class="row cur"><span class="gm"><span class="cov"></span><span class="bp">◆</span></span><span class="ln">17</span><span class="cl">        String label = GeminiClient.classify(message);</span></div>
+        <div class="row"><span class="gm"><span class="cov"></span></span><span class="ln">18</span><span class="cl">        mRetryCount = 0;</span></div>
+        <div class="row"><span class="gm"><span class="cov"></span></span><span class="ln">19</span><span class="cl">        <span class="k">if</span> (<span class="s">"invite.v2"</span>.equals(message.type)) {</span></div>
+        <div class="row"><span class="gm"><span class="cov"></span><span class="tg">■</span></span><span class="ln">20</span><span class="cl">            <span class="k">byte</span>[] key = mCipher.unwrapKey(message.payload);</span></div>
+        <div class="row"><span class="gm"><span class="cov"></span></span><span class="ln">21</span><span class="cl">            Cipher c = Cipher.getInstance(TRANSFORM);</span></div>
+        <div class="row"><span class="gm"><span class="cov"></span></span><span class="ln">22</span><span class="cl">            c.init(Cipher.DECRYPT_MODE, key);</span></div>
+        <div class="row"><span class="gm"><span class="cov"></span></span><span class="ln">23</span><span class="cl">            <span class="k">byte</span>[] body = c.doFinal(message.body);</span></div>
+        <div class="row"><span class="gm"><span class="cov"></span></span><span class="ln">24</span><span class="cl">            mMailbox.store(message.folder, body);</span></div>
+        <div class="row"><span class="gm"></span><span class="ln">25</span><span class="cl">        } <span class="k">else</span> {</span></div>
+        <div class="row"><span class="gm"></span><span class="ln">26</span><span class="cl">            mMailbox.enqueue(message);</span></div>
+        <div class="row"><span class="gm"></span><span class="ln">27</span><span class="cl">        }</span></div>
+        <div class="row"><span class="gm"><span class="cov"></span></span><span class="ln">28</span><span class="cl">        notifyObservers(message);</span></div>
+        <div class="row"><span class="gm"><span class="cov"></span></span><span class="ln">29</span><span class="cl">    }</span></div>
+        <div class="row"><span class="gm"></span><span class="ln">30</span><span class="cl"></span></div>
+        <div class="row"><span class="gm"></span><span class="ln">31</span><span class="cl">    <span class="k">private void</span> notifyObservers(SyncMessage message) {</span></div>
+        <div class="row"><span class="gm"></span><span class="ln">32</span><span class="cl">        <span class="k">for</span> (MailObserver o : mObservers) {</span></div>
+        <div class="row"><span class="gm"></span><span class="ln">33</span><span class="cl">            o.onSync(message);</span></div>
+        <div class="row"><span class="gm"></span><span class="ln">34</span><span class="cl">        }</span></div>
+        <div class="row"><span class="gm"></span><span class="ln">35</span><span class="cl">    }</span></div>
+        <div class="row"><span class="gm"></span><span class="ln">36</span><span class="cl"></span></div>
+        <div class="row"><span class="gm"></span><span class="ln">37</span><span class="cl">    <span class="c">// TODO(agent): verify invite.v2 path against libgmail.so</span></span></div>
+        <div class="row"><span class="gm"></span><span class="ln">38</span><span class="cl">}</span></div>
+      </div>
+    </section>
+
+    <aside id="insp" class="dotbg">
+      <div class="ptitle">class <span class="tick">├─ spec</span></div>
+      <div class="inspbody">
+        <div class="spec">
+          <dl class="k2">
+            <dt>name</dt><dd>MessageSyncHandler <span class="was">was: c</span></dd>
+            <dt>package</dt><dd><span class="p">com.google.android.gm.</span>sync</dd>
+            <dt>super</dt><dd>android.os.Handler</dd>
+            <dt>interfaces</dt><dd>MailObserver</dd>
+            <dt>flags</dt><dd><span class="flag">public</span><span class="flag">final?</span></dd>
+            <dt>methods</dt><dd>7 <span class="p">·</span> fields 4</dd>
+            <dt>xrefs</dt><dd>23 <span class="p">·</span> strings 6</dd>
+          </dl>
+        </div>
+        <div class="ptitle" style="border-top:1px solid var(--line)">selection <span class="tick">├─ onMessage</span></div>
+        <div class="spec" style="border-bottom:0">
+          <div class="xitem"><span class="arw">→</span><span>MailSyncService.onStartCommand</span><span class="ln2">:88</span></div>
+          <div class="xitem"><span class="arw">→</span><span>MailSyncService.handleMessage</span><span class="ln2">:132</span></div>
+          <div class="xitem"><span class="arw">→</span><span>SyncEngine.dispatch</span><span class="ln2">:47</span></div>
+          <div class="xitem"><span class="arw">→</span><span>GcmReceiver.onReceive</span><span class="ln2">:19</span></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ======================= dock ======================= -->
+  <section id="dock">
+    <div id="dtabs">
+      <button class="dtab active" data-dock="xrefs">xrefs</button>
+      <button class="dtab" data-dock="callees">callees</button>
+      <button class="dtab" data-dock="runtime">runtime</button>
+      <button class="dtab" data-dock="tags">tags</button>
+      <button class="dtab" data-dock="flows">flows</button>
+      <button class="dtab" data-dock="bookmarks">bookmarks</button>
+      <button class="dtab" data-dock="history">history</button>
+    </div>
+    <div class="dpanel active" data-panel="xrefs">
+      <div class="tnode open">
+        <div class="ghead"><span class="twisty">▾</span>MailSyncService<span class="n">2 sites</span></div>
+        <div class="kids2">
+          <div class="xref"><span class="arw">→</span>onStartCommand <span style="color:var(--ink-faint)">→</span> <b>onMessage</b><span class="site">sync/MailSyncService.java:88</span></div>
+          <div class="xref"><span class="arw">→</span>handleMessage <span style="color:var(--ink-faint)">→</span> <b>onMessage</b><span class="site">sync/MailSyncService.java:132</span></div>
+        </div>
+      </div>
+      <div class="tnode open">
+        <div class="ghead"><span class="twisty">▾</span>SyncEngine<span class="n">1 site</span></div>
+        <div class="kids2">
+          <div class="xref"><span class="arw">→</span>dispatch <span style="color:var(--ink-faint)">→</span> <b>onMessage</b><span class="site">sync/SyncEngine.java:47</span></div>
+        </div>
+      </div>
+      <div class="tnode">
+        <div class="ghead"><span class="twisty">▸</span>GcmReceiver<span class="n">2 sites</span></div>
+        <div class="kids2">
+          <div class="xref"><span class="arw">→</span>onReceive <span style="color:var(--ink-faint)">→</span> <b>onMessage</b><span class="site">push/GcmReceiver.java:19</span></div>
+          <div class="xref"><span class="arw">→</span>onReceive <span style="color:var(--ink-faint)">→</span> <b>onMessage</b><span class="site">push/GcmReceiver.java:24</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="dpanel" data-panel="callees">
+      <div class="xref"><span class="arw">├</span>GeminiClient.classify(message)<span class="site">util/GeminiClient.java:12</span></div>
+      <div class="xref"><span class="arw">├</span>InviteCipher.unwrapKey(payload)<span class="site">crypto/InviteCipher.java:31</span></div>
+      <div class="xref"><span class="arw">├</span>Cipher.getInstance(<span class="s">"AES/GCM/NoPadding"</span>)<span class="site">javax.crypto</span></div>
+      <div class="xref"><span class="arw">└</span>Mailbox.store(folder, body)<span class="site">provider/Mailbox.java:204</span></div>
+    </div>
+    <div class="dpanel" data-panel="runtime">
+      <table class="rtable">
+        <tr><td>message.type</td><td class="mono">"invite.v2"</td></tr>
+        <tr><td>message.payload</td><td class="mono">byte[48] · a3 9f 01 …</td></tr>
+        <tr><td>label (GeminiClient)</td><td class="mono">"invite/handshake"</td></tr>
+        <tr><td>mRetryCount</td><td class="mono">0</td></tr>
+        <tr><td>last run</td><td class="mono">run #14 · device pixel-7</td></tr>
+      </table>
+    </div>
+    <div class="dpanel" data-panel="tags">
+      <span class="tagchip"><i style="background:var(--blue)"></i>entry-point</span>
+      <span class="tagchip"><i style="background:var(--red)"></i>crypto-path</span>
+      <span class="tagchip"><i style="border:1px solid var(--ink-faint)"></i>agent-verified</span>
+      <span class="tagchip"><i style="background:var(--blue)"></i>rename-map</span>
+    </div>
+    <div class="dpanel" data-panel="flows">
+      <div class="xref"><span class="arw">▸</span>GcmReceiver.onReceive <span style="color:var(--ink-faint)">─ ─ →</span> MailSyncService.handleMessage <span style="color:var(--ink-faint)">─ ─ →</span> <b>onMessage</b> <span style="color:var(--ink-faint)">─ ─ →</span> <span style="color:var(--red)">InviteCipher.unwrapKey</span><span class="site">taint: payload → key</span></div>
+      <div class="dnote">1 flow traced · sink: javax.crypto.Cipher.init · dashed = construction line (unverified hop)</div>
+    </div>
+    <div class="dpanel" data-panel="bookmarks">
+      <div class="xref"><span class="arw">■</span><b>onMessage</b> — invite.v2 branch<span class="site">MessageSyncHandler.java:19</span></div>
+      <div class="xref"><span class="arw">■</span>InviteCipher.unwrapKey<span class="site">InviteCipher.java:31</span></div>
+    </div>
+    <div class="dpanel" data-panel="history">
+      <div class="xref"><span class="arw">‹</span>MailSyncService.onStartCommand<span class="site">4m ago</span></div>
+      <div class="xref"><span class="arw">‹</span>InviteCipher <span class="was">was: b</span><span class="site">9m ago</span></div>
+      <div class="xref"><span class="arw">‹</span>string <span class="s">"invite.v2"</span><span class="site">12m ago</span></div>
+    </div>
+  </section>
+
+  <!-- ======================= status bar ======================= -->
+  <footer id="status">
+    <span class="seg">42,103 classes</span>
+    <span class="seg">engine jeb 5.x</span>
+    <span class="seg">heap 3.2g</span>
+    <span class="seg">Σ 9.1g/24g</span>
+    <span class="sp"></span>
+    <span class="seg">🤖 scout-1 @ sync.c</span>
+    <span class="sfollow" id="followStatus">follow</span>
+    <span class="seg dirty">● 3 unsaved</span>
+  </footer>
+</div>
+
+<!-- ======================= command palette ======================= -->
+<div id="pal-backdrop">
+  <div id="pal">
+    <div class="pin"><input id="palInput" placeholder="command, class, symbol…" spellcheck="false"><kbd>esc</kbd></div>
+    <div class="plist" id="palList">
+      <div class="pitem sel"><span class="cat">goto</span>MessageSyncHandler.onMessage<kbd>G</kbd></div>
+      <div class="pitem"><span class="cat">goto</span>InviteCipher.unwrapKey <span class="was">was: b</span></div>
+      <div class="pitem"><span class="cat">edit</span>Rename symbol<kbd>F2</kbd></div>
+      <div class="pitem"><span class="cat">edit</span>Comment<kbd>;</kbd></div>
+      <div class="pitem"><span class="cat">nav</span>Find references<kbd>X</kbd></div>
+      <div class="pitem"><span class="cat">nav</span>Back<kbd>⌘[</kbd></div>
+      <div class="pitem"><span class="cat">agent</span>Toggle follow<kbd>⌘⇧F</kbd></div>
+      <div class="pitem"><span class="cat">session</span>Save<kbd>⌘S</kbd></div>
+    </div>
+    <div class="pfoot"><span>▸ 8 commands</span><span>↑↓ select</span><span>↵ run</span></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(s, r){ return (r||document).querySelector(s); };
+  var $$ = function(s, r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
+
+  /* ---------- command palette ---------- */
+  var backdrop = $("#pal-backdrop"), palInput = $("#palInput"), palList = $("#palList");
+  function palOpen(){ return backdrop.classList.contains("open"); }
+  function palToggle(force){
+    var open = (force !== undefined) ? force : !palOpen();
+    backdrop.classList.toggle("open", open);
+    if(open){ palInput.value = ""; palFilter(""); palInput.focus(); selFirst(); }
+    else { palInput.blur(); }
+  }
+  function selFirst(){
+    var items = visibleItems();
+    $$(".pitem", palList).forEach(function(i){ i.classList.remove("sel"); });
+    if(items.length) items[0].classList.add("sel");
+  }
+  function visibleItems(){
+    return $$(".pitem", palList).filter(function(i){ return i.style.display !== "none"; });
+  }
+  function palFilter(q){
+    q = q.toLowerCase();
+    $$(".pitem", palList).forEach(function(i){
+      i.style.display = i.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  }
+  palInput.addEventListener("input", function(){ palFilter(palInput.value); selFirst(); });
+  palInput.addEventListener("keydown", function(e){
+    var items = visibleItems(), idx = items.findIndex(function(i){ return i.classList.contains("sel"); });
+    if(e.key === "ArrowDown" || e.key === "ArrowUp"){
+      e.preventDefault();
+      if(!items.length) return;
+      var n = e.key === "ArrowDown" ? (idx + 1) % items.length : (idx - 1 + items.length) % items.length;
+      $$(".pitem", palList).forEach(function(i){ i.classList.remove("sel"); });
+      items[n].classList.add("sel");
+    } else if(e.key === "Enter"){
+      palToggle(false);
+    } else if(e.key === "Escape"){
+      palToggle(false);
+    }
+  });
+  palList.addEventListener("click", function(e){
+    var it = e.target.closest(".pitem");
+    if(it) palToggle(false);
+  });
+  backdrop.addEventListener("click", function(e){ if(e.target === backdrop) palToggle(false); });
+
+  /* ---------- global keys ---------- */
+  var jump = $("#jump"), jumpInput = $("#jumpInput");
+  document.addEventListener("keydown", function(e){
+    if((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k"){
+      e.preventDefault(); palToggle();
+      return;
+    }
+    if(e.key === "Escape" && palOpen()){ palToggle(false); return; }
+    var typing = /^(input|textarea)$/i.test(document.activeElement.tagName);
+    if(!typing && e.key.toLowerCase() === "g"){
+      e.preventDefault(); jumpInput.focus(); jump.classList.add("focus");
+    }
+  });
+  jumpInput.addEventListener("focus", function(){ jump.classList.add("focus"); });
+  jumpInput.addEventListener("blur", function(){ jump.classList.remove("focus"); });
+  jumpInput.addEventListener("keydown", function(e){
+    if(e.key === "Escape" || e.key === "Enter") jumpInput.blur();
+  });
+
+  /* ---------- dock tabs ---------- */
+  $$(".dtab").forEach(function(tab){
+    tab.addEventListener("click", function(){
+      $$(".dtab").forEach(function(t){ t.classList.remove("active"); });
+      $$(".dpanel").forEach(function(p){ p.classList.remove("active"); });
+      tab.classList.add("active");
+      $('.dpanel[data-panel="' + tab.dataset.dock + '"]').classList.add("active");
+    });
+  });
+
+  /* ---------- tree + xref expand/collapse ---------- */
+  document.addEventListener("click", function(e){
+    var row = e.target.closest(".trow, .ghead");
+    if(!row) return;
+    var node = row.parentElement;
+    if(node.classList.contains("tnode") && node.querySelector(".kids, .kids2")){
+      node.classList.toggle("open");
+      var tw = row.querySelector(".twisty");
+      if(tw && (tw.textContent === "▸" || tw.textContent === "▾")){
+        tw.textContent = node.classList.contains("open") ? "▾" : "▸";
+      }
+    }
+  });
+
+  /* ---------- target strip chips ---------- */
+  $$("#strip .tchip:not(.add)").forEach(function(chip){
+    chip.addEventListener("click", function(){
+      $$("#strip .tchip").forEach(function(c){ c.classList.remove("active"); });
+      chip.classList.add("active");
+    });
+  });
+
+  /* ---------- editor tabs ---------- */
+  $$(".etab").forEach(function(tab){
+    tab.addEventListener("click", function(){
+      $$(".etab").forEach(function(t){ t.classList.remove("active"); });
+      tab.classList.add("active");
+    });
+  });
+
+  /* ---------- activity rail ---------- */
+  $$("#rail button").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      $$("#rail button").forEach(function(b){ b.classList.remove("active"); });
+      btn.classList.add("active");
+    });
+  });
+
+  /* ---------- follow toggles (top bar + status, kept in sync) ---------- */
+  var followBtn = $("#followBtn"), followStatus = $("#followStatus");
+  function flipFollow(){
+    var on = followBtn.classList.toggle("on");
+    followBtn.textContent = on ? "following" : "follow";
+    followStatus.classList.toggle("on", on);
+    followStatus.textContent = on ? "following" : "follow";
+  }
+  followBtn.addEventListener("click", flipFollow);
+  followStatus.addEventListener("click", flipFollow);
+
+  /* ---------- dark variant flip (visual only) ---------- */
+  var darkBtn = $("#darkToggle");
+  darkBtn.addEventListener("click", function(){
+    var dark = document.body.classList.toggle("dark");
+    darkBtn.childNodes[0].textContent = dark ? "◑ light" : "◐ dark";
+  });
+
+  /* ---------- sidebar filter (cosmetic live filter) ---------- */
+  var filter = $("#sidebar .filter input");
+  filter.addEventListener("input", function(){
+    var q = filter.value.toLowerCase();
+    $$("#tree .trow").forEach(function(r){
+      if(r.parentElement.classList.contains("tnode") && r.querySelector(".twisty").textContent.trim()) return;
+      r.style.display = !q || r.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+    });
+  });
+})();
+</script>
+</body>
+</html>

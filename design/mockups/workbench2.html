@@ -1,0 +1,1294 @@
+<!DOCTYPE html>
+<!--
+  Mockup A2 — The Workbench, multi-target (evolutionary IDE)
+  Reverse-engineering workbench for Android APKs and native libraries
+  Self-contained: inline CSS + JS, no external dependencies, no network requests.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>64 65 78 0a 30 33 35 00 — workbench</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='12'%20fill='%230c0e10'/%3E%3Crect%20x='1.5'%20y='1.5'%20width='61'%20height='61'%20rx='10.5'%20fill='none'%20stroke='%2327322c'/%3E%3Ctext%20x='32'%20y='28'%20font-family='monospace'%20font-size='12'%20fill='%233fb950'%20text-anchor='middle'%20letter-spacing='1'%3E64%2065%2078%3C/text%3E%3Ctext%20x='32'%20y='46'%20font-family='monospace'%20font-size='12'%20fill='%233fb950'%20text-anchor='middle'%20letter-spacing='1'%20opacity='.75'%3E0a%2030%2035%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg0:#101214;        /* app frame */
+  --bg1:#15181b;        /* panels */
+  --bg2:#1a1e22;        /* raised */
+  --bg3:#20252a;        /* hover */
+  --bg4:#262c32;        /* active */
+  --border:#272c31;
+  --border-soft:#20252a;
+  --text:#c9d1d9;
+  --text-dim:#7d8590;
+  --text-faint:#545d66;
+  --accent:#2dd4bf;     /* teal */
+  --accent-dim:#134e4a;
+  --accent-glow:rgba(45,212,191,.14);
+  --blue:#58a6ff;
+  --purple:#d2a8ff;
+  --orange:#ffa657;
+  --yellow:#e3b341;
+  --red:#f47067;
+  --green:#7ee787;
+  --agent:#b892f6;      /* agent tint */
+  --agent-bg:rgba(184,146,246,.10);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:12.5px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:var(--sans);background:var(--bg0);color:var(--text);
+  overflow:hidden;display:flex;flex-direction:column;
+  font-size:12.5px;-webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--accent-dim)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#2c333a;border-radius:5px;border:2px solid var(--bg1)}
+::-webkit-scrollbar-track{background:transparent}
+
+kbd,.kbd{
+  font-family:var(--mono);font-size:10px;color:var(--text-dim);
+  background:var(--bg2);border:1px solid var(--border);border-bottom-width:2px;
+  border-radius:4px;padding:0 4px;line-height:15px;display:inline-block;white-space:nowrap;
+}
+.icn{font-family:var(--mono);font-style:normal;font-size:15px;line-height:1}
+
+/* ============ TOP BAR ============ */
+#topbar{
+  height:42px;min-height:42px;background:var(--bg1);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;padding:0 12px;
+}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;letter-spacing:.16em;font-size:12px;color:var(--text)}
+.brand .mark{
+  width:20px;height:20px;border-radius:5px;background:linear-gradient(135deg,var(--accent),#0d9488);
+  display:flex;align-items:center;justify-content:center;color:#04211d;font-size:12px;font-weight:800;
+}
+.navhist{display:flex;align-items:center;gap:2px;margin-left:4px}
+.navhist button{
+  background:transparent;border:1px solid transparent;color:var(--text-dim);border-radius:5px;
+  width:24px;height:24px;cursor:pointer;font-size:13px;
+}
+.navhist button:hover{background:var(--bg3);color:var(--text)}
+.crumbs{
+  display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:11px;color:var(--text-dim);
+  padding:3px 8px;border-radius:5px;background:var(--bg2);border:1px solid var(--border-soft);
+}
+.crumbs b{color:var(--text);font-weight:600}
+.crumbs .sep{color:var(--text-faint)}
+.jumpbox{
+  flex:0 1 420px;margin:0 auto;display:flex;align-items:center;gap:8px;
+  background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;
+  color:var(--text-faint);font-family:var(--mono);font-size:11.5px;cursor:text;position:relative;
+}
+.jumpbox:hover{border-color:#31383f}
+.jumpbox .grow{flex:1}
+.proj{
+  display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:6px;padding:4px 9px;font-size:11.5px;color:var(--text);cursor:pointer;
+}
+.proj .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.proj .chev{color:var(--text-faint);font-size:9px}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);
+  color:var(--text);border-radius:6px;padding:4px 10px;font-size:11.5px;cursor:pointer;font-family:var(--sans);
+  position:relative;
+}
+.btn:hover{background:var(--bg3)}
+.btn.primary{background:var(--accent-dim);border-color:#155e57;color:#99f6e4}
+.btn.primary:hover{background:#165e56}
+.dirtydot{width:7px;height:7px;border-radius:50%;background:var(--orange);display:inline-block}
+
+/* ============ TARGET STRIP ============ */
+#targets{
+  height:32px;min-height:32px;background:#0c0e10;border-bottom:1px solid var(--border);
+  display:flex;align-items:stretch;padding:0 8px;gap:2px;overflow-x:auto;
+}
+.tchip{
+  display:flex;align-items:center;gap:7px;padding:0 12px;margin-top:5px;
+  font-family:var(--mono);font-size:11px;color:var(--text-dim);cursor:pointer;white-space:nowrap;
+  background:var(--bg1);border:1px solid var(--border-soft);border-bottom:none;border-radius:7px 7px 0 0;
+}
+.tchip:hover{color:var(--text)}
+.tchip.active{background:var(--bg0);color:var(--text);border-color:var(--border);box-shadow:inset 0 2px 0 var(--accent);position:relative}
+.tchip.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--bg0)}
+.tchip .ft{font-size:11px}
+.eng{
+  font-size:8.5px;letter-spacing:.06em;border-radius:3px;padding:1px 5px;font-weight:700;
+}
+.eng.jeb{background:rgba(45,212,191,.14);color:var(--accent);border:1px solid rgba(45,212,191,.3)}
+.eng.jadx{background:rgba(255,166,87,.12);color:var(--orange);border:1px solid rgba(255,166,87,.3)}
+.eng.ida{background:rgba(88,166,255,.12);color:var(--blue);border:1px solid rgba(88,166,255,.3)}
+.tchip .adot{width:6px;height:6px;border-radius:50%;background:var(--agent);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.tchip .ddev{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.tchip.add{border-style:dashed;color:var(--text-faint);background:transparent}
+.tchip.add:hover{color:var(--accent);border-color:var(--accent-dim)}
+.locbar{
+  display:flex;align-items:center;gap:5px;min-width:0;flex:0 2 auto;overflow:hidden;
+  font-family:var(--mono);font-size:11.5px;
+}
+.lseg{
+  color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;
+  cursor:pointer;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:5px;flex:0 1 auto;
+}
+.lseg:hover{background:var(--bg3);color:var(--text)}
+.lseg.tgt{background:var(--accent-glow);color:var(--accent);border:1px solid rgba(45,212,191,.25);flex:none}
+.lseg.cur{color:var(--text);font-weight:600;flex:none}
+.lseg.flash{background:var(--accent-dim);color:#99f6e4}
+.lsep{color:var(--text-faint);font-size:10px;flex:none}
+.caprow{display:flex;align-items:center;gap:5px}
+.cap{
+  font-family:var(--mono);font-size:9.5px;color:var(--text-dim);background:var(--bg2);
+  border:1px solid var(--border-soft);border-radius:3px;padding:1px 6px;
+}
+.cap.on{color:var(--accent);border-color:rgba(45,212,191,.3);background:var(--accent-glow)}
+
+/* ============ MAIN GRID ============ */
+#main{flex:1;display:flex;min-height:0}
+
+/* activity bar */
+#activity{
+  width:48px;min-width:48px;background:var(--bg1);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;padding-top:6px;gap:2px;
+}
+.actbtn{
+  width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  color:var(--text-faint);cursor:pointer;position:relative;font-size:17px;border:none;background:transparent;
+}
+.actbtn:hover{color:var(--text);background:var(--bg3)}
+.actbtn.active{color:var(--accent);background:var(--accent-glow)}
+.actbtn.active::before{
+  content:"";position:absolute;left:-4px;top:8px;bottom:8px;width:2px;background:var(--accent);border-radius:2px;
+}
+.actbtn .badge{
+  position:absolute;top:3px;right:3px;min-width:14px;height:14px;border-radius:7px;background:var(--accent-dim);
+  color:#99f6e4;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0 3px;
+}
+.actbtn .badge.agent{background:var(--agent);color:#1b1030}
+#activity .spacer{flex:1}
+
+/* side panel */
+#side{
+  width:262px;min-width:262px;background:var(--bg1);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;min-height:0;
+}
+.sidehead{
+  padding:8px 10px 6px;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--text-dim);
+  text-transform:uppercase;display:flex;align-items:center;justify-content:space-between;
+}
+.sidehead .tools{color:var(--text-faint);font-size:11px;letter-spacing:0}
+.filter{
+  margin:0 10px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;
+  display:flex;align-items:center;gap:6px;padding:4px 8px;
+}
+.filter input{
+  background:transparent;border:none;outline:none;color:var(--text);font-family:var(--mono);
+  font-size:11.5px;width:100%;
+}
+.filter input::placeholder{color:var(--text-faint)}
+#sidecontent{flex:1;overflow-y:auto;min-height:0;padding-bottom:6px}
+
+/* tree */
+.tree{font-family:var(--mono);font-size:12px;line-height:21px}
+.tnode{white-space:nowrap}
+.trow{
+  display:flex;align-items:center;gap:5px;padding:0 6px 0 8px;cursor:pointer;border-radius:4px;margin:0 4px;
+  color:var(--text);
+}
+.trow:hover{background:var(--bg3)}
+.trow.sel{background:var(--accent-glow);box-shadow:inset 2px 0 0 var(--accent)}
+.twisty{width:12px;color:var(--text-faint);font-size:9px;text-align:center;flex:none;transition:transform .08s}
+.tnode.closed > .trow .twisty{transform:rotate(-90deg)}
+.tnode.closed > .tkids{display:none}
+.pkg{color:var(--orange)}
+.ticon{flex:none;width:14px;text-align:center;font-size:10px}
+.ticon.c{color:var(--yellow)}
+.ticon.i{color:var(--purple)}
+.ticon.m{color:var(--green)}
+.tname.obf{color:var(--text-dim)}
+.tname.ren{color:var(--text)}
+.was{
+  font-size:9px;color:var(--text-faint);background:var(--bg2);border:1px solid var(--border-soft);
+  border-radius:3px;padding:0 4px;margin-left:2px;
+}
+.tag-dot{width:6px;height:6px;border-radius:2px;background:var(--blue);margin-left:auto;flex:none}
+.tag-dot.suspicious{background:var(--red)}
+.tag-dot.crypto{background:var(--purple)}
+
+/* outline */
+#outline{border-top:1px solid var(--border);max-height:38%;display:flex;flex-direction:column;min-height:120px}
+#outline .list{overflow-y:auto;font-family:var(--mono);font-size:11.5px;line-height:20px;padding:2px 0 6px}
+.orow{display:flex;align-items:center;gap:6px;padding:0 10px;cursor:pointer;color:var(--text-dim)}
+.orow:hover{background:var(--bg3);color:var(--text)}
+.orow .mk{color:var(--green);width:12px;flex:none;font-size:10px}
+.orow .ret{color:var(--text-faint);margin-left:auto;font-size:10px}
+.orow.renamed .mname{color:var(--text)}
+.orow.renamed .mname s{color:var(--text-faint);font-size:10px;margin-right:5px}
+
+/* ============ CENTER ============ */
+#center{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg0)}
+#tabs{
+  height:34px;min-height:34px;display:flex;align-items:stretch;background:var(--bg1);
+  border-bottom:1px solid var(--border);overflow-x:auto;
+}
+.tab{
+  display:flex;align-items:center;gap:7px;padding:0 12px;font-family:var(--mono);font-size:11.5px;
+  color:var(--text-dim);border-right:1px solid var(--border-soft);cursor:pointer;white-space:nowrap;
+}
+.tab:hover{color:var(--text)}
+.tab.active{background:var(--bg0);color:var(--text);box-shadow:inset 0 2px 0 var(--accent)}
+.tab.agenttab{box-shadow:inset 0 2px 0 var(--agent);background:var(--agent-bg)}
+.tab .robot{font-size:10px}
+.tab .x{color:var(--text-faint);font-size:11px;border-radius:3px;padding:0 2px}
+.tab .x:hover{background:var(--bg4);color:var(--text)}
+#codehead{
+  padding:8px 14px;border-bottom:1px solid var(--border);background:var(--bg1);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+}
+.fqcn{font-family:var(--mono);font-size:12px}
+.fqcn .pk{color:var(--text-dim)}
+.fqcn .cls{color:var(--text);font-weight:600}
+.fqcn .was{margin-left:6px}
+.chbtns{display:flex;gap:6px;margin-left:auto}
+.chbtn{
+  display:inline-flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:5px;padding:3px 8px;font-size:11px;color:var(--text);cursor:pointer;font-family:var(--sans);
+}
+.chbtn:hover{background:var(--bg3);border-color:#333a41}
+
+/* code view */
+#codewrap{flex:1;display:flex;min-height:0;position:relative;overflow:hidden}
+.pane{flex:1 1 0;min-width:0;overflow:auto;position:relative}
+#pane-java{border-right:1px solid var(--border)}
+#codewrap.mode-java #pane-smali{display:none}
+#codewrap.mode-smali #pane-java{display:none}
+.panehead{
+  position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:7px;
+  background:var(--bg1);border-bottom:1px solid var(--border-soft);
+  font-family:var(--mono);font-size:11px;color:var(--text-dim);padding:4px 12px;
+}
+.panehead .phent{color:var(--text-faint);font-size:10px;margin-left:auto}
+.vportmark{position:absolute;left:0;right:0;height:2px;background:rgba(45,212,191,.22);pointer-events:none;z-index:4}
+#code,#smali{
+  font-family:var(--mono);font-size:12.5px;line-height:20px;padding:8px 0 40px;
+  display:grid;grid-template-columns:44px 26px 1fr;width:max-content;min-width:100%;
+}
+.ln{color:#3d444d;text-align:right;padding-right:10px;user-select:none}
+.gm{position:relative;user-select:none}
+.cl{padding-right:24px;white-space:pre;color:var(--text)}
+.row{display:contents}
+.row:hover > *{background:#171b1f}
+.row.cur > *{background:rgba(86,156,255,.09)}
+.row.cur .ln{color:var(--text-dim)}
+.row.cur .gm{box-shadow:inset 2px 0 0 var(--blue)}
+.row.cov > .cl{box-shadow:inset 3px 0 0 rgba(126,231,135,.55)}
+.row.covpart > .cl{box-shadow:inset 3px 0 0 rgba(227,179,65,.55)}
+.gm .bp{
+  position:absolute;left:8px;top:5px;width:9px;height:9px;background:var(--red);
+  transform:rotate(45deg);border-radius:2px;box-shadow:0 0 4px rgba(244,112,103,.6);
+}
+.gm .tag{
+  position:absolute;left:8px;top:6px;width:8px;height:8px;background:var(--purple);border-radius:2px;
+}
+.gm .bm{
+  position:absolute;left:7px;top:4px;color:var(--blue);font-size:10px;
+}
+/* java syntax */
+.k{color:#ff7b72}          /* keyword */
+.t{color:#ffa657}          /* type */
+.s{color:#a5d6ff}          /* string */
+.n{color:#79c0ff}          /* number */
+.f{color:#d2a8ff}          /* call */
+.c{color:#5c6670;font-style:italic}  /* comment */
+.a{color:#7ee787}          /* annotation */
+.v{color:#79c0ff}          /* field */
+.ren{display:inline-flex;align-items:baseline;gap:0}
+.ren s{color:#5c6670;text-decoration:line-through;font-size:11px;margin-right:4px}
+.ren .new{color:var(--accent);border-bottom:1px dotted var(--accent)}
+.tok-agent{background:var(--agent-bg);border-radius:3px;padding:0 2px}
+/* smali syntax */
+.d{color:#5c6670}
+.op{color:#79c0ff}
+.r{color:var(--accent)}
+.as{color:#e3b341}
+.lbl{color:#7ee787}
+.ty{color:#ffa657}
+/* cursor-sync band (linked smali lines) */
+.row.synced > *{background:rgba(45,212,191,.08)}
+.row.synced:hover > *{background:rgba(45,212,191,.13)}
+.row.synced .gm{box-shadow:inset 2px 0 0 var(--accent)}
+.syncg{position:absolute;left:6px;top:3px;color:var(--accent);font-size:10px}
+/* segmented view-mode control */
+.segctl{display:inline-flex;align-items:center;background:var(--bg2);border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.segctl kbd{margin:0 6px}
+.segbtn{background:transparent;border:none;color:var(--text-dim);font-size:11px;padding:4px 10px;cursor:pointer;font-family:var(--sans)}
+.segbtn:hover{color:var(--text)}
+.segbtn.active{background:var(--accent-dim);color:#99f6e4}
+.chbtn.synctoggle.active,.chbtn.bytestoggle.active{background:var(--accent-dim);border-color:#155e57;color:#99f6e4}
+/* smali offset + bytecode columns */
+#smali{grid-template-columns:44px 26px 48px 122px 1fr}
+#smali.nobytes{grid-template-columns:44px 26px 48px 1fr}
+#smali.nobytes .byt{display:none}
+.off{color:#4b545e;text-align:right;padding-right:8px;font-size:10.5px;user-select:none}
+.byt{color:rgba(63,185,80,.5);font-size:10.5px;padding-right:10px;user-select:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ============ INSPECTOR ============ */
+#inspector{
+  width:282px;min-width:282px;background:var(--bg1);border-left:1px solid var(--border);
+  overflow-y:auto;
+}
+.insp-sec{border-bottom:1px solid var(--border-soft)}
+.insp-head{
+  padding:8px 12px 4px;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--text-dim);
+  text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;
+}
+.kv{padding:2px 12px 10px;font-size:11.5px}
+.kv .r{display:flex;justify-content:space-between;gap:8px;padding:2.5px 0;line-height:1.5}
+.kv .k2{color:var(--text-faint);flex:none}
+.kv .v2{font-family:var(--mono);color:var(--text);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flags{display:flex;flex-wrap:wrap;gap:4px;padding:4px 12px 10px}
+.flag{
+  font-family:var(--mono);font-size:10px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:3px;padding:1px 5px;color:var(--text-dim);
+}
+.meter{height:4px;background:var(--bg3);border-radius:2px;margin:2px 12px 10px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--accent);border-radius:2px}
+.xref-item{
+  padding:6px 12px;border-left:2px solid transparent;cursor:pointer;
+}
+.xref-item:hover{background:var(--bg2)}
+.xref-item .xi-sym{font-family:var(--mono);font-size:11.5px;color:var(--text)}
+.xref-item .xi-sym .from{color:var(--blue)}
+.xref-item .xi-meta{font-size:10px;color:var(--text-faint);font-family:var(--mono);margin-top:1px}
+.xref-item .xi-kind{
+  float:right;font-size:9px;color:var(--text-faint);border:1px solid var(--border);border-radius:3px;padding:0 4px;
+  font-family:var(--mono);
+}
+.selsym{
+  margin:2px 12px 6px;padding:5px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:5px;
+  font-family:var(--mono);font-size:11.5px;display:flex;align-items:center;gap:6px;
+}
+.selsym .kind{color:var(--green);font-size:10px}
+
+/* ============ DOCK ============ */
+#dock{
+  height:198px;min-height:34px;background:var(--bg1);border-top:1px solid var(--border);
+  display:flex;flex-direction:column;
+}
+#dock.collapsed{height:34px}
+#dock.collapsed #dockbody{display:none}
+#docktabs{display:flex;align-items:center;height:34px;min-height:34px;padding:0 6px;gap:2px;border-bottom:1px solid var(--border-soft)}
+.dtab{
+  padding:5px 10px;font-size:11px;color:var(--text-dim);cursor:pointer;border-radius:5px 5px 0 0;
+  display:flex;align-items:center;gap:6px;white-space:nowrap;
+}
+.dtab:hover{color:var(--text);background:var(--bg2)}
+.dtab.active{color:var(--text);background:var(--bg0);box-shadow:inset 0 2px 0 var(--accent)}
+.dtab .cnt{font-family:var(--mono);font-size:9.5px;color:var(--text-faint);background:var(--bg2);border-radius:8px;padding:0 6px}
+.dtab.active .cnt{color:var(--accent);background:var(--accent-dim)}
+#dockbody{flex:1;overflow:auto;min-height:0}
+.dockpane{display:none;height:100%}
+.dockpane.active{display:block}
+
+/* xref tree in dock */
+.xtree{font-family:var(--mono);font-size:12px;line-height:22px;padding:6px 8px}
+.xg > .xrow .twisty{transition:transform .08s}
+.xg.closed > .xrow .twisty{transform:rotate(-90deg)}
+.xg.closed > .xkids{display:none}
+.xrow{display:flex;align-items:center;gap:6px;padding:0 8px;cursor:pointer;border-radius:4px}
+.xrow:hover{background:var(--bg3)}
+.xrow .loc{margin-left:auto;color:var(--text-faint);font-size:10.5px}
+.xrow .arrow{color:var(--text-faint);font-size:10px}
+.xrow .rt{
+  font-size:9px;padding:0 5px;border-radius:3px;border:1px solid var(--border);color:var(--text-faint);
+}
+.xrow .rt.hit{color:var(--green);border-color:rgba(126,231,135,.3)}
+.xrow .depth{color:var(--text-faint);font-size:10px;width:30px;text-align:right}
+.xg > .xrow{color:var(--text)}
+.xg .xrow.leaf{color:var(--text-dim)}
+
+/* runtime table */
+.rtable{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11.5px}
+.rtable th{
+  text-align:left;color:var(--text-faint);font-weight:600;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  padding:6px 12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg1);
+}
+.rtable td{padding:4px 12px;border-bottom:1px solid var(--border-soft);color:var(--text-dim);white-space:nowrap}
+.rtable tr:hover td{background:var(--bg2)}
+.rtable td.t{color:var(--text-faint)}
+.rtable td.m{color:var(--text)}
+.rtable td.args{color:var(--blue);max-width:340px;overflow:hidden;text-overflow:ellipsis}
+.rtable td.d{color:var(--yellow);text-align:right}
+.rtable tr.flash td{background:var(--accent-glow)}
+
+/* strings panel */
+.strrow{
+  display:flex;gap:10px;padding:3px 10px;font-family:var(--mono);font-size:11.5px;cursor:pointer;align-items:baseline;
+}
+.strrow:hover{background:var(--bg3)}
+.strrow .off{color:var(--text-faint);font-size:10px;width:52px;flex:none}
+.strrow .val{color:#a5d6ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.strrow .xr{margin-left:auto;color:var(--text-faint);font-size:10px;flex:none}
+.strsec{padding:8px 10px 3px;font-size:10px;color:var(--text-faint);letter-spacing:.1em;text-transform:uppercase;font-weight:700}
+
+/* ============ STATUS BAR ============ */
+#status{
+  height:24px;min-height:24px;background:var(--bg1);border-top:1px solid var(--border);
+  display:flex;align-items:center;padding:0 10px;gap:14px;font-size:10.5px;color:var(--text-dim);
+  font-family:var(--mono);
+}
+.st{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.st .heapbar{width:52px;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.st .heapbar i{display:block;height:100%;width:61%;background:var(--yellow)}
+.spinner{
+  width:9px;height:9px;border:1.5px solid var(--accent-dim);border-top-color:var(--accent);
+  border-radius:50%;animation:spin 1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.agentchip{
+  display:flex;align-items:center;gap:6px;background:var(--agent-bg);border:1px solid rgba(184,146,246,.3);
+  color:var(--agent);border-radius:10px;padding:1px 9px;font-size:10px;max-width:340px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.follow{display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:auto}
+.follow .sw{
+  width:22px;height:12px;border-radius:6px;background:var(--accent-dim);position:relative;
+}
+.follow .sw::after{
+  content:"";position:absolute;right:1.5px;top:1.5px;width:9px;height:9px;border-radius:50%;background:var(--accent);
+}
+#status .st:hover{color:var(--text)}
+
+/* ============ COMMAND PALETTE ============ */
+#palette-overlay{
+  position:fixed;inset:0;background:rgba(4,8,10,.45);display:flex;justify-content:center;
+  padding-top:110px;z-index:100;backdrop-filter:blur(1.5px);
+}
+#palette-overlay.hidden{display:none}
+#palette{
+  width:560px;max-height:400px;background:var(--bg2);border:1px solid #333a41;border-radius:10px;
+  box-shadow:0 16px 48px rgba(0,0,0,.6),0 0 0 1px rgba(45,212,191,.08);
+  display:flex;flex-direction:column;overflow:hidden;height:max-content;
+}
+#palette .pin{
+  display:flex;align-items:center;gap:9px;padding:11px 14px;border-bottom:1px solid var(--border);
+}
+#palette .pin .prompt{color:var(--accent);font-family:var(--mono);font-size:14px}
+#palette .pin input{
+  flex:1;background:transparent;border:none;outline:none;color:var(--text);
+  font-family:var(--mono);font-size:14px;caret-color:var(--accent);
+}
+#palette .plist{overflow-y:auto;padding:5px}
+.prow{
+  display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;cursor:pointer;
+}
+.prow.sel{background:var(--accent-glow)}
+.prow.sel .pname b{color:var(--accent)}
+.prow .pic{width:20px;text-align:center;color:var(--text-dim);font-family:var(--mono);font-size:12px}
+.prow .pname{flex:1;font-size:12.5px}
+.prow .pname b{font-weight:600;color:var(--text)}
+.prow .pname .match{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+.prow .psub{font-size:10.5px;color:var(--text-faint);margin-top:1px;font-family:var(--mono)}
+.prow .scope{font-size:9.5px;color:var(--text-faint);font-family:var(--mono)}
+.pfoot{
+  display:flex;gap:14px;padding:7px 14px;border-top:1px solid var(--border);font-size:10px;color:var(--text-faint);
+}
+.pfoot span{display:flex;gap:5px;align-items:center}
+.psep{padding:5px 10px 2px;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-faint);font-weight:700}
+
+/* ============ TOAST ============ */
+#toast{
+  position:fixed;right:16px;bottom:40px;z-index:90;background:var(--bg2);
+  border:1px solid rgba(184,146,246,.35);border-radius:8px;padding:10px 14px;
+  display:flex;align-items:center;gap:10px;box-shadow:0 8px 28px rgba(0,0,0,.5);
+  max-width:380px;animation:toastin .4s ease;
+}
+@keyframes toastin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+#toast .robot{font-size:16px}
+#toast .tmsg{font-size:11.5px;color:var(--text)}
+#toast .tmsg b{color:var(--agent)}
+#toast .tact{
+  display:flex;align-items:center;gap:6px;background:rgba(184,146,246,.15);border:1px solid rgba(184,146,246,.4);
+  color:var(--agent);border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;white-space:nowrap;
+}
+#toast .tx{color:var(--text-faint);cursor:pointer;padding:0 2px}
+</style>
+</head>
+<body>
+
+<!-- ================= TARGET STRIP ================= -->
+<div id="targets">
+  <div class="tchip active" title="gmail.apk · JEB — switch ⌘1">
+    <span class="ft" style="color:var(--orange)">▣</span> gmail.apk <span class="eng jeb">JEB</span> <span class="dirtydot"></span>
+  </div>
+  <div class="tchip" title="gmail.apk · JADX — switch ⌘2 · read-only · sidecar names">
+    <span class="ft" style="color:var(--orange)">▣</span> gmail.apk <span class="eng jadx">JADX</span>
+  </div>
+  <div class="tchip" title="libgmail.so · IDA — switch ⌘3 · agent active">
+    <span class="ft" style="color:var(--blue)">◈</span> libgmail.so <span class="eng ida">IDA</span> <span class="adot"></span>
+  </div>
+  <div class="tchip" title="wallet.apk · JADX — switch ⌘4 · device attached: pixel-7">
+    <span class="ft" style="color:var(--orange)">▣</span> wallet.apk <span class="eng jadx">JADX</span> <span class="ddev"></span>
+  </div>
+  <div class="tchip add" title="Open target…">+</div>
+</div>
+
+<!-- ================= TOP BAR ================= -->
+<div id="topbar">
+  <nav class="locbar" title="Current location — hierarchy, not history">
+    <span class="lseg tgt"><span class="eng jeb">JEB</span>gmail.apk</span><span class="lsep">›</span>
+    <span class="lseg">com.google.android.gm.sync</span><span class="lsep">›</span>
+    <span class="lseg">MessageSyncHandler<span class="was">was: c</span></span><span class="lsep">›</span>
+    <span class="lseg cur">onMessage</span>
+  </nav>
+  <div class="navhist" title="Navigation history">
+    <button title="Back (Alt+←)">‹</button>
+    <button title="Forward (Alt+→)">›</button>
+  </div>
+  <div class="crumbs" title="Navigation history · Alt+← / Alt+→">
+    <span>a</span><span class="sep">→</span><span>b.<b>send</b></span><span class="sep">→</span><span>sync.c.<b>onMessage</b></span><span class="sep">▾</span>
+  </div>
+  <div class="jumpbox" id="jumpbox" title="Jump anywhere">
+    <span style="color:var(--accent)">➜</span>
+    <span class="grow">Jump to class, method, string, offset…</span>
+    <kbd>G</kbd>
+  </div>
+  <div class="proj" title="Project">
+    <span class="dot"></span> gmail_9.41.apk <span class="chev">▾</span>
+  </div>
+  <button class="btn primary" title="Save project (⌘S)"><span class="dirtydot"></span> Save</button>
+  <button class="btn" title="More actions">⋯</button>
+</div>
+
+<!-- ================= MAIN ================= -->
+<div id="main">
+
+  <!-- activity bar -->
+  <div id="activity">
+    <button class="actbtn active" data-panel="explorer" title="Explorer"><i class="icn">⛁</i></button>
+    <button class="actbtn" data-panel="search" title="Search (⌘⇧F)"><i class="icn">⌕</i></button>
+    <button class="actbtn" data-panel="strings" title="Strings"><i class="icn">❝</i></button>
+    <button class="actbtn" data-panel="tags" title="Bookmarks &amp; Tags"><i class="icn">⚑</i><span class="badge">14</span></button>
+    <button class="actbtn" data-panel="runs" title="Runs — dynamic analysis"><i class="icn">▶</i></button>
+    <button class="actbtn" data-panel="agents" title="Agents"><i class="icn">🤖</i><span class="badge agent">2</span></button>
+    <div class="spacer"></div>
+    <button class="actbtn" title="Settings"><i class="icn">⚙</i></button>
+  </div>
+
+  <!-- side panel -->
+  <div id="side">
+    <div class="sidehead"><span id="sidetitle">Explorer</span><span class="tools">⊕ ⊟</span></div>
+    <div class="filter"><span style="color:var(--text-faint)">⌕</span><input placeholder="filter classes… (type to fuzzy match)"></div>
+    <div id="sidecontent">
+
+      <!-- EXPLORER PANEL -->
+      <div class="sidepane" id="panel-explorer">
+        <div class="tree">
+          <div class="tnode">
+            <div class="trow"><span class="twisty">▾</span><span class="tname pkg">com.google.android.gm</span></div>
+            <div class="tkids">
+              <div class="tnode">
+                <div class="trow" style="padding-left:24px"><span class="twisty">▾</span><span class="tname pkg">sync</span></div>
+                <div class="tkids">
+                  <div class="tnode">
+                    <div class="trow sel" style="padding-left:40px">
+                      <span class="ticon c">C</span><span class="tname ren">MessageSyncHandler</span><span class="was">was: c</span>
+                      <span class="tag-dot crypto" title="tag: crypto"></span>
+                    </div>
+                  </div>
+                  <div class="tnode">
+                    <div class="trow" style="padding-left:40px"><span class="ticon c">C</span><span class="tname obf">d</span></div>
+                  </div>
+                  <div class="tnode">
+                    <div class="trow" style="padding-left:40px">
+                      <span class="ticon c">C</span><span class="tname ren">SyncStateStore</span><span class="was">was: e</span>
+                    </div>
+                  </div>
+                  <div class="tnode">
+                    <div class="trow" style="padding-left:40px">
+                      <span class="ticon i">I</span><span class="tname ren">SyncCallback</span><span class="was">was: f</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="tnode closed">
+                <div class="trow" style="padding-left:24px"><span class="twisty">▾</span><span class="tname pkg">provider</span></div>
+                <div class="tkids">
+                  <div class="tnode"><div class="trow" style="padding-left:40px"><span class="ticon c">C</span><span class="tname obf">g</span></div></div>
+                </div>
+              </div>
+              <div class="tnode closed">
+                <div class="trow" style="padding-left:24px"><span class="twisty">▾</span><span class="tname pkg">ui</span></div>
+                <div class="tkids">
+                  <div class="tnode"><div class="trow" style="padding-left:40px"><span class="ticon c">C</span><span class="tname obf">h</span></div></div>
+                </div>
+              </div>
+              <div class="tnode">
+                <div class="trow" style="padding-left:24px"><span class="twisty"></span><span class="ticon c">C</span><span class="tname ren">MailSyncService</span><span class="was">was: a</span><span class="tag-dot" title="tag: entry"></span></div>
+              </div>
+              <div class="tnode">
+                <div class="trow" style="padding-left:24px"><span class="twisty"></span><span class="ticon c">C</span><span class="tname obf">b</span><span class="tag-dot suspicious" title="tag: suspicious"></span></div>
+              </div>
+            </div>
+          </div>
+          <div class="tnode closed">
+            <div class="trow"><span class="twisty">▾</span><span class="tname pkg">com.google.android.gms</span><span class="was" style="margin-left:6px">library · 12,408 classes</span></div>
+            <div class="tkids"></div>
+          </div>
+          <div class="tnode closed">
+            <div class="trow"><span class="twisty">▾</span><span class="tname pkg">org.bouncycastle</span><span class="was" style="margin-left:6px">library · recognized</span></div>
+            <div class="tkids"></div>
+          </div>
+          <div class="tnode closed">
+            <div class="trow"><span class="twisty">▾</span><span class="tname pkg">a.a.a</span><span class="was" style="margin-left:6px">obfuscated · 891 classes</span></div>
+            <div class="tkids"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEARCH PANEL -->
+      <div class="sidepane" id="panel-search" style="display:none">
+        <div style="padding:4px 12px 8px;font-size:11px;color:var(--text-faint)">
+          Search across 18,204 decompiled classes, 142k strings, smali, and resources.
+        </div>
+        <div class="strsec">Recent searches</div>
+        <div class="strrow"><span class="val">AES/GCM/NoPadding</span><span class="xr">6 classes</span></div>
+        <div class="strrow"><span class="val">GeminiClient</span><span class="xr">3 classes</span></div>
+        <div class="strrow"><span class="val">invite.v2</span><span class="xr">2 classes</span></div>
+        <div class="strrow"><span class="val">onMessage</span><span class="xr">41 classes</span></div>
+      </div>
+
+      <!-- STRINGS PANEL -->
+      <div class="sidepane" id="panel-strings" style="display:none">
+        <div class="strsec">In MessageSyncHandler <span style="float:right">9</span></div>
+        <div class="strrow"><span class="off">0x8a21</span><span class="val">"AES/GCM/NoPadding"</span><span class="xr">2 xref</span></div>
+        <div class="strrow"><span class="off">0x8a4c</span><span class="val">"invite.v2"</span><span class="xr">1 xref</span></div>
+        <div class="strrow"><span class="off">0x8a60</span><span class="val">"https://mail.google.com/sync/v3/pull"</span><span class="xr">1 xref</span></div>
+        <div class="strrow"><span class="off">0x8aa1</span><span class="val">"sync_key"</span><span class="xr">3 xref</span></div>
+        <div class="strrow"><span class="off">0x8ab3</span><span class="val">"UTF-8"</span><span class="xr">4 xref</span></div>
+        <div class="strrow"><span class="off">0x8ac2</span><span class="val">"decrypt failed, seq=%d"</span><span class="xr">1 xref</span></div>
+        <div class="strsec">Interesting elsewhere <span style="float:right">filter: crypto</span></div>
+        <div class="strrow"><span class="off">0x201f</span><span class="val">"-----BEGIN PRIVATE KEY-----"</span><span class="xr">a.a.a.k</span></div>
+        <div class="strrow"><span class="off">0x2044</span><span class="val">"x-gm-device-id"</span><span class="xr">sync.d</span></div>
+        <div class="strrow"><span class="off">0x20ab</span><span class="val">"/data/data/com.google.android.gm/keystore"</span><span class="xr">provider.g</span></div>
+      </div>
+
+      <!-- TAGS PANEL -->
+      <div class="sidepane" id="panel-tags" style="display:none">
+        <div class="strsec">Tags</div>
+        <div class="strrow"><span class="tag-dot crypto"></span><span class="val" style="color:var(--text)">crypto</span><span class="xr">6 classes</span></div>
+        <div class="strrow"><span class="tag-dot suspicious"></span><span class="val" style="color:var(--text)">suspicious</span><span class="xr">3 classes</span></div>
+        <div class="strrow"><span class="tag-dot"></span><span class="val" style="color:var(--text)">entry-point</span><span class="xr">5 classes</span></div>
+        <div class="strsec">Bookmarks</div>
+        <div class="strrow"><span class="off">🔖</span><span class="val" style="color:var(--text)">MailSyncService.onStartCommand</span></div>
+        <div class="strrow"><span class="off">🔖</span><span class="val" style="color:var(--text)">MessageSyncHandler:87</span></div>
+      </div>
+
+      <!-- RUNS PANEL -->
+      <div class="sidepane" id="panel-runs" style="display:none">
+        <div class="strsec">Dynamic analysis runs</div>
+        <div class="strrow"><span class="off" style="color:var(--green)">● live</span><span class="val" style="color:var(--text)">run-014 · frida · pixel-7</span><span class="xr">1,204 hits</span></div>
+        <div class="strrow"><span class="off">○</span><span class="val" style="color:var(--text)">run-013 · frida · emu-34</span><span class="xr">860 hits</span></div>
+        <div class="strrow"><span class="off">○</span><span class="val" style="color:var(--text)">run-012 · coverage diff</span><span class="xr">—</span></div>
+        <div class="strrow"><span class="off">○</span><span class="val" style="color:var(--text)">run-011 · frida · pixel-7</span><span class="xr">2,311 hits</span></div>
+      </div>
+
+      <!-- AGENTS PANEL -->
+      <div class="sidepane" id="panel-agents" style="display:none">
+        <div class="strsec">Active agents</div>
+        <div class="strrow"><span class="off">🤖</span><span class="val" style="color:var(--text)">renamer-1 · reviewing sync.c</span><span class="xr" style="color:var(--agent)">working</span></div>
+        <div class="strrow"><span class="off">🤖</span><span class="val" style="color:var(--text)">triager-2 · taint b.send</span><span class="xr" style="color:var(--agent)">working</span></div>
+        <div class="strsec">Queued proposals</div>
+        <div class="strrow"><span class="off">✎</span><span class="val" style="color:var(--text)">3 renames in sync.c</span><span class="xr">⌘R</span></div>
+        <div class="strrow"><span class="off">✎</span><span class="val" style="color:var(--text)">1 comment in sync.e</span><span class="xr">⌘R</span></div>
+      </div>
+    </div>
+
+    <!-- method outline -->
+    <div id="outline">
+      <div class="sidehead"><span>Outline — MessageSyncHandler</span><span class="tools">⇅</span></div>
+      <div class="list">
+        <div class="orow"><span class="mk">f</span> syncKey <span class="ret">byte[]</span></div>
+        <div class="orow"><span class="mk">f</span> state <span class="ret">SyncStateStore</span></div>
+        <div class="orow renamed"><span class="mk">m</span><span class="mname"><s>a</s>handleInvite</span> <span class="ret">void</span></div>
+        <div class="orow renamed"><span class="mk">m</span><span class="mname"><s>b</s>decryptPayload</span> <span class="ret">String</span></div>
+        <div class="orow renamed"><span class="mk">m</span><span class="mname"><s>c</s>onMessage</span> <span class="ret">void</span></div>
+        <div class="orow"><span class="mk">m</span> d <span class="ret">boolean</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- center column -->
+  <div id="center">
+    <div id="tabs">
+      <div class="tab"><span style="color:var(--yellow);font-size:10px">C</span> MailSyncService <span class="x">×</span></div>
+      <div class="tab active"><span style="color:var(--yellow);font-size:10px">C</span> MessageSyncHandler <span class="dirtydot"></span> <span class="x">×</span></div>
+      <div class="tab agenttab"><span class="robot">🤖</span><span style="color:var(--yellow);font-size:10px">C</span> SyncStateStore <span class="x">×</span></div>
+    </div>
+
+    <div id="codehead">
+      <span class="fqcn"><span class="pk">com.google.android.gm.sync.</span><span class="cls">MessageSyncHandler</span><span class="was">was: c</span></span>
+      <div class="caprow" title="Capabilities of the JEB engine for this target">
+        <span class="cap on">decompile</span><span class="cap on">xrefs</span><span class="cap on">rename</span><span class="cap on">graphs</span><span class="cap on">frida</span>
+      </div>
+      <div class="segctl" title="View mode — Tab cycles">
+        <button class="segbtn" data-mode="java">Java</button><button class="segbtn" data-mode="smali">Smali</button><button class="segbtn active" data-mode="split">Split</button><kbd>Tab</kbd>
+      </div>
+      <button class="chbtn synctoggle active" id="synctoggle" title="Cursor sync — panes follow each other's location">⇄ sync</button>
+      <button class="chbtn bytestoggle active" id="bytestoggle" title="Show raw Dalvik opcode bytes">{ } bytes</button>
+      <div class="chbtns">
+        <button class="chbtn">✎ Rename <kbd>F2</kbd></button>
+        <button class="chbtn">💬 Comment <kbd>I</kbd></button>
+        <button class="chbtn">⇱ Find refs <kbd>X</kbd></button>
+      </div>
+    </div>
+
+    <div id="codewrap" class="mode-split">
+      <div class="pane" id="pane-java">
+        <div class="panehead"><span style="color:var(--yellow);font-size:9px">◆</span> MessageSyncHandler.java <span class="phent">decompiled · jeb</span></div>
+        <div class="vportmark" style="top:300px" title="smali pane viewport position"></div>
+<pre id="code"><span class="row"><span class="ln">1</span><span class="gm"></span><span class="cl"><span class="k">package</span> com.google.android.gm.sync;</span></span>
+<span class="row"><span class="ln">2</span><span class="gm"></span><span class="cl"></span></span>
+<span class="row"><span class="ln">3</span><span class="gm"></span><span class="cl"><span class="k">import</span> android.util.Base64;</span></span>
+<span class="row"><span class="ln">4</span><span class="gm"></span><span class="cl"><span class="k">import</span> javax.crypto.Cipher;</span></span>
+<span class="row"><span class="ln">5</span><span class="gm"></span><span class="cl"><span class="k">import</span> javax.crypto.spec.GCMParameterSpec;</span></span>
+<span class="row"><span class="ln">6</span><span class="gm"></span><span class="cl"><span class="k">import</span> javax.crypto.spec.SecretKeySpec;</span></span>
+<span class="row"><span class="ln">7</span><span class="gm"></span><span class="cl"><span class="k">import</span> org.json.JSONObject;</span></span>
+<span class="row"><span class="ln">8</span><span class="gm"></span><span class="cl"><span class="k">import</span> com.google.android.gm.ai.GeminiClient;</span></span>
+<span class="row"><span class="ln">9</span><span class="gm"></span><span class="cl"></span></span>
+<span class="row"><span class="ln">10</span><span class="gm"></span><span class="cl"><span class="c">/* Decompiled from classes3.dex · obfuscated name: c · jadx 1.5.1-dev */</span></span></span>
+<span class="row"><span class="ln">11</span><span class="gm"></span><span class="cl"><span class="k">public final class</span> <span class="t">MessageSyncHandler</span> <span class="k">extends</span> <span class="t">Handler</span> <span class="k">implements</span> <span class="t">SyncCallback</span> {</span></span>
+<span class="row"><span class="ln">12</span><span class="gm"></span><span class="cl">    <span class="k">private static final</span> <span class="t">String</span> <span class="v">ENDPOINT</span> = <span class="s">"https://mail.google.com/sync/v3/pull"</span>;</span></span>
+<span class="row"><span class="ln">13</span><span class="gm"></span><span class="cl">    <span class="k">private</span> <span class="t">byte</span>[] <span class="v">syncKey</span>;            <span class="c">// was: field a</span></span></span>
+<span class="row"><span class="ln">14</span><span class="gm"></span><span class="cl">    <span class="k">private final</span> <span class="t">SyncStateStore</span> <span class="v">state</span>; <span class="c">// was: field b</span></span></span>
+<span class="row"><span class="ln">15</span><span class="gm"></span><span class="cl"></span></span>
+<span class="row"><span class="ln">16</span><span class="gm"></span><span class="cl">    <span class="a">@Override</span></span></span>
+<span class="row cur"><span class="ln">17</span><span class="gm"></span><span class="cl">    <span class="k">public void</span> <span class="ren"><s>c</s><span class="new">onMessage</span></span>(<span class="t">String</span> topic, <span class="t">byte</span>[] body) {</span></span>
+<span class="row cov"><span class="ln">18</span><span class="gm"></span><span class="cl">        <span class="k">if</span> (!<span class="s">"invite.v2"</span>.<span class="f">equals</span>(topic)) {</span></span>
+<span class="row cov"><span class="ln">19</span><span class="gm"></span><span class="cl">            <span class="k">return</span>;</span></span>
+<span class="row cov"><span class="ln">20</span><span class="gm"></span><span class="cl">        }</span></span>
+<span class="row cov"><span class="ln">21</span><span class="gm"></span><span class="cl">        <span class="ren"><s>a</s><span class="new">handleInvite</span></span>(body);</span></span>
+<span class="row"><span class="ln">22</span><span class="gm"></span><span class="cl">    }</span></span>
+<span class="row"><span class="ln">23</span><span class="gm"></span><span class="cl"></span></span>
+<span class="row"><span class="ln">24</span><span class="gm"></span><span class="cl">    <span class="c">/* renamed from: a — agent: parses invite envelope, 3 callers */</span></span></span>
+<span class="row cov"><span class="ln">25</span><span class="gm"><span class="bp" title="Breakpoint — hit 1,204× in run-014"></span></span><span class="cl">    <span class="k">private void</span> <span class="ren"><s>a</s><span class="new">handleInvite</span></span>(<span class="t">byte</span>[] raw) {</span></span>
+<span class="row cov"><span class="ln">26</span><span class="gm"></span><span class="cl">        <span class="t">String</span> plain = <span class="ren"><s>b</s><span class="new">decryptPayload</span></span>(raw);</span></span>
+<span class="row cov"><span class="ln">27</span><span class="gm"></span><span class="cl">        <span class="k">if</span> (plain == <span class="k">null</span>) {</span></span>
+<span class="row"><span class="ln">28</span><span class="gm"></span><span class="cl">            <span class="k">return</span>;</span></span>
+<span class="row"><span class="ln">29</span><span class="gm"></span><span class="cl">        }</span></span>
+<span class="row cov"><span class="ln">30</span><span class="gm"></span><span class="cl">        <span class="k">try</span> {</span></span>
+<span class="row cov"><span class="ln">31</span><span class="gm"></span><span class="cl">            <span class="t">JSONObject</span> invite = <span class="k">new</span> <span class="t">JSONObject</span>(plain);</span></span>
+<span class="row cov"><span class="ln">32</span><span class="gm"></span><span class="cl">            <span class="t">String</span> label = <span class="t">GeminiClient</span>.<span class="f">classify</span>(invite.<span class="f">optString</span>(<span class="s">"msg"</span>));</span></span>
+<span class="row cov"><span class="ln">33</span><span class="gm"></span><span class="cl">            <span class="k">this</span>.<span class="v">state</span>.<span class="f">putLabel</span>(invite.<span class="f">getString</span>(<span class="s">"tid"</span>), label);</span></span>
+<span class="row covpart"><span class="ln">34</span><span class="gm"></span><span class="cl">            <span class="k">this</span>.<span class="v">state</span>.<span class="f">markSynced</span>(<span class="t">System</span>.<span class="f">currentTimeMillis</span>());</span></span>
+<span class="row covpart"><span class="ln">35</span><span class="gm"></span><span class="cl">        } <span class="k">catch</span> (<span class="t">Exception</span> ex) {</span></span>
+<span class="row"><span class="ln">36</span><span class="gm"></span><span class="cl">            <span class="t">Log</span>.<span class="f">e</span>(<span class="s">"MsgSync"</span>, <span class="s">"bad invite"</span>, ex);</span></span>
+<span class="row"><span class="ln">37</span><span class="gm"></span><span class="cl">        }</span></span>
+<span class="row"><span class="ln">38</span><span class="gm"></span><span class="cl">    }</span></span>
+<span class="row"><span class="ln">39</span><span class="gm"></span><span class="cl"></span></span>
+<span class="row"><span class="ln">40</span><span class="gm"><span class="tag" title="Tag: crypto"></span></span><span class="cl">    <span class="c">/* renamed from: b — AES-GCM w/ 12-byte nonce prepended */</span></span></span>
+<span class="row cov"><span class="ln">41</span><span class="gm"></span><span class="cl">    <span class="k">private</span> <span class="t">String</span> <span class="ren"><s>b</s><span class="new">decryptPayload</span></span>(<span class="t">byte</span>[] in) {</span></span>
+<span class="row cov"><span class="ln">42</span><span class="gm"></span><span class="cl">        <span class="t">byte</span>[] blob = <span class="t">Base64</span>.<span class="f">decode</span>(in, <span class="n">0</span>);</span></span>
+<span class="row cov"><span class="ln">43</span><span class="gm"></span><span class="cl">        <span class="t">Cipher</span> cipher = <span class="t">Cipher</span>.<span class="f">getInstance</span>(<span class="s">"AES/GCM/NoPadding"</span>);</span></span>
+<span class="row cov"><span class="ln">44</span><span class="gm"></span><span class="cl">        cipher.<span class="f">init</span>(<span class="n">2</span>, <span class="k">new</span> <span class="t">SecretKeySpec</span>(<span class="k">this</span>.<span class="v">syncKey</span>, <span class="s">"AES"</span>),</span></span>
+<span class="row cov"><span class="ln">45</span><span class="gm"></span><span class="cl">                <span class="k">new</span> <span class="t">GCMParameterSpec</span>(<span class="n">128</span>, blob, <span class="n">0</span>, <span class="n">12</span>));</span></span>
+<span class="row cov"><span class="ln">46</span><span class="gm"></span><span class="cl">        <span class="k">return</span> <span class="k">new</span> <span class="t">String</span>(cipher.<span class="f">doFinal</span>(blob, <span class="n">12</span>, blob.<span class="v">length</span> - <span class="n">12</span>), <span class="s">"UTF-8"</span>);</span></span>
+<span class="row"><span class="ln">47</span><span class="gm"><span class="bm" title="Bookmark">▸</span></span><span class="cl">    }</span></span>
+<span class="row"><span class="ln">48</span><span class="gm"></span><span class="cl">}</span></span></pre>
+      </div>
+      <div class="pane" id="pane-smali">
+        <div class="panehead"><span style="color:var(--accent);font-size:9px">◆</span> c.smali <span class="phent">classes3.dex · baksmali · offsets+bytes · ⇄ synced to Java L17</span></div>
+        <div class="vportmark" style="top:180px" title="java pane viewport position"></div>
+<pre id="smali"><span class="row"><span class="ln">1</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"><span class="d">.class public final</span> <span class="ty">Lcom/google/android/gm/sync/MessageSyncHandler;</span></span></span>
+<span class="row"><span class="ln">2</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"><span class="d">.super</span> <span class="ty">Landroid/os/Handler;</span></span></span>
+<span class="row"><span class="ln">3</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"><span class="d">.source</span> <span class="as">"c.java"</span></span></span>
+<span class="row"><span class="ln">4</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"></span></span>
+<span class="row"><span class="ln">5</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"><span class="c"># sidecar names: renamed from c · jeb</span></span></span>
+<span class="row"><span class="ln">6</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"><span class="d">.field private static final</span> ENDPOINT:<span class="ty">Ljava/lang/String;</span></span></span>
+<span class="row"><span class="ln">7</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"><span class="d">.field private</span> syncKey:<span class="ty">[B</span></span></span>
+<span class="row"><span class="ln">8</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"><span class="d">.field private final</span> state:<span class="ty">Lcom/google/android/gm/sync/SyncStateStore;</span></span></span>
+<span class="row"><span class="ln">9</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"></span></span>
+<span class="row synced"><span class="ln">10</span><span class="gm"><span class="syncg" title="linked to MessageSyncHandler.java:17">⇄</span></span><span class="off"></span><span class="byt"></span><span class="cl"><span class="d">.method public</span> onMessage(<span class="ty">Ljava/lang/String;[B</span>)<span class="ty">V</span></span></span>
+<span class="row synced"><span class="ln">11</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl">    <span class="d">.locals</span> <span class="n">3</span></span></span>
+<span class="row synced"><span class="ln">12</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl">    <span class="d">.param</span> <span class="r">p1</span>, <span class="as">"topic"</span>    <span class="c"># java.lang.String</span></span></span>
+<span class="row synced"><span class="ln">13</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl">    <span class="d">.param</span> <span class="r">p2</span>, <span class="as">"body"</span>     <span class="c"># byte[]</span></span></span>
+<span class="row"><span class="ln">14</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"></span></span>
+<span class="row"><span class="ln">15</span><span class="gm"></span><span class="off">0000</span><span class="byt">1a 00 4b 00</span><span class="cl">    <span class="op">const-string</span> <span class="r">v0</span>, <span class="as">"invite.v2"</span></span></span>
+<span class="row"><span class="ln">16</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"></span></span>
+<span class="row"><span class="ln">17</span><span class="gm"></span><span class="off">0002</span><span class="byt">6e 20 15 00 40 00</span><span class="cl">    <span class="op">invoke-virtual</span> {<span class="r">v0</span>, <span class="r">p1</span>}, <span class="ty">Ljava/lang/String;</span>-&gt;equals(<span class="ty">Ljava/lang/Object;</span>)<span class="ty">Z</span></span></span>
+<span class="row"><span class="ln">18</span><span class="gm"></span><span class="off">0005</span><span class="byt">0c 01</span><span class="cl">    <span class="op">move-result</span> <span class="r">v1</span></span></span>
+<span class="row"><span class="ln">19</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"></span></span>
+<span class="row"><span class="ln">20</span><span class="gm"></span><span class="off">0006</span><span class="byt">38 01 03 00</span><span class="cl">    <span class="op">if-eqz</span> <span class="r">v1</span>, <span class="lbl">:cond_0</span></span></span>
+<span class="row"><span class="ln">21</span><span class="gm"></span><span class="off">0008</span><span class="byt">0e 00</span><span class="cl">    <span class="op">return-void</span></span></span>
+<span class="row"><span class="ln">22</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"></span></span>
+<span class="row"><span class="ln">23</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl">    <span class="lbl">:cond_0</span></span></span>
+<span class="row"><span class="ln">24</span><span class="gm"></span><span class="off">0009</span><span class="byt">6e 20 16 00 53 00</span><span class="cl">    <span class="op">invoke-direct</span> {<span class="r">p0</span>, <span class="r">p2</span>}, <span class="ty">Lcom/google/android/gm/sync/MessageSyncHandler;</span>-&gt;handleInvite(<span class="ty">[B</span>)<span class="ty">V</span></span></span>
+<span class="row"><span class="ln">25</span><span class="gm"></span><span class="off">000c</span><span class="byt">0e 00</span><span class="cl">    <span class="op">return-void</span></span></span>
+<span class="row"><span class="ln">26</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"><span class="d">.end method</span></span></span>
+<span class="row"><span class="ln">27</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"></span></span>
+<span class="row"><span class="ln">28</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"><span class="c"># renamed from: a — parses invite envelope</span></span></span>
+<span class="row"><span class="ln">29</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"><span class="d">.method private</span> handleInvite(<span class="ty">[B</span>)<span class="ty">V</span></span></span>
+<span class="row"><span class="ln">30</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl">    <span class="d">.locals</span> <span class="n">5</span></span></span>
+<span class="row"><span class="ln">31</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"></span></span>
+<span class="row"><span class="ln">32</span><span class="gm"></span><span class="off">0000</span><span class="byt">6e 20 17 00 65 00</span><span class="cl">    <span class="op">invoke-direct</span> {<span class="r">p0</span>, <span class="r">p1</span>}, <span class="ty">Lcom/google/android/gm/sync/MessageSyncHandler;</span>-&gt;decryptPayload(<span class="ty">[B</span>)<span class="ty">Ljava/lang/String;</span></span></span>
+<span class="row"><span class="ln">33</span><span class="gm"></span><span class="off">0003</span><span class="byt">0d 00</span><span class="cl">    <span class="op">move-result-object</span> <span class="r">v0</span></span></span>
+<span class="row"><span class="ln">34</span><span class="gm"></span><span class="off">0004</span><span class="byt">39 00 03 00</span><span class="cl">    <span class="op">if-nez</span> <span class="r">v0</span>, <span class="lbl">:cond_1</span></span></span>
+<span class="row"><span class="ln">35</span><span class="gm"></span><span class="off">0006</span><span class="byt">0e 00</span><span class="cl">    <span class="op">return-void</span></span></span>
+<span class="row"><span class="ln">36</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"></span></span>
+<span class="row"><span class="ln">37</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl">    <span class="lbl">:cond_1</span></span></span>
+<span class="row"><span class="ln">38</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl">    <span class="lbl">:try_start_0</span></span></span>
+<span class="row"><span class="ln">39</span><span class="gm"></span><span class="off">0007</span><span class="byt">22 01 1a 00</span><span class="cl">    <span class="op">new-instance</span> <span class="r">v1</span>, <span class="ty">Lorg/json/JSONObject;</span></span></span>
+<span class="row"><span class="ln">40</span><span class="gm"></span><span class="off">0009</span><span class="byt">70 20 1b 00 01 00</span><span class="cl">    <span class="op">invoke-direct</span> {<span class="r">v1</span>, <span class="r">v0</span>}, <span class="ty">Lorg/json/JSONObject;</span>-&gt;&lt;init&gt;(<span class="ty">Ljava/lang/String;</span>)<span class="ty">V</span></span></span>
+<span class="row"><span class="ln">41</span><span class="gm"></span><span class="off">000c</span><span class="byt">1a 02 4c 00</span><span class="cl">    <span class="op">const-string</span> <span class="r">v2</span>, <span class="as">"msg"</span></span></span>
+<span class="row"><span class="ln">42</span><span class="gm"></span><span class="off">000e</span><span class="byt">6e 20 1c 00 21 00</span><span class="cl">    <span class="op">invoke-virtual</span> {<span class="r">v1</span>, <span class="r">v2</span>}, <span class="ty">Lorg/json/JSONObject;</span>-&gt;optString(<span class="ty">Ljava/lang/String;</span>)<span class="ty">Ljava/lang/String;</span></span></span>
+<span class="row"><span class="ln">43</span><span class="gm"></span><span class="off">0011</span><span class="byt">0d 02</span><span class="cl">    <span class="op">move-result-object</span> <span class="r">v2</span></span></span>
+<span class="row"><span class="ln">44</span><span class="gm"></span><span class="off">0012</span><span class="byt">71 10 1d 00 02 00</span><span class="cl">    <span class="op">invoke-static</span> {<span class="r">v2</span>}, <span class="ty">Lcom/google/android/gm/ai/GeminiClient;</span>-&gt;classify(<span class="ty">Ljava/lang/String;</span>)<span class="ty">Ljava/lang/String;</span></span></span>
+<span class="row"><span class="ln">45</span><span class="gm"></span><span class="off">0015</span><span class="byt">0d 03</span><span class="cl">    <span class="op">move-result-object</span> <span class="r">v3</span></span></span>
+<span class="row"><span class="ln">46</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl">    <span class="lbl">:try_end_0</span></span></span>
+<span class="row"><span class="ln">47</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl">    <span class="d">.catch</span> <span class="ty">Ljava/lang/Exception;</span> {<span class="lbl">:try_start_0</span> .. <span class="lbl">:try_end_0</span>} <span class="lbl">:catch_0</span></span></span>
+<span class="row"><span class="ln">48</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"><span class="d">.end method</span></span></span>
+<span class="row"><span class="ln">49</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"></span></span>
+<span class="row"><span class="ln">50</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"><span class="c"># renamed from: b — AES-GCM, 12-byte nonce prepended</span></span></span>
+<span class="row"><span class="ln">51</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"><span class="d">.method private</span> decryptPayload(<span class="ty">[B</span>)<span class="ty">Ljava/lang/String;</span></span></span>
+<span class="row"><span class="ln">52</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl">    <span class="d">.locals</span> <span class="n">6</span></span></span>
+<span class="row"><span class="ln">53</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"></span></span>
+<span class="row"><span class="ln">54</span><span class="gm"></span><span class="off">0000</span><span class="byt">12 00</span><span class="cl">    <span class="op">const/4</span> <span class="r">v0</span>, <span class="n">0x0</span></span></span>
+<span class="row"><span class="ln">55</span><span class="gm"></span><span class="off">0001</span><span class="byt">71 20 1e 00 07 00</span><span class="cl">    <span class="op">invoke-static</span> {<span class="r">p1</span>, <span class="r">v0</span>}, <span class="ty">Landroid/util/Base64;</span>-&gt;decode(<span class="ty">[BI</span>)<span class="ty">[B</span></span></span>
+<span class="row"><span class="ln">56</span><span class="gm"></span><span class="off">0004</span><span class="byt">0d 01</span><span class="cl">    <span class="op">move-result-object</span> <span class="r">v1</span></span></span>
+<span class="row"><span class="ln">57</span><span class="gm"></span><span class="off">0005</span><span class="byt">1a 02 4d 00</span><span class="cl">    <span class="op">const-string</span> <span class="r">v2</span>, <span class="as">"AES/GCM/NoPadding"</span></span></span>
+<span class="row"><span class="ln">58</span><span class="gm"></span><span class="off">0007</span><span class="byt">71 10 1f 00 02 00</span><span class="cl">    <span class="op">invoke-static</span> {<span class="r">v2</span>}, <span class="ty">Ljavax/crypto/Cipher;</span>-&gt;getInstance(<span class="ty">Ljava/lang/String;</span>)<span class="ty">Ljavax/crypto/Cipher;</span></span></span>
+<span class="row"><span class="ln">59</span><span class="gm"></span><span class="off">000a</span><span class="byt">0d 02</span><span class="cl">    <span class="op">move-result-object</span> <span class="r">v2</span></span></span>
+<span class="row"><span class="ln">60</span><span class="gm"></span><span class="off">000b</span><span class="byt">13 03 80 00</span><span class="cl">    <span class="op">const/16</span> <span class="r">v3</span>, <span class="n">0x80</span></span></span>
+<span class="row"><span class="ln">61</span><span class="gm"></span><span class="off">000d</span><span class="byt">12 c4</span><span class="cl">    <span class="op">const/4</span> <span class="r">v4</span>, <span class="n">0xc</span></span></span>
+<span class="row"><span class="ln">62</span><span class="gm"></span><span class="off">000e</span><span class="byt">22 05 20 00</span><span class="cl">    <span class="op">new-instance</span> <span class="r">v5</span>, <span class="ty">Ljavax/crypto/spec/GCMParameterSpec;</span></span></span>
+<span class="row"><span class="ln">63</span><span class="gm"></span><span class="off">0010</span><span class="byt">70 54 21 00 35 01</span><span class="cl">    <span class="op">invoke-direct</span> {<span class="r">v5</span>, <span class="r">v3</span>, <span class="r">v1</span>, <span class="r">v0</span>, <span class="r">v4</span>}, <span class="ty">Ljavax/crypto/spec/GCMParameterSpec;</span>-&gt;&lt;init&gt;(<span class="ty">I[BII</span>)<span class="ty">V</span></span></span>
+<span class="row"><span class="ln">64</span><span class="gm"></span><span class="off">0013</span><span class="byt">6e 30 22 00 12 04</span><span class="cl">    <span class="op">invoke-virtual</span> {<span class="r">v2</span>, <span class="r">v1</span>, <span class="r">v4</span>}, <span class="ty">Ljavax/crypto/Cipher;</span>-&gt;doFinal(<span class="ty">[BII</span>)<span class="ty">[B</span></span></span>
+<span class="row"><span class="ln">65</span><span class="gm"></span><span class="off">0016</span><span class="byt">0d 01</span><span class="cl">    <span class="op">move-result-object</span> <span class="r">v1</span></span></span>
+<span class="row"><span class="ln">66</span><span class="gm"></span><span class="off">0017</span><span class="byt">1a 03 4e 00</span><span class="cl">    <span class="op">const-string</span> <span class="r">v3</span>, <span class="as">"UTF-8"</span></span></span>
+<span class="row"><span class="ln">67</span><span class="gm"></span><span class="off">0019</span><span class="byt">22 00 23 00</span><span class="cl">    <span class="op">new-instance</span> <span class="r">v0</span>, <span class="ty">Ljava/lang/String;</span></span></span>
+<span class="row"><span class="ln">68</span><span class="gm"></span><span class="off">001b</span><span class="byt">70 30 24 00 10 03</span><span class="cl">    <span class="op">invoke-direct</span> {<span class="r">v0</span>, <span class="r">v1</span>, <span class="r">v3</span>}, <span class="ty">Ljava/lang/String;</span>-&gt;&lt;init&gt;(<span class="ty">[BLjava/lang/String;</span>)<span class="ty">V</span></span></span>
+<span class="row"><span class="ln">69</span><span class="gm"></span><span class="off">001e</span><span class="byt">11 00</span><span class="cl">    <span class="op">return-object</span> <span class="r">v0</span></span></span>
+<span class="row"><span class="ln">70</span><span class="gm"></span><span class="off"></span><span class="byt"></span><span class="cl"><span class="d">.end method</span></span></span></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- right inspector -->
+  <div id="inspector">
+    <div class="insp-sec">
+      <div class="insp-head"><span>Class Info</span><span style="color:var(--text-faint)">ⓘ</span></div>
+      <div class="kv">
+        <div class="r"><span class="k2">Superclass</span><span class="v2">android.os.Handler</span></div>
+        <div class="r"><span class="k2">Interfaces</span><span class="v2">SyncCallback</span></div>
+        <div class="r"><span class="k2">Source</span><span class="v2">classes3.dex</span></div>
+        <div class="r"><span class="k2">Methods</span><span class="v2">4 (3 renamed)</span></div>
+        <div class="r"><span class="k2">Fields</span><span class="v2">3 (2 renamed)</span></div>
+        <div class="r"><span class="k2">Smali size</span><span class="v2">1.9 KB</span></div>
+      </div>
+      <div class="flags"><span class="flag">public</span><span class="flag">final</span><span class="flag">0x0011</span></div>
+      <div class="insp-head"><span>Coverage · run-014</span><span style="font-family:var(--mono);font-weight:400;color:var(--green)">78%</span></div>
+      <div class="meter"><i style="width:78%"></i></div>
+    </div>
+    <div class="insp-sec">
+      <div class="insp-head"><span>Selection — xrefs</span><span style="font-family:var(--mono);font-weight:400">3 to, 1 from</span></div>
+      <div class="selsym"><span class="kind">m</span> handleInvite(byte[]) <span class="was">was: a</span></div>
+      <div class="xref-item">
+        <span class="xi-kind">call</span>
+        <div class="xi-sym"><span class="from">MailSyncService.onStartCommand</span> → handleInvite</div>
+        <div class="xi-meta">MailSyncService.java:142 · via Intent extra "sync"</div>
+      </div>
+      <div class="xref-item">
+        <span class="xi-kind">call</span>
+        <div class="xi-sym"><span class="from">MessageSyncHandler.onMessage</span> → handleInvite</div>
+        <div class="xi-meta">MessageSyncHandler.java:21 · this class</div>
+      </div>
+      <div class="xref-item">
+        <span class="xi-kind">call</span>
+        <div class="xi-sym"><span class="from">g.b$1.run</span> → handleInvite</div>
+        <div class="xi-meta">provider/g.java:88 · lowConfidence (dispatch hub)</div>
+      </div>
+      <div class="xref-item">
+        <span class="xi-kind">reads</span>
+        <div class="xi-sym">handleInvite → <span class="from">decryptPayload</span></div>
+        <div class="xi-meta">MessageSyncHandler.java:26</div>
+      </div>
+    </div>
+    <div class="insp-sec">
+      <div class="insp-head"><span>Agent notes</span><span style="color:var(--agent)">🤖</span></div>
+      <div style="padding:2px 12px 12px;font-size:11.5px;color:var(--text-dim);line-height:1.55">
+        Proposed rename <span style="font-family:var(--mono);color:var(--text)">d → isInviteValid</span> — checks
+        <span style="font-family:var(--mono)">tid</span> prefix and nonce length. Confidence 0.87. <span style="color:var(--agent);cursor:pointer">Review ⌘R</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= DOCK ================= -->
+<div id="dock">
+  <div id="docktabs">
+    <div class="dtab active" data-dock="xrefs">Cross-references <span class="cnt">12</span></div>
+    <div class="dtab" data-dock="callees">Callees <span class="cnt">5</span></div>
+    <div class="dtab" data-dock="runtime">Runtime <span class="cnt" style="color:var(--green)">live</span></div>
+    <div class="dtab" data-dock="tags">Tags <span class="cnt">14</span></div>
+    <div class="dtab" data-dock="flows">Flows <span class="cnt">2</span></div>
+    <div class="dtab" data-dock="bookmarks">Bookmarks <span class="cnt">3</span></div>
+    <div class="dtab" data-dock="history">History <span class="cnt">8</span></div>
+    <div style="margin-left:auto;display:flex;gap:4px;padding-right:6px">
+      <button class="chbtn" style="border:none;background:transparent" title="Filter">⌕</button>
+      <button class="chbtn" id="dockcollapse" style="border:none;background:transparent" title="Collapse panel">▾</button>
+    </div>
+  </div>
+  <div id="dockbody">
+
+    <!-- CROSS-REFERENCES -->
+    <div class="dockpane active" id="dock-xrefs">
+      <div class="xtree">
+        <div class="xg">
+          <div class="xrow"><span class="twisty">▾</span><span>↦ callers of</span> <b style="color:var(--accent)">&nbsp;handleInvite(byte[])</b> <span class="was">was: a</span><span class="loc">3 sites</span></div>
+          <div class="xkids">
+            <div class="xg">
+              <div class="xrow leaf" style="padding-left:34px">
+                <span class="twisty">▾</span><span class="arrow">→</span> MailSyncService.onStartCommand <span class="rt hit">run-014 ✓</span><span class="loc">MailSyncService.java:142</span>
+              </div>
+              <div class="xkids">
+                <div class="xrow leaf" style="padding-left:58px"><span class="arrow">·</span> arg[0] = intent.getByteArrayExtra("sync") <span class="loc">taint: external input</span></div>
+              </div>
+            </div>
+            <div class="xrow leaf" style="padding-left:34px"><span class="arrow">→</span> MessageSyncHandler.onMessage <span class="rt hit">run-014 ✓</span><span class="loc">MessageSyncHandler.java:21 · this class</span></div>
+            <div class="xrow leaf" style="padding-left:34px"><span class="arrow">→</span> g.b$1.run <span class="rt" style="color:var(--yellow)">lowConf</span><span class="loc">provider/g.java:88 · dispatch hub</span></div>
+          </div>
+        </div>
+        <div class="xg closed">
+          <div class="xrow"><span class="twisty">▾</span><span>↦ callers of</span> <b style="color:var(--accent)">&nbsp;decryptPayload(byte[])</b> <span class="was">was: b</span><span class="loc">2 sites</span></div>
+          <div class="xkids">
+            <div class="xrow leaf" style="padding-left:34px"><span class="arrow">→</span> MessageSyncHandler.handleInvite <span class="loc">MessageSyncHandler.java:26</span></div>
+            <div class="xrow leaf" style="padding-left:34px"><span class="arrow">→</span> SyncStateStore.rotateKey <span class="loc">SyncStateStore.java:61</span></div>
+          </div>
+        </div>
+        <div class="xg closed">
+          <div class="xrow"><span class="twisty">▾</span><span>↦ refs to string</span> <span style="color:#a5d6ff">&nbsp;"AES/GCM/NoPadding"</span><span class="loc">6 sites in 4 classes</span></div>
+          <div class="xkids">
+            <div class="xrow leaf" style="padding-left:34px"><span class="arrow">→</span> MessageSyncHandler.decryptPayload <span class="loc">MessageSyncHandler.java:43</span></div>
+          </div>
+        </div>
+        <div class="xg closed">
+          <div class="xrow"><span class="twisty">▾</span><span>↦ refs to field</span> <b style="color:var(--text)">&nbsp;syncKey</b> <span class="was">was: field a</span><span class="loc">1 site</span></div>
+          <div class="xkids"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CALLEES -->
+    <div class="dockpane" id="dock-callees">
+      <div class="xtree">
+        <div class="xg">
+          <div class="xrow"><span class="twisty">▾</span><span>↤ callees of</span> <b style="color:var(--accent)">&nbsp;handleInvite(byte[])</b><span class="loc">5 direct</span></div>
+          <div class="xkids">
+            <div class="xrow leaf" style="padding-left:34px"><span class="arrow">→</span> decryptPayload(byte[]) <span class="loc">this class :26</span></div>
+            <div class="xrow leaf" style="padding-left:34px"><span class="arrow">→</span> JSONObject.&lt;init&gt;(String) <span class="loc">org.json · library</span></div>
+            <div class="xrow leaf" style="padding-left:34px"><span class="arrow">→</span> GeminiClient.classify(String) <span class="loc">ai/GeminiClient.java:34</span></div>
+            <div class="xrow leaf" style="padding-left:34px"><span class="arrow">→</span> SyncStateStore.putLabel(String,String) <span class="loc">SyncStateStore.java:77</span></div>
+            <div class="xrow leaf" style="padding-left:34px"><span class="arrow">→</span> SyncStateStore.markSynced(long) <span class="loc">SyncStateStore.java:92</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RUNTIME -->
+    <div class="dockpane" id="dock-runtime">
+      <table class="rtable">
+        <thead><tr><th>Time</th><th>Method</th><th>Args</th><th style="text-align:right">BT depth</th></tr></thead>
+        <tbody>
+          <tr><td class="t">14:02:11.304</td><td class="m">MessageSyncHandler.onMessage</td><td class="args">topic="invite.v2", body=byte[248]</td><td class="d">6</td></tr>
+          <tr><td class="t">14:02:11.311</td><td class="m">MessageSyncHandler.handleInvite</td><td class="args">raw=byte[248]</td><td class="d">7</td></tr>
+          <tr><td class="t">14:02:11.318</td><td class="m">MessageSyncHandler.decryptPayload</td><td class="args">in=byte[332] → "{\"tid\":\"9f2…\"…"</td><td class="d">8</td></tr>
+          <tr><td class="t">14:02:11.402</td><td class="m">GeminiClient.classify</td><td class="args">msg="You've been invited to…"</td><td class="d">8</td></tr>
+          <tr><td class="t">14:02:11.519</td><td class="m">SyncStateStore.putLabel</td><td class="args">tid="9f2c-441e", label="social"</td><td class="d">8</td></tr>
+          <tr class="flash"><td class="t">14:02:14.887</td><td class="m">MessageSyncHandler.onMessage</td><td class="args">topic="invite.v2", body=byte[192]</td><td class="d">6</td></tr>
+          <tr><td class="t">14:02:14.893</td><td class="m">MessageSyncHandler.decryptPayload</td><td class="args">in=byte[260] → javax.crypto.AEADBadTagException</td><td class="d">8</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- TAGS -->
+    <div class="dockpane" id="dock-tags">
+      <div class="xtree">
+        <div class="xrow"><span class="tag-dot crypto"></span>&nbsp;crypto — MessageSyncHandler.decryptPayload, SyncStateStore.rotateKey, a.a.a.k +3</div>
+        <div class="xrow"><span class="tag-dot suspicious"></span>&nbsp;suspicious — b.send, a.a.a.q.a, provider.g.nativeInit</div>
+      </div>
+    </div>
+
+    <!-- FLOWS -->
+    <div class="dockpane" id="dock-flows">
+      <div class="xtree">
+        <div class="xrow">⌁ Intent extra "sync" → handleInvite → decryptPayload → JSONObject <span class="rt hit">taint</span><span class="loc">4 hops · medium confidence</span></div>
+        <div class="xrow">⌁ keystore read → SecretKeySpec → Cipher.init <span class="rt">sink</span><span class="loc">3 hops · high confidence</span></div>
+      </div>
+    </div>
+
+    <!-- BOOKMARKS -->
+    <div class="dockpane" id="dock-bookmarks">
+      <div class="xtree">
+        <div class="xrow">🔖 MailSyncService.onStartCommand <span class="loc">entry for invite flow</span></div>
+        <div class="xrow">🔖 MessageSyncHandler.java:87 <span class="loc">nonce handling — revisit</span></div>
+        <div class="xrow">🔖 a.a.a.k.a <span class="loc">possible key material gen</span></div>
+      </div>
+    </div>
+
+    <!-- HISTORY -->
+    <div class="dockpane" id="dock-history">
+      <div class="xtree">
+        <div class="xrow">✎ <s>c</s> → MessageSyncHandler <span class="loc">agent · 12:41 · undo ⌃Z</span></div>
+        <div class="xrow">✎ <s>a</s> → handleInvite <span class="loc">agent · 12:41</span></div>
+        <div class="xrow">✎ <s>b</s> → decryptPayload <span class="loc">agent · 12:41</span></div>
+        <div class="xrow">✎ <s>c</s> → onMessage <span class="loc">you · 12:36</span></div>
+        <div class="xrow">✎ <s>e</s> → SyncStateStore <span class="loc">you · 11:58</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= STATUS BAR ================= -->
+<div id="status">
+  <span class="st" title="Decompiled classes">◈ 18,204 classes</span>
+  <span class="st" title="Decompiler engine">jadx 1.5.1-dev · jeb-bridge</span>
+  <span class="st" title="Target heap — gmail.apk·JEB"><span class="heapbar"><i style="width:52%"></i></span> heap 3.2g</span>
+  <span class="st" title="Global ceiling — 4 targets, 9.1 of 24 GB"><span class="heapbar" style="width:64px"><i style="width:38%;background:var(--red)"></i></span> Σ 9.1g / 24g</span>
+  <span class="st" title="Indexing strings…"><span class="spinner"></span> indexing</span>
+  <span class="st" title="Unsaved changes"><span class="dirtydot"></span> unsaved</span>
+  <span class="agentchip" title="Agent activity">🤖 agent reviewing <b>&nbsp;gmail.apk :: sync.c</b></span>
+  <span class="follow" title="Follow live runtime events">Follow <span class="sw"></span></span>
+</div>
+
+<!-- ================= COMMAND PALETTE ================= -->
+<div id="palette-overlay">
+  <div id="palette">
+    <div class="pin"><span class="prompt">❯</span><input id="palette-input" value="ren" spellcheck="false"><kbd>esc</kbd></div>
+    <div class="plist" id="palette-list">
+      <div class="psep">Actions — matching "ren"</div>
+      <div class="prow sel">
+        <span class="pic">✎</span>
+        <div class="pname"><b><span class="match">Ren</span>ame Symbol</b><div class="psub">MessageSyncHandler → rename class, method, field or var</div></div>
+        <span class="scope">symbol</span><kbd>F2</kbd>
+      </div>
+      <div class="prow">
+        <span class="pic">⛁</span>
+        <div class="pname"><b><span class="match">Ren</span>ame Namespace</b><div class="psub">com.google.android.gm.sync → rename package path</div></div>
+        <span class="scope">package</span><kbd>⇧F2</kbd>
+      </div>
+      <div class="prow">
+        <span class="pic">⇱</span>
+        <div class="pname"><b>Find All Refe<span class="match">ren</span>ces</b><div class="psub">callers, field reads/writes, string refs</div></div>
+        <span class="scope">symbol</span><kbd>X</kbd>
+      </div>
+      <div class="psep">Recent</div>
+      <div class="prow">
+        <span class="pic">🤖</span>
+        <div class="pname"><b>Agent: <span class="match">Ren</span>ame Review</b><div class="psub">3 pending proposals in sync.c</div></div>
+        <span class="scope">agent</span><kbd>⌘R</kbd>
+      </div>
+      <div class="prow">
+        <span class="pic">▶</span>
+        <div class="pname"><b>Run: Attach Frida…</b><div class="psub">hook selection · live args + backtrace</div></div>
+        <span class="scope">runtime</span><kbd>⌘⇧R</kbd>
+      </div>
+      <div class="psep">Targets</div>
+      <div class="prow">
+        <span class="pic">⇄</span>
+        <div class="pname"><b>Switch to Target: libgmail.so · IDA</b><div class="psub">native · agent active · 41,208 functions</div></div>
+        <span class="scope">target</span><kbd>⌘3</kbd>
+      </div>
+    </div>
+    <div class="pfoot">
+      <span><kbd>↑↓</kbd> navigate</span><span><kbd>↵</kbd> run</span><span><kbd>tab</kbd> complete</span><span><kbd>esc</kbd> close</span>
+      <span style="margin-left:auto">6 of 132 actions</span>
+    </div>
+  </div>
+</div>
+
+<!-- ================= TOAST ================= -->
+<div id="toast">
+  <span class="robot">🤖</span>
+  <span class="tmsg">Agent proposed <b>3 renames</b> in <span style="font-family:var(--mono)">sync.c</span></span>
+  <span class="tact">Review <kbd>⌘R</kbd></span>
+  <span class="tx" id="toast-close">×</span>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---- activity bar: switch side panel ---- */
+  var titles = {
+    explorer:"Explorer", search:"Search", strings:"Strings",
+    tags:"Tags", runs:"Runs — Dynamic Analysis", agents:"Agents"
+  };
+  var actbtns = document.querySelectorAll(".actbtn[data-panel]");
+  actbtns.forEach(function(btn){
+    btn.addEventListener("click", function(){
+      actbtns.forEach(function(b){ b.classList.remove("active"); });
+      btn.classList.add("active");
+      var p = btn.getAttribute("data-panel");
+      document.querySelectorAll(".sidepane").forEach(function(pane){
+        pane.style.display = (pane.id === "panel-" + p) ? "" : "none";
+      });
+      document.getElementById("sidetitle").textContent = titles[p] || p;
+      var outline = document.getElementById("outline");
+      outline.style.display = (p === "explorer") ? "" : "none";
+    });
+  });
+
+  /* ---- tree expand/collapse ---- */
+  document.querySelectorAll(".tnode > .trow").forEach(function(row){
+    row.addEventListener("click", function(e){
+      var node = row.parentElement;
+      if (node.querySelector(":scope > .tkids")){
+        node.classList.toggle("closed");
+      }
+    });
+  });
+  document.querySelectorAll(".xg > .xrow").forEach(function(row){
+    row.addEventListener("click", function(e){
+      var g = row.parentElement;
+      if (g.classList.contains("xg") && g.querySelector(":scope > .xkids")){
+        g.classList.toggle("closed");
+        e.stopPropagation();
+      }
+    });
+  });
+
+  /* ---- explorer selection ---- */
+  document.querySelectorAll("#panel-explorer .trow").forEach(function(row){
+    row.addEventListener("click", function(e){
+      document.querySelectorAll("#panel-explorer .trow").forEach(function(r){ r.classList.remove("sel"); });
+      row.classList.add("sel");
+      e.stopPropagation();
+    });
+  });
+
+  /* ---- dock tabs ---- */
+  var dtabs = document.querySelectorAll(".dtab");
+  dtabs.forEach(function(tab){
+    tab.addEventListener("click", function(){
+      dtabs.forEach(function(t){ t.classList.remove("active"); });
+      tab.classList.add("active");
+      var d = tab.getAttribute("data-dock");
+      document.querySelectorAll(".dockpane").forEach(function(pane){
+        pane.classList.toggle("active", pane.id === "dock-" + d);
+      });
+      var dock = document.getElementById("dock");
+      if (dock.classList.contains("collapsed")) dock.classList.remove("collapsed");
+    });
+  });
+
+  /* ---- dock collapse ---- */
+  document.getElementById("dockcollapse").addEventListener("click", function(){
+    document.getElementById("dock").classList.toggle("collapsed");
+  });
+
+  /* ---- command palette ---- */
+  var overlay = document.getElementById("palette-overlay");
+  var input = document.getElementById("palette-input");
+  var rows = Array.prototype.slice.call(document.querySelectorAll(".prow"));
+
+  function openPalette(){ overlay.classList.remove("hidden"); input.focus(); input.select(); }
+  function closePalette(){ overlay.classList.add("hidden"); }
+
+  overlay.addEventListener("click", function(e){ if (e.target === overlay) closePalette(); });
+
+  rows.forEach(function(row){
+    row.addEventListener("click", function(){
+      rows.forEach(function(r){ r.classList.remove("sel"); });
+      row.classList.add("sel");
+      setTimeout(closePalette, 120);
+    });
+    row.addEventListener("mouseenter", function(){
+      rows.forEach(function(r){ r.classList.remove("sel"); });
+      row.classList.add("sel");
+    });
+  });
+
+  document.addEventListener("keydown", function(e){
+    if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")){
+      e.preventDefault();
+      overlay.classList.contains("hidden") ? openPalette() : closePalette();
+      return;
+    }
+    if (e.key === "Tab" && overlay.classList.contains("hidden")){
+      e.preventDefault();
+      var order = ["java","smali","split"];
+      var curMode = document.querySelector(".segbtn.active").getAttribute("data-mode");
+      var nextMode = order[(order.indexOf(curMode) + 1) % order.length];
+      document.querySelector('.segbtn[data-mode="' + nextMode + '"]').click();
+      return;
+    }
+    if (e.key === "Escape" && !overlay.classList.contains("hidden")){ closePalette(); return; }
+    if (overlay.classList.contains("hidden")) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp"){
+      e.preventDefault();
+      var i = rows.findIndex(function(r){ return r.classList.contains("sel"); });
+      i = (e.key === "ArrowDown") ? (i + 1) % rows.length : (i - 1 + rows.length) % rows.length;
+      rows.forEach(function(r){ r.classList.remove("sel"); });
+      rows[i].classList.add("sel");
+      rows[i].scrollIntoView({block:"nearest"});
+    }
+    if (e.key === "Enter"){ closePalette(); }
+  });
+
+  /* ---- jump box also opens palette ---- */
+  document.getElementById("jumpbox").addEventListener("click", openPalette);
+
+  /* ---- toast ---- */
+  document.getElementById("toast-close").addEventListener("click", function(){
+    document.getElementById("toast").style.display = "none";
+  });
+
+  /* ---- view mode: Java / Smali / Split ---- */
+  var codewrap = document.getElementById("codewrap");
+  document.querySelectorAll(".segbtn").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      document.querySelectorAll(".segbtn").forEach(function(b){ b.classList.remove("active"); });
+      btn.classList.add("active");
+      codewrap.className = "mode-" + btn.getAttribute("data-mode");
+    });
+  });
+  document.getElementById("synctoggle").addEventListener("click", function(){
+    this.classList.toggle("active");
+  });
+  document.getElementById("bytestoggle").addEventListener("click", function(){
+    this.classList.toggle("active");
+    document.getElementById("smali").classList.toggle("nobytes", !this.classList.contains("active"));
+  });
+
+  /* ---- target strip: move active highlight ---- */
+  var tchips = document.querySelectorAll("#targets .tchip:not(.add)");
+  tchips.forEach(function(chip){
+    chip.addEventListener("click", function(){
+      document.querySelectorAll("#targets .tchip").forEach(function(c){ c.classList.remove("active"); });
+      chip.classList.add("active");
+    });
+  });
+
+  /* ---- location breadcrumb: flash on click (no-op navigation) ---- */
+  document.querySelectorAll(".locbar .lseg").forEach(function(seg){
+    seg.addEventListener("click", function(){
+      seg.classList.add("flash");
+      setTimeout(function(){ seg.classList.remove("flash"); }, 250);
+    });
+  });
+
+  /* ---- follow toggle ---- */
+  document.querySelector(".follow").addEventListener("click", function(){
+    this.querySelector(".sw").classList.toggle("off");
+    var sw = this.querySelector(".sw");
+    var on = !sw.classList.contains("off");
+    sw.style.background = on ? "var(--accent-dim)" : "var(--bg3)";
+    sw.style.setProperty("--x", on ? "right" : "left");
+  });
+})();
+</script>
+</body>
+</html>

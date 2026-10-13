@@ -1,0 +1,2495 @@
+/* ============================ LAYOUT ===================================== */
+/* cursor discipline (user rule 2026-08-04): default arrow everywhere;
+   I-beam only on genuinely editable fields (inputs/textarea + the jump box).
+   Everything else declares pointer/grab explicitly. */
+body{cursor:default}
+input,textarea,[contenteditable]{cursor:text}
+.deck{
+  height:100vh;
+  display:grid;
+  grid-template-rows:auto auto 1fr auto auto auto;   /* targets · navbar · main · dock · restore · status */
+  grid-template-columns:minmax(0, 1fr);              /* never let content force the page wider */
+}
+.main{
+  display:grid;
+  grid-template-columns:44px 264px 4px minmax(0, 1fr) 4px 264px;
+  min-height:0;
+  min-width:0;
+  border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);
+}
+/* explicit placement: hiding the side column must not shift siblings */
+.main > .rail{grid-column:1}
+.main > #col-side{grid-column:2}
+.main > .editor{grid-column:4}
+.main > #col-right{grid-column:6}
+.main > #col-side + .split-v{grid-column:3}
+.main > .editor + .split-v{grid-column:5}
+/* explorer-only chrome: class tabs + file navigator exist ONLY in code view */
+body.chrome-off .etabs{display:none}
+body.chrome-off #col-side{display:none!important}
+body.chrome-off #col-side + .split-v{display:none}   /* no dead splitter hotzone */
+/* center surfaces overlay the editor's grid cell (col 4) when chrome is off */
+.main > #mapwrap,.main > #agentswrap,.main > .viewwrap{grid-column:4;grid-row:1}
+
+/* ======================= BAY (TITLED GROUP) ============================== */
+.bay{background:var(--panel);display:flex;flex-direction:column;min-height:0}
+.bay-title{
+  display:flex;align-items:center;gap:10px;
+  padding:5px 10px 4px;
+  font:600 9px/1 var(--sans);
+  letter-spacing:.18em;
+  color:var(--ink-faint);
+  text-transform:uppercase;
+  user-select:none;
+  flex:none;
+}
+.bay-title::after{content:"";flex:1;height:1px;background:var(--line-soft)}
+.bay-title .meta{letter-spacing:.06em;color:var(--ink-dim);font-weight:400;text-transform:none}  /* symbol names keep their real case */
+
+/* ============================ LED DOTS =================================== */
+.led{width:6px;height:6px;border-radius:50%;flex:none;background:var(--ink-faint)}
+.led.g{background:var(--grn);box-shadow:0 0 5px var(--glow)}      /* LIVE: phosphor */
+.led.b{background:var(--blue)}
+.led.v{background:var(--verm)}
+.led.o{background:var(--org)}
+.led.p{background:var(--agt)}
+
+/* ===================== THEME SWITCH (LIGHT/DARK) ========================= */
+.themesw{
+  position:relative;display:flex;
+  border:1px solid var(--line-strong);border-radius:2px;
+  background:var(--paper);cursor:pointer;user-select:none;overflow:hidden;
+}
+.themesw .tknob{
+  position:absolute;top:0;bottom:0;left:0;width:44px;
+  background:var(--blue-soft);
+  box-shadow:inset 0 0 0 1px var(--blue-line);
+  transition:transform var(--t);
+}
+.themesw.dark .tknob{transform:translateX(44px)}
+.themesw .op{
+  position:relative;z-index:1;width:44px;text-align:center;
+  font:600 9px/1 var(--sans);letter-spacing:.12em;color:var(--ink-faint);
+  padding:3px 0;transition:color var(--t);
+}
+.themesw .op.on{color:var(--blue)}
+
+/* ========================== TARGET STRIP ================================= */
+.targets{
+  background:var(--panel2);
+  border-bottom:1px solid var(--line-strong);
+  display:flex;align-items:stretch;
+  padding:4px 10px 0;
+  gap:6px;
+}
+.targets .bay-title{padding:5px 6px 0 0}
+.targets .bay-title::after{display:none}
+.tchip{
+  display:flex;align-items:center;gap:7px;
+  padding:5px 12px 6px;
+  background:var(--panel2);
+  border:1px solid var(--line);
+  border-bottom:none;
+  border-radius:3px 3px 0 0;
+  font:11px var(--mono);
+  color:var(--ink-dim);
+  cursor:pointer;
+  transition:background var(--t),color var(--t),border-color var(--t);
+  user-select:none;
+  position:relative;
+}
+.tchip:hover{background:var(--panel);color:var(--ink)}
+.tchip.on{
+  background:var(--paper);
+  color:var(--ink);
+  border-color:var(--line-strong);
+  box-shadow:inset 0 2px 0 var(--blue);
+}
+.tchip.on::before{
+  content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--paper);
+}
+.tchip.on .lbl-t{text-shadow:0 0 7px var(--glow)}                 /* LIVE: faint halo */
+.tchip .eng{color:var(--ink-faint);font-size:10px}
+.tchip.on .eng{color:var(--blue)}
+.tchip .dotsep{color:var(--ink-faint)}
+.tadd{
+  align-self:flex-start;
+  margin-top:2px;
+  width:22px;height:22px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--panel);border:1px dashed var(--line-strong);border-radius:2px;
+  color:var(--ink-faint);font:13px var(--mono);cursor:pointer;
+  transition:background var(--t),color var(--t),border-color var(--t);
+}
+.tadd:hover{background:var(--raise);color:var(--blue);border-color:var(--blue-line)}
+.tchip.mchip-proj svg{color:var(--blue);flex:none}
+/* map chip: CONSTANT width. The label is an arbitrary map slug — content-sized,
+   it re-laid every target chip on each map switch. 19ch = the 18-char
+   'fcm-attack-surface' budget + 1ch guard (an exact fit can ellipsize on a
+   sub-pixel); longer ids ellipsize, the full name stays in the data-tip.
+   The clip box is padded out to the chip's inner box (negative margins cancel
+   the padding — no layout change) so the LIVE halo isn't sheared off. */
+.tchip.mchip-proj{flex:none}
+.tchip.mchip-proj .lbl-t{
+  flex:none;box-sizing:content-box;width:19ch;
+  padding:5px 7px 6px;margin:-5px -7px -6px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.track-div{width:1px;align-self:stretch;margin:6px 3px;background:var(--line-strong);flex:none}
+
+/* rail MAP section — CODE EXCERPT */
+.mr-code{
+  margin:4px 10px 8px;border:1px solid var(--line);border-radius:2px;
+  background:var(--paper);overflow:hidden;
+}
+.mr-code-head{
+  font:9px var(--mono);color:var(--blue);padding:4px 8px;
+  border-bottom:1px solid var(--line-soft);cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  transition:background var(--t);
+}
+.mr-code-head:hover{background:var(--blue-soft);text-decoration:underline}
+.mr-code-body{
+  font:10px/1.5 var(--mono);font-variant-numeric:tabular-nums;
+  padding:4px 0 6px;cursor:default;user-select:text;overflow-x:auto;
+}
+.cx{display:flex;white-space:pre;min-width:max-content}
+.cxn{width:22px;flex:none;text-align:right;padding-right:8px;color:var(--ink-faint);user-select:none}
+.mr-code-body .k{color:var(--ink);font-weight:700}
+.mr-code-body .s{color:var(--blue-ink)}
+.mr-code-body .c{color:var(--ink-faint);font-style:italic}
+
+/* ============================ NAV BAR ==================================== */
+.navbar{
+  display:flex;align-items:center;gap:8px;
+  background:var(--panel);
+  border-bottom:1px solid var(--line);
+  padding:5px 10px;
+  height:36px;
+}
+/* current-project chip: which project (multi-target container) is open */
+.projwrap{position:relative;flex-shrink:0}
+.projchip{display:flex;align-items:center;gap:6px;padding:2px 8px;
+  border:1px dashed var(--line-strong);border-radius:2px;
+  font:10px var(--mono);color:var(--ink);cursor:pointer}
+.projchip:hover{border-color:var(--blue);color:var(--blue)}
+.projchip .projchip-n{color:var(--ink-dim);font-size:9px}
+/* project menu: switch / open / new / close */
+.projmenu{position:absolute;left:0;top:calc(100% + 6px);min-width:230px;
+  background:var(--panel);border:1px solid var(--line-strong);border-radius:2px;
+  box-shadow:0 6px 18px rgba(0,0,0,.18);z-index:300;
+  font:11px var(--mono);color:var(--ink);padding:4px 0}
+.pm-head{padding:4px 10px 3px;font-size:9px;letter-spacing:.08em;color:var(--ink-dim)}
+.pm-item{display:flex;align-items:center;gap:8px;padding:4px 10px;cursor:pointer}
+.pm-item:hover{background:var(--blue-soft)}
+.pm-item .led{flex-shrink:0}
+.pm-item .pm-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* inline choices on a row (the reverse row's quick | deep): pills at the
+   right, the default one outlined in blue — ↵ runs it */
+.pm-item .pm-choice{flex:none;font:600 8px/1 var(--sans);letter-spacing:.1em;text-transform:uppercase;
+  border:1px solid var(--line-strong);border-radius:2px;padding:2px 5px;color:var(--ink-dim);cursor:pointer}
+.pm-item .pm-choice:hover{color:var(--blue);border-color:var(--blue)}
+.pm-item .pm-choice.dflt{border-color:var(--blue-line);color:var(--blue)}
+.pm-item .pm-n{color:var(--ink-dim);font-size:9px}
+.pm-item .pm-check{color:var(--blue);width:12px;flex-shrink:0}
+.pm-item kbd{margin-left:auto}
+.pm-sep{height:1px;background:var(--line-soft);margin:4px 0}
+.pm-danger:hover{color:var(--verm)}
+/* MAPS row hover-× → inline delete confirm (map lifecycle §4): same
+   visibility-on-hover convention as .tchip .tx, scoped to the menu */
+.pm-item .tx{visibility:hidden;color:var(--ink-faint);cursor:pointer;font-size:11px;line-height:1;padding:0 2px;border-radius:2px}
+.pm-item:hover .tx{visibility:visible}
+.pm-item .tx:hover{color:var(--verm);background:var(--raise)}
+.pm-confirm{cursor:default}
+.pm-confirm:hover{background:transparent}
+.pm-confirm .pm-go{color:var(--verm);cursor:pointer;font-size:9px;letter-spacing:.06em}
+.pm-confirm .pm-cancel{color:var(--ink-dim);cursor:pointer;font-size:9px}
+.pm-parked{padding:2px 10px 4px;font-size:9px;color:var(--ink-dim);word-break:break-all;cursor:default}
+.hist{display:flex;gap:3px}
+.hbtn{
+  width:22px;height:22px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--paper);border:1px solid var(--line);border-radius:2px;
+  box-shadow:var(--bevel);
+  color:var(--ink-dim);font:11px var(--mono);cursor:pointer;
+  transition:background var(--t),color var(--t),border-color var(--t);
+}
+.hbtn:hover{background:var(--raise);color:var(--blue);border-color:var(--blue-line)}
+.hbtn.off{opacity:.35;pointer-events:none}
+.crumb{
+  flex:1;min-width:0;
+  font:11px var(--mono);color:var(--ink-dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;   /* takes remaining space, ellipsizes */
+}
+.crumb b{color:var(--ink);font-weight:500}
+.crumb .sep{color:var(--ink-faint);padding:0 4px}
+.crumb .was{color:var(--verm)}
+.crumb .cur{color:var(--blue);font-weight:600}
+
+/* layout: presets removed — users rearrange via drag-to-dock and ⌘J/⌘B */
+
+.jumpbox{
+  flex:none;width:300px;margin:0;                      /* locked: same x in every view */
+  display:flex;align-items:center;gap:8px;
+  background:var(--paper);
+  border:1px solid var(--line-strong);border-radius:2px;
+  box-shadow:inset 0 1px 2px var(--well);
+  padding:4px 8px;
+  color:var(--ink-faint);font:11px var(--mono);
+  cursor:text;                                             /* editable destination: I-beam */
+  transition:border-color var(--t),color var(--t);
+}
+.jumpwrap{position:relative;flex:none}
+.jdrop{
+  position:absolute;top:calc(100% + 5px);right:0;width:340px;
+  background:var(--panel);border:1px solid var(--line-strong);border-radius:3px;
+  box-shadow:var(--bevel),0 8px 24px rgba(28,36,48,.28);
+  z-index:150;font:11px var(--mono);color:var(--ink-dim);
+}
+.jdrop[hidden]{display:none}
+.jdrop-in{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 10px;border-bottom:1px solid var(--line);
+}
+.jdrop-in input{
+  flex:1;background:none;border:none;outline:none;
+  color:var(--ink);font:11px var(--mono);cursor:text;
+}
+.jdrop-in input::placeholder{color:var(--ink-faint)}
+.jgrp{
+  padding:5px 10px 2px;font:600 8px/1 var(--sans);letter-spacing:.16em;
+  color:var(--ink-faint);display:flex;align-items:center;gap:8px;
+}
+.jgrp::after{content:"";flex:1;height:1px;background:var(--line-soft)}
+.jrow{
+  display:flex;align-items:center;gap:8px;
+  padding:3px 10px;cursor:pointer;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;
+  transition:background var(--t),color var(--t);
+}
+.jrow:hover,.jrow.sel{background:var(--blue-soft);color:var(--ink)}
+.jrow kbd{margin-left:auto}
+.jdrop-foot{
+  padding:5px 10px;border-top:1px solid var(--line);
+  font:9px var(--mono);color:var(--ink-faint);
+}
+.jumpbox:hover{border-color:var(--blue-line);color:var(--ink-dim)}
+.jumpbox .grow{flex:1}
+.cursor{                                                           /* phosphor block */
+  display:inline-block;width:7px;height:13px;flex:none;
+  background:var(--grn);
+  box-shadow:0 0 6px var(--glow);
+  vertical-align:-2px;
+  animation:blink 1.06s steps(1) infinite;
+}
+@keyframes blink{50%{opacity:0}}
+.agentchip{
+  display:flex;align-items:center;gap:7px;
+  background:var(--agt-soft);
+  border:1px dashed var(--agt-line);                               /* hue + dash = redundant */
+  border-radius:2px;
+  padding:3px 8px;
+  font:10px var(--mono);color:var(--agt);
+  cursor:pointer;user-select:none;
+  white-space:nowrap;
+  transition:background var(--t),border-style var(--t);
+}
+.agentchip:hover{border-style:solid}
+.agentchip:focus-visible{outline:1px solid var(--blue);outline-offset:1px}
+/* a pin older than a minute is still true, just not fresh — dimmed, not hidden
+   (the chip disappears entirely past five minutes) */
+.agentchip.stale{opacity:.55}
+.agentchip.stale .led{animation:none}
+
+/* ============================ BUTTONS ==================================== */
+.btn{
+  display:inline-flex;align-items:center;gap:6px;
+  background:linear-gradient(var(--btn-top),var(--btn-bot));
+  border:1px solid var(--line-strong);border-radius:2px;
+  box-shadow:var(--bevel);
+  color:var(--ink-dim);
+  font:10px var(--sans);letter-spacing:.04em;
+  padding:3px 9px;
+  cursor:pointer;user-select:none;
+  transition:background var(--t),color var(--t),border-color var(--t);
+  white-space:nowrap;
+}
+.btn:hover{color:var(--blue);border-color:var(--blue-line)}
+.btn:disabled,.btn:disabled:hover{color:var(--ink-faint);border-color:var(--line-strong);opacity:.55;cursor:default;transform:none}   /* a disabled primary looks disabled (persona pass 2026-10-08) */
+.btn:active{transform:translateY(1px)}
+.btn.dirty{color:var(--org);border-color:var(--org)}
+.btn.dirty:hover{color:var(--org)}
+
+/* ======================== TOGGLE SWITCHES ================================ */
+.tswitch{
+  display:inline-flex;align-items:center;gap:7px;
+  cursor:pointer;user-select:none;
+}
+.tswitch .lbl{
+  font:600 9px/1 var(--sans);letter-spacing:.14em;color:var(--ink-faint);
+  text-transform:uppercase;
+  transition:color var(--t);
+}
+.tswitch .track{
+  width:26px;height:13px;flex:none;
+  background:var(--paper);
+  border:1px solid var(--line-strong);border-radius:2px;
+  box-shadow:inset 0 1px 2px var(--well);
+  position:relative;
+  transition:background var(--t),border-color var(--t);
+}
+.tswitch .knob{
+  position:absolute;top:2px;left:2px;
+  width:10px;height:7px;
+  background:var(--ink-faint);border-radius:1px;
+  transition:transform var(--t),background var(--t);
+}
+.tswitch.on .track{background:var(--blue-soft);border-color:var(--blue-line)}
+.tswitch.on .knob{transform:translateX(12px);background:var(--blue)}
+.tswitch.on .lbl{color:var(--blue)}
+
+/* ======================== SEGMENTED GAUGES =============================== */
+.gauge{display:inline-flex;gap:2px;align-items:center}
+.gauge i{
+  width:4px;height:9px;
+  background:var(--paper);
+  border:1px solid var(--line-soft);
+  display:block;
+}
+.gauge i.on{background:var(--blue);border-color:var(--blue)}
+.gauge i.on.w{background:var(--org);border-color:var(--org)}    /* top zone = caution */
+
+/* ========================== ACTIVITY RAIL ================================ */
+.rail{
+  background:var(--panel2);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;
+  padding-top:6px;gap:2px;
+}
+.rbtn{
+  width:34px;height:34px;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--ink-faint);
+  border:1px solid transparent;border-radius:2px;
+  cursor:pointer;position:relative;
+  transition:color var(--t),background var(--t);
+}
+.rbtn svg{width:16px;height:16px;display:block}
+.rbtn:hover{color:var(--ink-dim);background:var(--panel)}
+.rbtn.on{color:var(--blue);background:var(--blue-soft);border-color:var(--blue-line)}
+.rbtn.on::before{
+  content:"";position:absolute;left:-6px;top:8px;bottom:8px;width:3px;background:var(--blue);
+}
+.rbtn.proj.on::before{background:var(--grn)}             /* scope tick: green = project group */
+/* the tree's server-backed find (app.ts treeFind): a short list above the tree */
+#tfind{max-height:34vh;overflow-y:auto;border-bottom:1px dashed var(--line);padding:2px 0 4px}
+#tfind[hidden]{display:none}
+.tfind-head{font:600 8px var(--sans);letter-spacing:.12em;color:var(--ink-faint);padding:4px 10px 2px}
+.tfind-row{display:flex;gap:8px;align-items:baseline;padding:2px 10px;font:11px var(--mono);cursor:pointer;white-space:nowrap;overflow:hidden}
+.tfind-row:hover{background:var(--blue-soft)}
+.tfind-name{color:var(--ink)}
+.tfind-owner{color:var(--ink-faint);font-size:9.5px;overflow:hidden;text-overflow:ellipsis}
+.rail-cap{font:600 6.5px var(--sans);letter-spacing:.12em;color:var(--ink-faint);text-align:center;margin:6px 0 1px;flex:none;cursor:default}   /* the target/project split, on screen (UI audit 2026-09-09) */
+.rail-div{
+  width:20px;height:1px;background:var(--line-strong);margin:6px 0 4px;flex:none;
+}
+.rbtn .badgedot{position:absolute;top:5px;right:5px}
+.rbadge{
+  position:absolute;top:2px;right:2px;
+  font:600 8px/11px var(--mono);background:var(--agt);color:#fff;
+  border-radius:2px;padding:0 3px;
+}
+.rail .spring{flex:1}
+.rchev{
+  width:34px;height:24px;margin-bottom:4px;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--ink-faint);font-size:10px;
+  border:1px solid transparent;border-radius:2px;cursor:pointer;
+  transition:color var(--t),background var(--t);
+}
+.rchev:hover{color:var(--blue);background:var(--panel)}
+
+/* ====================== STACKED PANEL COLUMNS ============================ */
+.stack{display:flex;flex-direction:column;min-height:0;overflow-y:auto;background:var(--panel)}
+#col-side{border-right:1px solid var(--line)}
+#col-right{border-left:1px solid var(--line)}
+.stack > .panel{
+  border-top:1px solid var(--line-strong);
+  flex:none;display:flex;flex-direction:column;
+  max-height:55%;
+}
+.stack > .panel:first-child{border-top:none}
+#col-right > .panel{flex:1;max-height:none;min-height:0}
+.stack .p-body{overflow-y:auto;min-height:0}
+
+/* ========================== DOCKABLE PANELS ============================== */
+.panel{background:var(--panel)}
+.p-head{
+  display:flex;align-items:center;gap:8px;
+  padding:5px 10px 4px;
+  font:600 9px/1 var(--sans);letter-spacing:.18em;
+  color:var(--ink-faint);text-transform:uppercase;
+  cursor:grab;user-select:none;flex:none;
+}
+.p-head::after{content:"";flex:1;height:1px;background:var(--line-soft)}
+.p-head .grip{color:var(--blue);cursor:grab;letter-spacing:0}
+.p-head:active{cursor:grabbing}
+.p-dockback{
+  display:none;border:1px solid var(--blue-line);border-radius:2px;
+  background:var(--blue-soft);color:var(--blue);
+  font:600 8px var(--sans);letter-spacing:.1em;padding:2px 6px;cursor:pointer;
+}
+.panel.floating .p-dockback{display:inline-block}
+.panel.floating{
+  position:fixed;z-index:80;width:340px;max-height:52vh;
+  display:flex;flex-direction:column;
+  border:1px solid var(--blue-line);border-radius:3px;
+  box-shadow:var(--bevel),0 8px 30px rgba(28,36,48,.3);
+  overflow:hidden;
+}
+.panel.floating .p-body{overflow-y:auto}
+body.dark .panel.floating{box-shadow:var(--bevel),0 8px 30px rgba(0,0,0,.55)}
+
+/* ============================ SIDE PANEL ================================= */
+.filter{
+  margin:6px 8px 4px;
+  display:flex;align-items:center;gap:6px;
+  background:var(--paper);
+  border:1px solid var(--line);border-radius:2px;
+  box-shadow:inset 0 1px 2px var(--well);
+  padding:3px 7px;
+}
+.filter input{
+  flex:1;background:none;border:none;outline:none;
+  color:var(--ink);font:11px var(--mono);
+}
+.filter input::placeholder{color:var(--ink-faint)}
+.tree{overflow-y:auto;padding:2px 4px 12px;font:11px var(--mono);flex:1}
+.tree ul{list-style:none}
+.tree .kids{margin-left:13px;border-left:1px solid var(--line-soft);padding-left:6px}
+.tnode{
+  display:flex;align-items:center;gap:5px;
+  padding:1px 4px;border-radius:2px;
+  color:var(--ink-dim);cursor:pointer;white-space:nowrap;   /* rows are clickable (QA 25) */
+  transition:background var(--t),color var(--t);
+}
+.tnode:hover{background:var(--blue-soft);color:var(--ink)}
+.tnode.sel{background:var(--blue-soft);color:var(--blue);box-shadow:inset 2px 0 0 var(--blue)}
+.caret{
+  width:10px;flex:none;color:var(--ink-faint);font-size:8px;text-align:center;
+  transition:transform var(--t);display:inline-block;
+}
+.caret.cl{transform:rotate(-90deg)}
+.caret.leaf{visibility:hidden}
+.kids.cl{display:none}
+.tnode .was{color:var(--verm);font-size:10px}
+.tnode .obf{color:var(--ink-faint)}
+.tnode .cnt{margin-left:auto;color:var(--ink-faint);font-size:9px;padding-right:2px}
+.tdot{width:5px;height:5px;flex:none;border-radius:1px}
+.tdot.b{background:var(--blue)}
+.tdot.v{background:var(--verm)}
+.tdot.p{background:var(--agt)}
+.tdot.n{border:1px solid var(--ink-faint)}
+
+/* ============================= EDITOR ==================================== */
+.editor{min-width:0;display:flex;flex-direction:column;min-height:0}
+.etabs{
+  display:flex;align-items:stretch;gap:4px;
+  padding:5px 8px 0;background:var(--panel2);
+  border-bottom:1px solid var(--line-strong);
+  flex:none;
+  overflow-x:auto;overflow-y:hidden;min-width:0;         /* more tabs than fit: the strip scrolls sideways */
+  scrollbar-width:none;
+}
+.etabs::-webkit-scrollbar{display:none}                   /* the strip's own line is its edge; wheel and the active tab move it */
+.etabs .bay-title{padding:6px 10px 5px 2px}
+.etabs .bay-title::after{display:none}
+.etab{
+  display:flex;align-items:center;gap:7px;flex:none;max-width:260px;
+  padding:4px 12px 5px;
+  background:var(--panel2);border:1px solid var(--line);border-bottom:none;
+  border-radius:3px 3px 0 0;
+  font:11px var(--mono);color:var(--ink-dim);
+  cursor:pointer;user-select:none;position:relative;
+  transition:background var(--t),color var(--t);
+}
+.etab:hover{color:var(--ink)}
+.etab .lbl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}   /* a long class name ellipsizes; the title carries it whole */
+.etab .moddot{color:var(--blue-ink);font-size:8px}        /* renamed-this-session marker (mockup) */
+.etab.on{background:var(--panel);color:var(--ink);border-color:var(--line-strong);
+  box-shadow:inset 0 2px 0 var(--blue)}
+.etab.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--panel)}
+.etab.agent{box-shadow:inset 0 2px 0 var(--agt);color:var(--agt)}
+.etab .x{color:var(--ink-faint);font-size:10px;padding-left:4px}
+.etab .x:hover{color:var(--verm)}
+.code{
+  flex:1;overflow:auto;
+  font:11px/1.55 var(--mono);
+  font-variant-numeric:tabular-nums;
+  padding:6px 0 24px;
+  background:var(--paper);
+}
+.cl{display:flex;white-space:pre;min-width:max-content}
+.cl:hover{background:var(--blue-soft)}
+.cl.cur{background:var(--blue-soft);box-shadow:inset 2px 0 0 var(--blue)}
+.cl.agentline{box-shadow:inset 2px 0 0 var(--agt)}
+.gm{
+  width:26px;flex:none;
+  display:flex;align-items:center;justify-content:center;gap:3px;
+}
+.bp{width:7px;height:7px;background:var(--verm);transform:rotate(45deg)}  /* diamond = BP */
+.tsq{width:6px;height:6px;background:var(--blue);border-radius:1px}       /* square = tag */
+.cov{display:flex;gap:1px}
+.cov i{width:2px;height:9px;background:var(--grn);opacity:.85;display:block} /* stripes = live */
+.ln{
+  width:36px;flex:none;text-align:right;padding-right:10px;
+  color:var(--ink-faint);user-select:none;
+}
+.cl.cur .ln{color:var(--blue);font-weight:600;text-shadow:0 0 8px var(--glow)} /* LIVE */
+.lc{color:var(--ink)}
+.lc .k{color:var(--ink);font-weight:700}
+.lc .s{color:var(--blue-ink)}
+.lc .c{color:var(--ink-faint);font-style:italic}
+/* an agent's comment: its own colour and a left rule, the author as a small tag, wrapped at
+   ~96 columns within its numbered row (the row keeps the engine's line number) */
+.cl.llmcm{box-shadow:inset 2px 0 0 var(--agt);background:color-mix(in srgb, var(--agt) 6%, transparent)}
+.cl.llmcm:hover{background:color-mix(in srgb, var(--agt) 12%, transparent)}
+.lc .c.llm{
+  display:inline-block;max-width:96ch;white-space:pre-wrap;overflow-wrap:anywhere;vertical-align:top;
+  color:var(--agt);font-style:italic;
+}
+/* a call-site comment lifted above its statement: the row is a grid — the comment spans every
+   column on the first line, the gutter, number and code sit on the second, whatever the widths
+   (a wrapping flex row let a short statement fit beside the comment, user 2026-09-20: "a code line
+   is stuck to the right of the comment"); the code keeps its number and columns */
+.cl.llmsite{
+  display:grid;grid-template-columns:max-content max-content max-content 1fr;   /* the trailing fr track absorbs the spanning comment's width; the gutter, number and code columns keep their content sizes */
+  box-shadow:inset 2px 0 0 var(--agt);background:color-mix(in srgb, var(--agt) 6%, transparent);
+}
+.cl.llmsite:hover{background:color-mix(in srgb, var(--agt) 12%, transparent)}
+.cl.llmsite .lcm{
+  order:-1;grid-column:1 / -1;box-sizing:border-box;padding-left:62px;padding-right:16px;   /* placed first: row 1 spanning; gutter, number, code auto-place on row 2 */
+  max-width:calc(96ch + 62px);white-space:pre-wrap;overflow-wrap:anywhere;
+  color:var(--agt);font-style:italic;
+}
+.cl.llmsite .lcm .llmtag{
+  display:inline-block;font:600 7px/1 var(--sans);letter-spacing:.12em;text-transform:uppercase;font-style:normal;
+  color:var(--agt);border:1px solid var(--agt);border-radius:2px;padding:1px 4px;margin:0 6px 0 0;vertical-align:1px;opacity:.85;
+}
+.lc .c.llm .llmtag{
+  display:inline-block;font:600 7px/1 var(--sans);letter-spacing:.12em;text-transform:uppercase;font-style:normal;
+  color:var(--agt);border:1px solid var(--agt);border-radius:2px;padding:1px 4px;margin:0 6px 0 0;vertical-align:1px;opacity:.85;
+}
+
+/* ============================== DOCK ===================================== */
+.dock{
+  height:190px;flex:none;
+  border-bottom:1px solid var(--line);
+  background:var(--panel);
+  display:flex;flex-direction:column;
+}
+.docktabs{
+  display:flex;align-items:center;gap:2px;
+  padding:0 8px;
+  background:var(--panel2);
+  border-bottom:1px solid var(--line-strong);
+  flex:none;
+}
+.docktabs .bay-title{padding:6px 10px 5px 2px}
+.docktabs .bay-title::after{display:none}
+.tabsrow{display:flex;align-items:center;gap:2px;flex:1;min-width:0;overflow-x:auto}
+.dtab{
+  padding:6px 12px 5px;
+  font:600 9px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-faint);
+  border-bottom:2px solid transparent;
+  cursor:default;user-select:none;flex:none;                /* click + drag-handle: arrow; ghost takes over on drag */
+  transition:color var(--t),border-color var(--t);
+}
+.dtab:hover{color:var(--ink-dim)}
+.dtab.on{color:var(--blue);border-bottom-color:var(--blue)}
+.insmark{width:2px;height:16px;background:var(--blue);flex:none}
+.dock-scope{
+  margin-left:auto;font:9px var(--mono);color:var(--ink-faint);
+  padding:0 8px;font-variant-numeric:tabular-nums;
+}
+.dchev{
+  border:1px solid var(--line);border-radius:2px;background:var(--paper);
+  color:var(--ink-faint);font:10px var(--mono);padding:1px 7px;cursor:pointer;
+  transition:color var(--t),border-color var(--t);
+}
+.dchev:hover{color:var(--blue);border-color:var(--blue-line)}
+.dockbody{flex:1;overflow:auto;min-height:0}
+
+/* tab-style dock containers (bottom dock + center-bottom) share rendering */
+.tabdock .panel{display:none}
+.tabdock .panel.active{display:flex;flex-direction:column;height:100%}   /* fill the dock's height */
+.tabdock .panel .p-body{flex:1;overflow-y:auto;min-height:0}             /* content scrolls, no void */
+.tabdock .panel .p-head{display:none}
+
+/* center-bottom mini dock */
+#cdock{
+  height:150px;flex:none;
+  border-top:1px solid var(--line-strong);
+  background:var(--panel);
+  display:flex;flex-direction:column;
+}
+#cdock[hidden]{display:none}
+#cdock .dockbody{font-size:11px}
+
+/* dock restore strip (visible when dock is collapsed) */
+#dock-restore{
+  display:none;align-items:center;justify-content:center;gap:8px;
+  height:18px;background:var(--panel2);
+  border-bottom:1px solid var(--line);
+  font:600 8px var(--sans);letter-spacing:.16em;color:var(--ink-faint);
+  cursor:pointer;user-select:none;
+  transition:color var(--t),background var(--t);
+}
+#dock-restore:hover{color:var(--blue);background:var(--raise)}
+
+/* ======================== PANEL BODY CONTENT ============================= */
+.xgroup{margin-bottom:2px}
+.xrow{
+  display:flex;align-items:center;gap:7px;
+  padding:2px 6px;border-radius:2px;
+  color:var(--ink-dim);cursor:default;white-space:nowrap;   /* arrow; hover bg carries affordance */
+  transition:background var(--t),color var(--t);
+  font:11px var(--mono);
+}
+.xrow:hover{background:var(--blue-soft);color:var(--ink)}
+.xrow .site{color:var(--ink-faint)}
+.xrow .tgt{color:var(--blue)}
+.xrow .file{margin-left:auto;color:var(--ink-faint);font-size:10px}
+.xrow .led{margin-left:2px}
+.xindent{margin-left:20px}
+.dockhint{color:var(--ink-faint);font-size:10px;padding:2px 6px;display:block}
+.dockhint[hidden]{display:none}   /* the explicit block must not beat the hidden attribute (the TURN pane's "click a row" hint stayed above a loaded turn) */
+.dim{color:var(--ink-faint)}                     /* inline de-emphasis (was used unstyled) */
+.p-body{padding:6px 10px}
+.stack .p-body{padding:0}
+.stack .p-body .xgroup, .stack .p-body .dockhint{padding-left:10px;padding-right:10px}
+
+/* =========================== INSPECTOR =================================== */
+.kv{
+  display:grid;grid-template-columns:86px 1fr;gap:2px 8px;
+  padding:6px 10px 10px;font:11px var(--mono);
+}
+.kv .k{color:var(--ink-faint);font-size:10px;letter-spacing:.06em;padding-top:1px}
+.kv .v{color:var(--ink);word-break:break-all}
+/* QA 25: class-info values ellipsize on one line + title tooltip (set in JS) */
+#class-info .v{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;word-break:normal}
+.kv .v.b{color:var(--blue)}
+.kv .v.g{color:var(--grn)}
+.kv .v.v2{color:var(--verm)}
+.selx{padding:4px 8px 12px}
+#rel-xrefs,#rel-callees,#rel-impls{max-height:32vh;overflow-y:auto}   /* each RELATION section scrolls on its own — only those three (UI audit 2026-09-09; fix-review r1 M8) */
+.selx .xrow .file{margin-left:auto}
+.xrow.lib{opacity:.65}                                    /* library calls: dim row grammar */
+
+/* RELATION pane — one scrollable surface below the fixed class-info bay */
+.panel[data-panel="inspector"] .p-body{display:flex;flex-direction:column;overflow:hidden;padding:0}
+.panel.floating[data-panel="inspector"] .p-body{overflow:hidden}
+.sel-scroll{flex:1;overflow-y:auto;overflow-x:clip;min-height:0}
+/* rail rows never widen the page: name/meta ellipsize, the page edge clips the rest */
+#col-right{overflow-x:clip}
+.xrow > span:not(.led):not(.cn):not(.file){min-width:0;overflow:hidden;text-overflow:ellipsis}
+.xrow .file{flex:none}
+/* the xref tree: the row's led IS the control — a + drawn over the dot on hover, a − while the
+   level is open, absolutely positioned so nothing in the row moves (user 2026-09-20); a level's
+   rows sit under their parent behind a faint rule */
+.xrow .led.xexp{position:relative;cursor:pointer}
+.xrow .led.xexp::after{
+  content:"+";position:absolute;left:-3px;top:-4px;width:12px;height:12px;
+  display:none;align-items:center;justify-content:center;
+  border:1px solid var(--line-strong);border-radius:2px;background:var(--panel);color:var(--ink-dim);
+  font:700 10px/1 var(--mono);
+}
+.xrow:hover .led.xexp{background:transparent;box-shadow:none}
+.xrow:hover .led.xexp::after,.xrow.open .led.xexp::after{display:flex}
+.xrow.open .led.xexp{background:transparent;box-shadow:none}
+.xrow.open .led.xexp::after{content:"−"}
+.xrow.busy .led.xexp::after{content:"…"}
+.xrow .led.xexp:hover::after{color:var(--blue);border-color:var(--blue-line)}
+.xkids{border-left:1px solid var(--line-soft);margin-left:9px}
+.sel-flash{box-shadow:inset 0 0 0 2px var(--blue-line)}
+.mini-title{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 10px 3px;
+  font:600 8px/1 var(--sans);letter-spacing:.16em;
+  color:var(--ink-faint);text-transform:uppercase;user-select:none;
+}
+.mini-title::after{content:"";flex:1;height:1px;background:var(--line-soft)}
+.mini-title .meta{letter-spacing:.06em;color:var(--ink-dim)}
+.symhead{padding:6px 10px 8px;border-bottom:1px dashed var(--line)}
+.sym-name{display:block;font:600 13px var(--mono);color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* block, not flex: text-overflow only applies to blocks */
+.crumb .was{margin-left:6px}                                   /* crumb provenance spacing (mockup) */
+.sym-name .was{color:var(--verm);font-size:10px}
+.kindchip{
+  font:600 8px/1 var(--sans);letter-spacing:.12em;color:var(--blue);
+  border:1px solid var(--blue-line);border-radius:2px;padding:2px 5px;
+}
+.sym-sig{font:10.5px var(--mono);color:var(--ink-dim);padding-top:4px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}   /* QA 25: ellipsis + title (set in JS) */
+/* name + an action beside it (RELATION ⚡ REVERSE): the name keeps its ellipsis */
+.sym-row{display:flex;align-items:center;gap:6px}
+.sym-row .sym-name{flex:1;min-width:0}
+.sym-row .mbtn{flex:none}
+
+/* transient notice (chrome.ts notice): one line above the status ribbon,
+   click = the follow-up; .err is the failure voice */
+#notice{position:fixed;left:50%;bottom:36px;transform:translateX(-50%);z-index:85;   /* over a floating panel (80), under modals (90) */
+  max-width:70vw;padding:6px 12px;border:1px solid var(--line-strong);border-radius:3px;
+  background:var(--panel);color:var(--ink);box-shadow:0 6px 20px rgba(0,0,0,.18);
+  font:11px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+#notice.err{color:var(--verm);border-color:var(--verm)}
+#notice[hidden]{display:none}
+
+/* runtime hit table (frida feed) */
+.rtab{
+  display:grid;grid-template-columns:70px 180px minmax(0,1fr) 40px;gap:8px;
+  padding:2px 6px;font:11px var(--mono);color:var(--ink-dim);white-space:nowrap;
+  border-radius:2px;transition:background var(--t),color var(--t);
+  cursor:default;                                          /* read-only feed: arrow */
+}
+.rtab.hrow{cursor:pointer}                                 /* hit rows are clickable (select/jump) */
+/* cells clip instead of blowing the track out — long args never widen the feed */
+.rtab > span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.rtab:hover{background:var(--blue-soft);color:var(--ink)}
+.rtab.sel{background:var(--blue-soft);box-shadow:inset 2px 0 0 var(--blue)}
+.rtab.head{
+  color:var(--ink-faint);font-size:8px;letter-spacing:.14em;
+  border-bottom:1px solid var(--line-soft);border-radius:0;
+}
+.rtab.head:hover{background:none;color:var(--ink-faint)}
+.rtab .d{text-align:right}
+.rtab .t{color:var(--ink-faint)}
+.rtab .m{color:var(--ink)}
+
+/* ============================ STATUS BAR ================================= */
+.status{
+  display:flex;align-items:center;gap:0;
+  height:26px;padding:0 10px;
+  background:var(--panel);
+  font-family:var(--mono);font-variant-numeric:tabular-nums;
+  user-select:none;
+  overflow-x:clip;                                 /* the ribbon never widens the page */
+  min-width:0;
+}
+.status .sitem{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:1}
+/* [hidden] alone loses to .sitem's author display:flex — the agent chip's hide
+   branch was inert without this (opus r4 F5) */
+.sitem[hidden]{display:none}
+.status .sitem:last-child{flex-shrink:0;margin-left:auto}
+.sitem{
+  display:flex;align-items:center;gap:6px;
+  padding:0 11px;height:14px;
+  border-right:1px solid var(--line-soft);
+  font-size:10px;color:var(--ink-dim);white-space:nowrap;
+}
+.sitem b{color:var(--ink);font-weight:500}
+.sitem .lbl{font-size:8px;letter-spacing:.14em;color:var(--ink-faint)}
+.sitem .dirty{color:var(--org)}
+/* UNSAVED at zero is not a warning — the orange belongs to a real dirty count */
+.sitem.clean .dirty{color:var(--ink-faint)}
+.sitem.clean b.dirty{color:var(--ink-dim)}
+#follow-sw:focus-visible{outline:1px solid var(--blue);outline-offset:1px}
+/* HINTS takes no focus on click (it would strand focus on the ribbon) — but it is
+   Tab-reachable, so keyboard users need the ring */
+#hints-item:focus{outline:none}
+#hints-item:focus-visible{outline:1px solid var(--blue);outline-offset:-1px}
+.status .spacer{flex:1;border:none}
+
+/* ======================== COMMAND PALETTE ================================ */
+.overlay{
+  position:fixed;inset:0;
+  background:rgba(244,242,236,.72);
+  display:none;align-items:flex-start;justify-content:center;
+  padding-top:12vh;
+  z-index:100;
+}
+body.dark .overlay{background:rgba(16,19,23,.6)}
+.overlay.open{display:flex}
+.palette{
+  width:560px;max-width:92vw;
+  background:var(--panel);
+  border:1px solid var(--line-strong);
+  border-radius:3px;
+  box-shadow:var(--bevel),0 8px 30px rgba(28,36,48,.25);
+  overflow:hidden;
+}
+.palette .bay-title{border-bottom:1px solid var(--line-soft);padding:7px 12px 6px}
+.pal-in{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 12px;border-bottom:1px solid var(--line);
+  background:var(--paper);
+}
+.pal-in input{
+  flex:1;background:none;border:none;outline:none;
+  color:var(--ink);font:12px var(--mono);
+}
+.pal-in input::placeholder{color:var(--ink-faint)}
+.pal-list{max-height:300px;overflow-y:auto;padding:4px}
+.pal-item{
+  display:flex;align-items:center;gap:9px;
+  padding:6px 8px;border-radius:2px;
+  font:11px var(--mono);color:var(--ink-dim);
+  cursor:pointer;
+  transition:background var(--t),color var(--t);
+}
+.pal-item:hover,.pal-item.sel{background:var(--blue-soft);color:var(--ink);
+  box-shadow:inset 2px 0 0 var(--blue)}
+.pal-item .cat{
+  font-size:8px;letter-spacing:.14em;color:var(--blue);
+  width:64px;flex:none;text-transform:uppercase;
+}
+.pal-item kbd{margin-left:auto}
+.pal-item .hl,.jrow .hl{background:rgba(240,228,66,.45);color:inherit;font-style:normal;border-radius:1px}
+.pal-foot{
+  display:flex;gap:14px;
+  padding:5px 12px;border-top:1px solid var(--line);
+  font:9px var(--mono);color:var(--ink-faint);
+}
+
+/* ===================== DRAG-TO-DOCK MACHINERY ============================ */
+#zones{position:fixed;inset:0;z-index:90;pointer-events:none;display:none}
+#zones.show{display:block}
+.zone{
+  position:absolute;
+  border:1.5px dashed var(--blue-line);
+  background:var(--blue-soft);
+  border-radius:3px;
+  display:flex;align-items:flex-start;justify-content:center;
+  padding-top:6px;
+  transition:background var(--t),border-color var(--t);
+}
+.zone span{
+  font:600 9px/1 var(--sans);letter-spacing:.16em;color:var(--blue);
+  background:var(--panel);border:1px solid var(--blue-line);border-radius:2px;
+  padding:3px 8px;
+}
+.zone.hot{border-style:solid;background:rgba(0,114,178,.2)}
+body.dark .zone.hot{background:rgba(86,180,233,.22)}
+.dragghost{   /* the drag-to-dock ghost (was .ghost — it collided with the review excerpt's .cx.ghost rows) */
+  position:fixed;z-index:95;pointer-events:none;
+  background:var(--panel);border:1px solid var(--blue-line);border-radius:2px;
+  color:var(--blue);font:600 10px var(--mono);letter-spacing:.1em;
+  padding:4px 10px;
+  transform:translate(-50%,-140%);
+  box-shadow:var(--bevel),0 6px 18px rgba(28,36,48,.25);
+}
+#float-layer{position:fixed;inset:0;z-index:70;pointer-events:none}
+#float-layer .panel{pointer-events:auto}
+
+/* ===================== CURSOR CONTRACT ===================================
+   arrow = reading · hand = navigates · I-beam = you can type.
+   The listing is read-only: no I-beam outside genuinely editable inputs. */
+.code{cursor:default;user-select:text}                 /* read-only listing: arrow, still selectable */
+.kv,.selx,.dockhint{cursor:default}
+.nav{cursor:pointer}                                    /* click navigates (web convention) */
+.nav:hover{text-decoration:underline}
+.crumb b,.crumb .cur{cursor:pointer}
+.crumb b:hover,.crumb .cur:hover{text-decoration:underline}
+.lc .s{cursor:pointer}                                  /* string literal with xrefs */
+.lc .s:hover{text-decoration:underline dotted}          /* dotted = string nav, distinct from symbols */
+.gm{cursor:pointer}                                     /* glyph-margin markers (BP/tag/coverage) */
+.xrow .tgt{cursor:pointer}
+.xrow .tgt:hover{text-decoration:underline}
+.filter input,.pal-in input{cursor:text}                /* genuinely editable: the ONLY I-beams */
+.split-v{width:4px;cursor:col-resize;background:transparent;transition:background var(--t)}
+.split-v:hover{background:var(--blue-soft)}
+.split-h{height:3px;flex:none;cursor:row-resize;background:transparent;transition:background var(--t);position:relative}
+.split-h::after{content:"";position:absolute;left:0;right:0;top:-3px;bottom:-3px}   /* 3px bar, ~9px grab zone */
+.split-h:hover{background:var(--blue-soft)}
+.split-v.on,.split-h.on{background:var(--blue)}          /* live drag (psplit model) */
+body.splitting{user-select:none}                         /* no text selection mid-drag */
+
+/* ===================== KEYBOARD CARET (IDA-style) ========================
+   thin "|" caret, keyboard-only; symbol-under-caret in Okabe–Ito yellow. */
+:root{--caret:#009E73;--band:rgba(255,255,255,.55)}      /* light: phosphor-green bar */
+body.dark{--caret:#56B4E9;--band:rgba(255,255,255,.04)}  /* dark: sky-blue bar */
+#code{position:relative;outline:none}
+#code:focus{box-shadow:inset 0 0 0 1px var(--blue-soft)}
+.caretbar{
+  position:absolute;width:2px;
+  background:var(--caret);
+  box-shadow:0 0 6px var(--glow);
+  z-index:5;pointer-events:none;
+  animation:caretblink 1.06s steps(1) infinite;
+}
+.caretbar.moving{animation:none;opacity:1}               /* blink pauses while moving */
+@keyframes caretblink{50%{opacity:0}}
+.cl.caret-line{background:var(--band)}                   /* subtle band, distinct from selection */
+.cl.cur.caret-line{background:var(--blue-soft)}          /* selection wins when they coincide */
+.lc .tok-hot{                                            /* symbol under caret: OI yellow #F0E442 */
+  background:#F0E442;color:#1c2430;
+  border-radius:1px;text-shadow:none;
+}
+.lc .tok-dim{                                            /* ALL occurrences: full yellow, like IDA */
+  background:#F0E442;color:#1c2430;
+  border-radius:1px;text-shadow:none;
+}
+.lc .tok-flash{outline:1px solid var(--blue);border-radius:1px}    /* dbl-click navigate flash */
+
+/* ================== VIEW MODES: JAVA / SMALI / SPLIT ===================== */
+#codewrap{flex:1;display:flex;min-height:0;overflow:hidden}
+.vpane{flex:1 1 0;min-width:0;display:flex;flex-direction:column;min-height:0;position:relative;background:var(--paper)}
+#pane-java{border-right:1px solid var(--line)}
+/* split-pane divider: draggable, col-resize cursor */
+.psplit{flex:0 0 5px;cursor:col-resize;background:var(--line-soft);position:relative;z-index:5}
+.psplit:hover,.psplit.on{background:var(--blue)}
+#codewrap:not(.mode-split) .psplit{display:none}
+#codewrap.mode-split #pane-java{border-right:none}
+#codewrap.mode-java #pane-smali{display:none}
+#codewrap.mode-smali #pane-java{display:none}
+.panehead{
+  flex:none;display:flex;align-items:center;gap:7px;
+  background:var(--panel);border-bottom:1px solid var(--line);
+  font:11px var(--mono);color:var(--ink-dim);padding:4px 10px;user-select:none;
+}
+.panehead .phent{margin-left:auto;color:var(--ink-faint);font-size:10px}
+/* split-pane swap: smali left/right */
+#codewrap.swapped{flex-direction:row-reverse}
+
+/* smali pane — offset column always, opcode bytes toggleable */
+#smali{
+  flex:1;overflow:auto;min-height:0;
+  font:11px/1.55 var(--mono);font-variant-numeric:tabular-nums;
+  padding:6px 0 24px;background:var(--paper);
+  cursor:default;user-select:text;                       /* read-only: arrow, selectable */
+}
+.sr{display:grid;grid-template-columns:18px 44px 96px 1fr;min-width:max-content}
+#smali.nobytes .sr{grid-template-columns:18px 44px 1fr}
+#smali.nobytes .byt{display:none}
+.sr:hover{background:var(--blue-soft)}
+.sg{position:relative}
+.sr.synced{background:rgba(0,158,115,.07)}               /* Java↔smali linked band (live hue) */
+.sr.synced:hover{background:rgba(0,158,115,.12)}
+.sr.synced .sg{box-shadow:inset 2px 0 0 var(--grn)}
+.syncg{position:absolute;left:4px;top:0;color:var(--grn);font-size:9px}
+.off{color:var(--ink-faint);text-align:right;padding-right:8px;font-size:10px;user-select:none}
+.byt{color:var(--grn);opacity:.6;font-size:10px;padding-right:10px;user-select:none;white-space:nowrap;overflow:hidden}
+.slc{white-space:pre;color:var(--ink)}
+.slc .d{color:var(--ink-faint)}                          /* directives: dim */
+.slc .op{color:var(--ink);font-weight:600}               /* mnemonics: heavy ink, like java keywords */
+.slc .r{color:var(--blue)}                               /* registers: OI blue */
+.slc .as{color:var(--blue-ink)}                          /* strings: same ink as java strings */
+.slc .lbl{color:var(--grn)}                              /* labels */
+.slc .ann{color:var(--ink-dim);font-style:italic}        /* retained metadata rows (the MethodParameters annotation, debug names): apart from the code — not the agents' ink */
+.slc .annw{color:var(--org);font-style:italic}           /* the metadata's warning row: count mismatch, malformed */
+.cl.mpann .ln{color:var(--org);font-weight:600}          /* a method that carries retained MethodParameters (gutter mark; the title says what) */
+.nav.mp-pos{text-decoration:underline dotted var(--org);text-underline-offset:2px}   /* an identifier JEB named from the retained list by position — unverified */
+.slc .case{color:var(--ink-dim)}                         /* a switch payload's case line */
+.slc .ty{color:var(--ink-dim)}                           /* types */
+.slc .n{color:var(--ink-dim)}
+.slc .c{color:var(--ink-faint);font-style:italic}
+.slc .nav{cursor:pointer}                                /* navigable refs in invoke- lines */
+.slc .nav:hover{text-decoration:underline}
+
+/* ===================== MAP VIEW (flow-graph canvas) ======================
+   Center-surface tab per GRAPHS_SPEC: layered spine, verdict buckets in
+   locked Okabe–Ito hues, phosphor glow on live (dyn) edges only. */
+#mapwrap{display:flex;flex-direction:column;flex:1;min-height:0;background:var(--paper);position:relative}
+#mapwrap[hidden]{display:none}
+
+/* TYPES menu — configurable type registry (replaces hardcoded filter chips) */
+#types-menu{
+  position:absolute;top:32px;right:8px;z-index:30;
+  width:296px;max-height:76%;overflow-y:auto;
+  background:var(--panel);border:1px solid var(--line-strong);border-radius:3px;
+  box-shadow:var(--bevel),0 8px 24px rgba(28,36,48,.28);
+  font:11px var(--mono);color:var(--ink-dim);
+}
+#types-menu[hidden]{display:none}
+.tm-title{
+  padding:7px 10px 6px;border-bottom:1px solid var(--line);
+  font:600 8px/1 var(--sans);letter-spacing:.16em;color:var(--ink-faint);
+}
+.tm-sec{
+  padding:8px 10px 3px;font:600 8px/1 var(--sans);letter-spacing:.16em;
+  color:var(--ink-faint);display:flex;align-items:center;gap:8px;
+}
+.tm-sec::after{content:"";flex:1;height:1px;background:var(--line-soft)}
+.tm-row{
+  display:flex;align-items:center;gap:8px;
+  padding:2px 10px;border-radius:2px;white-space:nowrap;
+  cursor:pointer;                                              /* the row IS the toggle */
+  transition:background var(--t),opacity var(--t);
+}
+.tm-row:hover{background:var(--blue-soft)}
+.tm-row.off{opacity:.4}                                        /* hidden state: dimmed… */
+.tm-row.off .tm-name{text-decoration:line-through}             /* …plus strike (never color-only) */
+.tm-sw{width:10px;height:10px;border-radius:2px;flex:none;border:1px solid var(--line-soft)}
+.tm-name{color:var(--ink)}
+.tm-count{margin-left:auto;color:var(--ink-faint);font-size:10px;font-variant-numeric:tabular-nums;cursor:default}
+.tm-add{
+  margin:3px 10px 6px;padding:2px 6px;
+  border:1px dashed var(--line-strong);border-radius:2px;
+  color:var(--ink-faint);cursor:pointer;font-size:10px;
+  transition:color var(--t),border-color var(--t);
+}
+.tm-add:hover{color:var(--blue);border-color:var(--blue-line)}
+.tm-form{padding:2px 10px 8px;display:flex;flex-direction:column;gap:6px}
+.tm-form input{
+  background:var(--paper);border:1px solid var(--line-strong);border-radius:2px;
+  color:var(--ink);font:11px var(--mono);padding:3px 7px;outline:none;cursor:text;
+}
+.tm-form input:focus{border-color:var(--blue)}
+.tm-swatches{display:flex;gap:4px;align-items:center}
+.tm-swatches .tm-sw{cursor:pointer;width:14px;height:14px}
+.tm-swatches .tm-sw.sel{outline:2px solid var(--blue);outline-offset:1px}
+.tm-form .mbtn{align-self:flex-start}
+.tm-foot{
+  padding:6px 10px;border-top:1px solid var(--line);
+  font:9px var(--mono);color:var(--ink-faint);
+}
+.mapbar{
+  flex:none;display:flex;align-items:center;gap:5px;flex-wrap:wrap;
+  padding:5px 10px;background:var(--panel);border-bottom:1px solid var(--line);
+  font:600 8px/1 var(--sans);letter-spacing:.12em;color:var(--ink-faint);
+  user-select:none;
+}
+.mapbar .mlab{padding:0 4px 0 8px}
+.mapbar .mlab:first-child{padding-left:0}
+.mchip{
+  border:1px solid var(--line-strong);border-radius:2px;background:var(--paper);
+  color:var(--ink-dim);font:600 8px/1 var(--sans);letter-spacing:.1em;
+  padding:3px 7px;cursor:pointer;
+  transition:background var(--t),color var(--t),border-color var(--t),opacity var(--t);
+}
+.mchip.on{background:var(--blue-soft);color:var(--blue);border-color:var(--blue-line)}
+.mchip:not(.on){opacity:.45}
+.mapbar .spring{flex:1}
+.mbtn{
+  border:1px solid var(--line-strong);border-radius:2px;
+  background:linear-gradient(var(--btn-top),var(--btn-bot));box-shadow:var(--bevel);
+  color:var(--ink-dim);font:600 8px/1 var(--sans);letter-spacing:.1em;
+  padding:3px 8px;cursor:pointer;transition:color var(--t),border-color var(--t);
+}
+.mbtn:hover{color:var(--blue);border-color:var(--blue-line)}
+.mzoom{display:inline-flex;align-items:center;gap:2px}
+.mzoom b{font:10px var(--mono);color:var(--ink);min-width:38px;text-align:center;font-variant-numeric:tabular-nums}
+#mapview{flex:1;position:relative;overflow:hidden;cursor:grab;outline:none;min-height:0;user-select:none}   /* pan drags must not select SVG text (map-r3 F4) */
+#mapview.panning{cursor:grabbing}
+#mapview:focus{box-shadow:inset 0 0 0 1px var(--blue-soft)}
+#mapworld{position:absolute;left:0;top:0;transform-origin:0 0}   /* no fixed size: the content (and SVGs) carry the real bounds now */
+#mapedges{position:absolute;left:0;top:0;width:1280px;height:720px;z-index:1}
+#maplabels{position:absolute;left:0;top:0;width:1280px;height:720px;z-index:3;pointer-events:none}
+.edge{fill:none;stroke:var(--ink-dim);stroke-width:1.2;vector-effect:non-scaling-stroke}   /* strokes stay 1.2px at 19% zoom (map-r1 #11) */
+.edge.ek-transport{stroke:var(--blue)}
+.edge.conf-dyn{stroke:var(--grn);stroke-width:1.5}
+.edge.conf-low{stroke:var(--ink-faint);stroke-dasharray:4 3}
+.edge-glow{fill:none;stroke:rgba(0,158,115,.28);stroke-width:5}   /* live phosphor, dyn only; SCALES with zoom — a pinned 5px halo smears at 19% (map-r2 #10) */
+.elabel{                                                           /* above nodes, paper backdrop */
+  font:9px var(--mono);fill:var(--ink-dim);
+  paint-order:stroke;stroke:var(--paper);stroke-width:4px;
+  opacity:0;transition:opacity var(--t);pointer-events:none;      /* dense maps: shown on selection */
+}
+.elabel.on{opacity:1}
+.mnode{
+  position:absolute;z-index:2;                                     /* height grows with content */
+  background:var(--panel);border:1px solid var(--line-strong);border-left-width:3px;
+  border-radius:2px;box-shadow:var(--bevel);
+  padding:4px 8px;cursor:pointer;user-select:none;                 /* body = pointer (selects) */
+  transition:outline-color var(--t),background var(--t);
+}
+.mnode:hover{background:var(--raise)}
+.mnode.sel{outline:2px solid var(--blue);outline-offset:2px}
+.mnode.nflash{outline:2px solid var(--grn);outline-offset:2px}
+.mnode.proven{border-width:2px;border-left-width:3px}              /* dynamically proven: thick */
+.mnode.v-none{border-left-color:var(--line-strong)}
+.mnode.v-authored{border-left-color:var(--verm)}
+.mnode.v-mixed{border-left-color:var(--org)}
+.mnode.v-identity{border-left-color:var(--grn)}
+.mnode.v-gap{border-left-color:var(--ink-faint);border-style:dashed;border-left-style:solid}
+.mnode.v-dead{border-left-color:#2b3138;opacity:.55}
+.mhead{display:flex;align-items:center;gap:5px}
+.mkind{color:var(--ink-faint);font-size:9px;flex:none;cursor:default}
+.mlabel{
+  font:600 10px/1.25 var(--mono);color:var(--ink);cursor:default;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;   /* only huge names ellipsize */
+  padding-right:46px;                                          /* clear of the target badge */
+}
+.mtgt{                                                         /* target badge, card corner */
+  position:absolute;top:4px;right:6px;
+  font:8px var(--mono);color:var(--ink-faint);
+  border:1px solid var(--line-soft);border-radius:2px;
+  background:var(--paper);padding:0 4px;line-height:12px;
+}
+.mtgt.x{color:var(--blue-ink);border-color:var(--blue-line)}   /* cross-target badge */
+.chipflash{outline:2px solid var(--blue);outline-offset:1px}
+.mbolt{color:var(--org);font-size:10px;flex:none;cursor:pointer}
+.msub{
+  font:9px/1.35 var(--mono);color:var(--ink-faint);cursor:default;
+  padding-top:1px;                                             /* wraps in full — never cut */
+}
+.mchips{display:flex;gap:4px;padding-top:3px}
+.vchip{
+  font:600 7px/1 var(--sans);letter-spacing:.1em;
+  border-radius:2px;padding:2px 5px;color:#fff;
+  display:inline-block;white-space:nowrap;
+}
+.vc-authored{background:var(--verm)}
+.vc-mixed{background:var(--org);color:#1c2430}
+.vc-identity{background:var(--grn)}
+.vc-gap{background:var(--ink-faint)}
+.vc-dead{background:#2b3138;color:#d7dbe0}
+.vc-unknown{background:var(--ink-faint)}
+.vchip.pv{background:none;border:1px solid var(--grn);color:var(--grn)}
+.vchip.depth{background:none;border:1px solid var(--blue-line);color:var(--blue)}   /* a reversing mission's depth */
+#minimap{
+  position:absolute;left:10px;bottom:10px;width:150px;height:78px;
+  background:var(--panel);border:1px solid var(--line-strong);border-radius:2px;
+  overflow:hidden;opacity:.92;
+  /* was pointer-events:none — which made map.js's pan/wheel minimap guards
+     dead code and let wheel zoom anchor on a point hidden under the panel */
+  cursor:default;
+}
+#minimap .mm{position:absolute;height:4px;border-radius:1px;min-width:3px}
+/* the viewport rect: above the dots, transparent to clicks (the minimap's
+   own pointerdown does click-to-navigate) */
+#mm-view{position:absolute;border:1px solid var(--blue);background:rgba(0,114,178,.08);pointer-events:none;z-index:2}
+#minimap .mm-title{
+  position:absolute;left:5px;bottom:3px;font:600 7px var(--sans);
+  letter-spacing:.14em;color:var(--ink-faint);
+}
+.pane-flash{box-shadow:inset 0 0 0 3px var(--blue-line)}            /* dbl-click code jump */
+
+/* ==================== AGENTS VIEW (supervision console) =================
+   ⌃5 / rail icon toggles; same surface-swap as the map. */
+#agentswrap{display:flex;flex:1;min-height:0;background:var(--paper);outline:none}
+#agentswrap[hidden]{display:none}
+.ag-missions{width:280px;min-width:200px;max-width:60vw;flex:none;border-right:1px solid var(--line);overflow-y:auto;overflow-x:hidden;padding:8px}
+.ag-msplit{width:4px;flex:none;cursor:col-resize;background:transparent;transition:background var(--t)}
+.ag-msplit:hover,.ag-msplit.on{background:var(--blue-line)}
+.ag-msplit[hidden]{display:none}
+.ag-missions[hidden]{display:none}
+.ag-mhead{display:flex;align-items:center;justify-content:space-between;margin:-2px 0 6px}
+.ag-mhead .mini-title{margin:0;flex:1}
+.ag-mclose{padding:1px 7px}
+.agt-call .ct .cn{font:600 8px/1 var(--sans);letter-spacing:.1em;color:var(--ink-faint);border:1px solid var(--line-soft);border-radius:2px;padding:2px 4px}
+.ag-stream{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+/* the log's bottom pane (index.html #ag-bottom): PROPOSALS · TURN, bottom half of the stream */
+.ag-bottom{flex:0 0 50%;min-height:120px;display:flex;flex-direction:column;border-top:1px solid var(--line);background:var(--panel)}
+.ag-bottom[hidden]{display:none}
+.ag-bottom-split{background:var(--line-soft)}
+.ag-bottom-tabs{flex:none;display:flex;align-items:center;gap:6px;padding:4px 10px;border-bottom:1px solid var(--line-soft)}
+.ag-bottom-scope{margin-left:auto;font:9px var(--mono);color:var(--ink-faint)}
+.ag-bottom-body{flex:1;min-height:0;display:flex}
+.ag-bpanel{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;padding:6px 10px;overflow:hidden}
+.ag-bpanel[hidden]{display:none}
+.ag-bpanel > .dockhint{padding:8px 0}
+.ag-bottom-open{margin-left:8px}
+.dtab-n:empty{display:none}
+.ag-propwrap{flex:1;min-height:0;display:flex;flex-direction:column;outline:none}
+.ag-prophead{
+  flex:none;display:flex;align-items:center;gap:10px;padding:2px 0 6px;
+  font:9.5px var(--mono);color:var(--ink-dim);border-bottom:1px solid var(--line-soft);
+}
+.ag-prophead .ag-prophint{color:var(--ink-faint)}
+.ag-prophead .mbtn{margin-left:auto}
+.mctrl .revert{color:var(--org)}
+/* AGENT WRITES: review first | apply directly (ReviewPolicy) */
+.rv-switch{display:inline-flex;align-items:center;gap:0;margin-left:auto}
+.rv-switch + .mbtn{margin-left:8px}
+.rv-lbl{font:600 8px/1 var(--sans);letter-spacing:.12em;color:var(--ink-faint);margin-right:6px;white-space:nowrap}
+.rv-switch .chip{background:var(--panel);border:1px solid var(--line-strong);color:var(--ink-dim);font:600 8px var(--sans);letter-spacing:.1em;padding:3px 8px;cursor:pointer}
+.rv-switch .chip:first-of-type{border-radius:2px 0 0 2px}
+.rv-switch .chip:last-of-type{border-radius:0 2px 2px 0;border-left:0}
+.rv-switch .chip.on{border-color:var(--blue);color:var(--blue);background:var(--raise)}
+.rv-switch .chip.on[data-mode="auto"]{border-color:var(--org);color:var(--org)}
+.rv-switch .chip:disabled{opacity:.55;cursor:default}
+.rv-opts{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--line-soft);font:10px var(--mono);color:var(--ink-dim)}
+.rv-opts[hidden]{display:none}
+.rv-opts label{display:inline-flex;align-items:center;gap:3px;cursor:pointer}
+.rv-opts input[type=number]{width:54px;background:var(--panel);border:1px solid var(--line-strong);border-radius:2px;color:var(--ink);font:10px var(--mono);padding:1px 4px}
+.rv-note{color:var(--org)}
+/* wide proposal rows: one baseline — kind · old→new · location · meta · ✓✗ */
+.ag-propwrap .prow{margin-bottom:4px;padding:5px 8px;align-items:center}
+.ag-propwrap .pbody{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 14px}
+.ag-propwrap .pedit{flex:1 1 320px;min-width:0}
+.ag-propwrap .pbody .ploc{padding-top:0;flex:0 1 auto}
+.ag-propwrap .pmeta{padding-top:0;flex:0 0 auto}
+.ag-propwrap .pact button{width:24px;height:20px}
+/* TURN panel */
+.agt-head{
+  flex:none;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;padding:2px 0 6px;
+  font:10px var(--mono);color:var(--ink-dim);border-bottom:1px solid var(--line-soft);font-variant-numeric:tabular-nums;
+}
+.agt-head b{font:600 11px var(--mono);color:var(--ink)}
+.agt-head .dim{color:var(--ink-faint)}
+.agt-head .oc{font:600 7.5px/1 var(--sans);letter-spacing:.1em;text-transform:uppercase;border:1px solid var(--line-strong);border-radius:2px;padding:2px 5px;color:var(--ink-dim)}
+.agt-head .oc.final{color:var(--grn);border-color:var(--grn)}
+.agt-head .oc.blocked,.agt-head .oc.error{color:var(--verm);border-color:var(--verm)}
+.agt-head .oc.nudged{color:var(--org);border-color:var(--org)}
+#agt-wrap{flex:1;min-height:0;display:flex;flex-direction:column}
+.agt-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:0 16px}
+.agt-col{min-height:0;overflow-y:auto;padding:6px 0}
+.agt-col .lbl,.agt-call .lbl{font:600 8px/1 var(--sans);letter-spacing:.14em;color:var(--ink-faint);padding:6px 0 3px}
+.agt-pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:10.5px/1.5 var(--mono);color:var(--ink)}
+.agt-pre.err{color:var(--verm)}
+.agt-call{border:1px solid var(--line);border-radius:2px;background:var(--panel);padding:5px 8px 6px;margin-bottom:6px}
+.agt-call .ct{display:flex;align-items:baseline;gap:10px;font:600 10.5px var(--mono);color:var(--ink)}
+.agt-call .ct .ok{color:var(--grn);font-weight:400}
+.agt-call .ct .err{color:var(--verm);font-weight:400}
+.agt-call .ct .ms{margin-left:auto;color:var(--ink-faint);font-weight:400;font-variant-numeric:tabular-nums}
+.agt-call pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:10px/1.45 var(--mono);color:var(--ink-dim)}   /* no inner scroller: the column scrolls, the wheel never gets trapped mid-page */
+.agt-call pre.agt-code{color:var(--ink);font-size:10.5px}
+/* a block = label + hover copy button + pre */
+.agt-blk{position:relative}
+.agt-copy{
+  position:absolute;right:2px;top:1px;display:none;
+  border:1px solid var(--line-strong);border-radius:2px;background:var(--paper);color:var(--ink-dim);
+  font:9.5px var(--mono);padding:1px 6px;cursor:pointer;transition:color var(--t),border-color var(--t);
+}
+.agt-blk:hover .agt-copy{display:inline-block}
+.agt-copy:hover{color:var(--blue);border-color:var(--blue-line)}
+/* the paused card's raise form: THIS mission (agent.resume {budget}) vs the depth's default (task.configure) */
+.mc-raise{display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding-top:5px}
+.mc-raise input{width:68px;background:var(--panel);border:1px solid var(--line-strong);border-radius:2px;color:var(--ink);font:9.5px var(--mono);padding:2px 5px;outline:none;font-variant-numeric:tabular-nums}
+.mc-raise input:focus{border-color:var(--blue)}
+.mc-raise button{border:1px solid var(--line-strong);border-radius:2px;background:var(--paper);color:var(--ink-dim);font:600 7.5px/1 var(--sans);letter-spacing:.08em;padding:3px 6px;cursor:pointer;transition:color var(--t),border-color var(--t)}
+.mc-raise button:hover{color:var(--blue);border-color:var(--blue-line)}
+.mc-raise button[data-act="raise"]{color:var(--org);border-color:var(--org)}
+
+/* mission cards */
+.mcard{
+  border:1px solid var(--line-strong);border-radius:2px;background:var(--panel);
+  box-shadow:var(--bevel);padding:7px 9px;margin-bottom:8px;
+  cursor:default;user-select:none;
+  transition:background var(--t),outline-color var(--t);
+}
+.mcard:hover{background:var(--raise)}
+.mcard.sel{outline:2px solid var(--blue);outline-offset:1px}
+.mc-top{display:flex;align-items:center;gap:6px}
+.mstatus{
+  font:600 7px/1 var(--sans);letter-spacing:.1em;border-radius:2px;padding:2px 5px;
+}
+.mstatus.run{background:var(--grn);color:#fff;animation:agpulse 1.6s linear infinite}
+.mstatus.paused{background:var(--org);color:#1c2430}
+.mstatus.done{background:var(--blue);color:#fff}
+.mstatus.blocked{background:var(--verm);color:#fff}
+.mstatus.queued{background:none;border:1px solid var(--ink-faint);color:var(--ink-dim)}   /* about to run: outline, not fill */
+.mstatus.stopped{background:var(--ink-faint);color:#fff}
+.mstatus.interrupted{background:none;border:1px solid var(--verm);color:var(--verm)}   /* a saved record whose run died with the server */
+@keyframes agpulse{0%,100%{opacity:1}50%{opacity:.55}}
+.mmodel{font:9px var(--mono);color:var(--ink-dim)}
+.mctrl{margin-left:auto;display:flex;gap:4px}
+.mctrl button{
+  border:1px solid var(--line);border-radius:2px;background:var(--paper);
+  color:var(--ink-dim);font:9px var(--mono);padding:1px 6px;cursor:pointer;
+  transition:color var(--t),border-color var(--t);
+}
+.mctrl button:hover{color:var(--blue);border-color:var(--blue-line)}
+.mctrl button.dismiss:hover{color:var(--verm);border-color:var(--verm)}
+.mcard.dismissed{opacity:.55}
+#ag-dismissed-toggle{margin-right:6px}
+.mc-goal{font:600 11px/1.35 var(--sans);color:var(--ink);padding-top:5px;overflow-wrap:anywhere;word-break:break-word;min-width:0}
+.mcard{min-width:0}
+.mc-line{
+  display:flex;align-items:center;gap:8px;padding-top:5px;
+  font:9px var(--mono);color:var(--ink-dim);font-variant-numeric:tabular-nums;
+}
+.mbar{flex:1;height:5px;background:var(--paper);border:1px solid var(--line-soft);border-radius:2px;overflow:hidden}
+.mbar i{display:block;height:100%;background:var(--blue)}
+.mbar.hot i{background:var(--org)}
+.mc-scope{
+  display:inline-block;margin-top:5px;
+  font:8px var(--mono);color:var(--blue-ink);
+  border:1px dashed var(--blue-line);border-radius:2px;padding:1px 5px;
+}
+.mcard.new{
+  border-style:dashed;background:var(--paper);
+}
+.mcard.new .nm-title{
+  font:600 8px/1 var(--sans);letter-spacing:.14em;color:var(--ink-faint);
+}
+.mcard.new input{
+  width:100%;margin-top:6px;background:var(--panel);
+  border:1px solid var(--line-strong);border-radius:2px;
+  color:var(--ink);font:10px var(--mono);padding:3px 7px;outline:none;cursor:text;
+}
+.mcard.new input:focus{border-color:var(--blue)}
+.mcard.new .mbtn{margin-top:6px}
+
+/* the two configurable areas' buttons above the mission cards */
+.ag-tools{display:flex;gap:6px;margin-bottom:8px}
+.ag-tools .mbtn{flex:1;padding:4px 6px}
+/* multi-LLM: provider picker + providers dialog */
+.mcard.new .spawnrow{display:flex;gap:6px;margin-top:6px}
+.mcard.new select{
+  flex:1;min-width:0;background:var(--panel);
+  border:1px solid var(--line-strong);border-radius:2px;
+  color:var(--ink);font:10px var(--mono);padding:3px 5px;outline:none;cursor:pointer;
+}
+.mcard.new select:focus{border-color:var(--blue)}
+.mcard.new .spawnbudget{flex:none;width:72px;margin-top:0}
+.mcard.new select option.nokey{color:var(--ink-faint)}
+/* the NEW MISSION card (2026-09-13 rebuild): labelled rows — subject, goal, depth, edit scope;
+   provider/model/effort/caps fold away as overrides of the depth's settings */
+.mcard.new .nm-row{margin-top:7px}
+.mcard.new .nm-lbl{display:block;font:600 8px/1.2 var(--sans);letter-spacing:.12em;color:var(--ink-faint);text-transform:uppercase}
+.mcard.new .nm-hint{font:9px/1.2 var(--mono);letter-spacing:0;text-transform:none;font-weight:400;color:var(--ink-faint);margin-left:6px}
+.mcard.new .nm-line{display:flex;gap:6px;align-items:center;margin-top:3px}
+.mcard.new .nm-line input,.mcard.new .nm-line select{margin-top:0;flex:1;min-width:0}
+.mcard.new .nm-line input[hidden]{display:none}
+.mcard.new .nm-use{flex:none;margin-top:0;padding:2px 6px;font-size:8px;white-space:nowrap}
+.mcard.new textarea{width:100%;box-sizing:border-box;margin-top:3px;background:var(--panel);border:1px solid var(--line-strong);border-radius:2px;color:var(--ink);font:10px/1.35 var(--mono);padding:3px 7px;outline:none;resize:vertical;min-height:46px}
+.mcard.new textarea:focus{border-color:var(--blue)}
+.mcard.new .nm-depth .chip{flex:none;background:var(--panel);border:1px solid var(--line-strong);border-radius:2px;color:var(--ink-dim);font:600 8px var(--sans);letter-spacing:.1em;padding:3px 9px;cursor:pointer}
+.mcard.new .nm-depth .chip.on{border-color:var(--blue);color:var(--blue);background:var(--raise)}
+.mcard.new .nm-adv{margin-top:8px}
+.mcard.new .nm-adv summary{cursor:pointer;font:600 8px/1.2 var(--sans);letter-spacing:.12em;color:var(--ink-faint);list-style:none}
+.mcard.new .nm-adv summary::-webkit-details-marker{display:none}
+.mcard.new .nm-adv summary::before{content:'▸ '}
+.mcard.new .nm-adv[open] summary::before{content:'▾ '}
+/* a feed row is a grid — the browser's [hidden] rule loses to it, so a dismissed mission's rows
+   stayed visible (user 2026-09-13) */
+.arow[hidden]{display:none}
+.llm-card{min-width:520px;max-width:640px;display:flex;flex-direction:column;max-height:calc(100vh - 16vh)}   /* fits under the 8vh top+bottom overlay padding */
+.llm-card > *{flex:0 0 auto}                              /* header (title/sym/hint) + footer (err/note/CLOSE) keep content height… */
+.llm-card > .llm-scroll{flex:0 1 auto;min-height:0;overflow-y:auto}   /* …the list sits at content height, then SHRINKS+scrolls only once the card hits its cap (basis auto, not 0 — 1 1 0 collapsed it to 0) */
+#llm-rows{max-height:420px;overflow-y:auto;margin-top:8px}
+.llmrow{
+  display:grid;grid-template-columns:1fr 1fr auto;gap:5px;align-items:center;
+  padding:7px 0;border-top:1px dashed var(--line);
+}
+.llmrow.nokey .llmbase,.llmrow.nokey .llmmodels{opacity:.6}
+.llmrow .llmhead{grid-column:1 / -1;display:flex;align-items:center;gap:8px}
+.llmrow .llmlabel{font:600 11px var(--mono);color:var(--ink)}
+.llmrow .llmdriver{font:9px var(--mono);color:var(--ink-faint)}
+.llmrow .llmconf{margin-left:auto;font:9px var(--mono);color:var(--org)}
+.llmrow .llmconf.ok{color:var(--grn)}
+.llmrow .llmlabel-in{font:600 11px var(--mono);color:var(--ink);width:auto;flex:1;min-width:0}
+.llmrow .llmlocal{grid-column:1 / -1;display:flex;align-items:center;gap:6px;font:10px var(--mono);color:var(--ink-dim);cursor:pointer}
+.llmrow .llmlocal input{width:auto}
+.llmrow .llmacts{grid-column:1 / -1;display:flex;gap:6px;justify-content:flex-end}
+.llmrow .llmdel.arm{color:var(--verm);border-color:var(--verm)}
+.llmrow.llmadd{border-style:dashed;margin-top:10px;grid-template-columns:1fr 1fr}   /* id | label · baseUrl | models · key — no narrow third column (r1 L9) */
+.llmrow .llmnote{grid-column:1 / -1;font:9.5px var(--mono);color:var(--ink-dim);line-height:1.4}   /* where a provider's credential comes from (r2 M6) */
+.llmrow .llmnote code{font:inherit;color:var(--ink)}
+.wbm-card .llmrow input{font:10.5px var(--mono);padding:4px 6px;background:var(--panel);border:1px solid var(--line-strong)}
+/* the two config dialogs' subtitles are explanations, not one-line labels — let them wrap (r1 M5) */
+.llm-card .wbm-sym,.task-card .wbm-sym{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.4}
+/* the REVERSING AGENT window: a label column + one column per depth */
+.task-card{min-width:600px;max-width:720px}
+.taskgrid{display:grid;grid-template-columns:96px 1fr 1fr;gap:6px 10px;align-items:center;margin-top:8px;font:10px var(--mono);color:var(--ink-dim)}
+.taskgrid .th{font:600 9px var(--sans);letter-spacing:.14em;color:var(--ink)}
+.taskgrid .th .tsub{display:block;font:9px var(--mono);letter-spacing:0;color:var(--ink-faint);text-transform:none}
+.taskgrid .tlabel{color:var(--ink-dim)}
+.wbm-card .taskgrid select,.wbm-card .taskgrid input{width:100%;box-sizing:border-box;font:10px var(--mono);padding:4px 6px;background:var(--panel);color:var(--ink);border:1px solid var(--line-strong);border-radius:2px;outline:none}   /* beats .wbm-card input (r1 M10) */
+.wbm-card .taskgrid select:focus,.wbm-card .taskgrid input:focus{border-color:var(--blue)}
+.wbm-card .taskgrid input.dim{opacity:.5}   /* a budget the resolved provider does not meter (the CLI) */
+.taskgrid select option.nokey{color:var(--ink-faint)}
+.taskgrid .tresolved{font:9px var(--mono);color:var(--ink-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.taskgrid .tresolved.warn{color:var(--org)}
+.wbm-note{margin-right:auto;align-self:center;font:10px var(--mono);color:var(--ink-dim)}
+.llmrow input{
+  background:var(--panel);border:1px solid var(--line-strong);border-radius:2px;
+  color:var(--ink);font:10px var(--mono);padding:3px 7px;outline:none;cursor:text;
+}
+.llmrow input:focus{border-color:var(--blue)}
+.llmrow .llmsave{grid-row:span 1}
+
+/* activity stream */
+.ag-filter{
+  flex:none;display:flex;align-items:center;gap:5px;
+  padding:5px 10px;background:var(--panel);border-bottom:1px solid var(--line);
+}
+.ag-feed{flex:1;overflow-y:auto;padding:4px 0 12px;font:10.5px var(--mono)}
+.arow{
+  display:grid;grid-template-columns:62px 58px 52px minmax(0,1fr);align-items:baseline;column-gap:8px;
+  padding:2px 12px;color:var(--ink-dim);cursor:default;
+  transition:background var(--t);
+}
+.arow .atext{white-space:pre-wrap;overflow-wrap:anywhere}
+.arow.turn{cursor:pointer}
+.arow.turn:hover{background:var(--blue-soft)}
+.arow.sel{background:var(--blue-soft);box-shadow:inset 2px 0 0 var(--blue)}
+.ag-filter-mission{display:inline-flex;align-items:center;gap:4px;font:9.5px var(--mono);color:var(--blue)}
+.ag-filter-hint{margin-left:auto;font:9px var(--mono);color:var(--ink-faint)}
+.arow .at{color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.aid{font-weight:700;flex:none;min-width:20px}   /* agent ids are 'agent-1' — 7 chars, not the mockup's single char */
+.aid.a7{color:var(--agt)}
+.aid.a3{color:var(--blue)}
+.akind{
+  font:600 8px/1 var(--sans);letter-spacing:.1em;color:var(--ink-faint);
+  border:1px solid var(--line-soft);border-radius:2px;padding:2px 4px;flex:none;
+}
+.arow.alert .akind{color:var(--org);border-color:var(--org)}
+.arow.blocked{color:var(--verm)}
+.arow.blocked .akind{color:var(--verm);border-color:var(--verm);font-weight:700}
+.arow.blocked .at{color:var(--verm);opacity:.7}
+.fchip{
+  border:1px solid var(--line-strong);border-radius:2px;background:var(--paper);
+  color:var(--ink-dim);font:600 8px/1 var(--sans);letter-spacing:.1em;
+  padding:3px 8px;cursor:pointer;
+  transition:background var(--t),color var(--t),border-color var(--t);
+}
+.fchip.on{background:var(--blue-soft);color:var(--blue);border-color:var(--blue-line)}
+
+/* proposals */
+.ag-proplist{flex:1;overflow-y:auto;padding:8px;min-height:0}
+.prow{
+  display:flex;gap:8px;align-items:flex-start;
+  border:1px solid var(--line);border-radius:2px;background:var(--panel);
+  padding:6px 8px;margin-bottom:7px;cursor:default;user-select:none;
+  transition:background var(--t),opacity var(--t),outline-color var(--t);
+}
+.prow:hover{background:var(--raise)}
+.prow.psel{outline:2px solid var(--blue);outline-offset:1px}
+.prow.settled{opacity:.45}
+.pkind{flex:none;font-size:11px;color:var(--blue)}
+/* the kind badge: what accepting the row DOES — rename / comment / tag / verdict — at a glance */
+.pkindb{flex:none;font:600 7.5px/1 var(--sans);letter-spacing:.12em;border-radius:2px;padding:3px 6px;color:#fff;min-width:52px;text-align:center}
+.pk-rename{background:var(--blue)}
+.pk-comment{background:var(--grn)}
+.pk-tag{background:var(--org);color:#1c2430}
+.pk-verdict{background:var(--agt)}
+.pedit .pnote{color:var(--ink-dim);font-weight:400;margin-left:6px}
+.pkind.map{color:var(--blue)}
+.pbody{flex:1;min-width:0}
+.pedit{font:10.5px var(--mono);color:var(--ink);word-break:break-word}
+.pedit s{color:var(--verm)}
+.pedit .pnew{cursor:text;border-bottom:1px dashed var(--line-soft);padding:0 1px}
+.pedit .pnew:hover{background:var(--raise);border-bottom-color:var(--blue)}
+.pedit .pencil{background:none;border:0;color:var(--ink-faint);cursor:pointer;font:10px var(--mono);padding:0 3px;margin-left:2px}
+.pedit .pencil:hover{color:var(--blue)}
+.pedit .pname-in{font:10.5px var(--mono);color:var(--ink);background:var(--paper);border:1px solid var(--blue);border-radius:2px;padding:0 3px;min-width:14ch;width:auto;outline:none}
+.pedit .pchip.edited{color:var(--blue);border-color:var(--blue);margin-left:6px}
+.pedit .prefused{color:var(--verm);font:10px var(--mono);padding-top:2px;white-space:normal;font-weight:400}
+.pbody .ploc{color:var(--blue);cursor:pointer;font:10px var(--mono);padding-top:2px;overflow-wrap:anywhere}
+.pbody .ploc:hover{text-decoration:underline}
+.pedit.pghost{color:var(--ink-faint);font-style:italic}
+.pmeta{font:8px var(--mono);color:var(--ink-faint);padding-top:3px}
+.pmapbadge{
+  font:600 7px/1 var(--sans);color:var(--blue);
+  border:1px solid var(--blue-line);border-radius:2px;padding:1px 4px;margin-left:4px;
+}
+.pact{flex:none;display:flex;gap:4px}
+.pact button{
+  width:20px;height:18px;border:1px solid var(--line-strong);border-radius:2px;
+  background:var(--paper);color:var(--ink-dim);font:10px var(--mono);cursor:pointer;
+  transition:color var(--t),border-color var(--t);
+}
+.pact button.pok:hover{color:var(--grn);border-color:var(--grn)}
+.pact button.pno:hover{color:var(--verm);border-color:var(--verm)}
+.pstamp{font:600 7px/1 var(--sans);letter-spacing:.1em;padding-top:4px;display:inline-block}
+.pstamp[hidden]{display:none}
+.pstamp.ok{color:var(--grn)}
+.pstamp.no{color:var(--ink-faint)}
+/* the EDITS pane: an applied row keeps full contrast (it is live in the target); reverted,
+   rejected, refused and purged rows dim */
+.prow.done{opacity:1}
+.pchip.st-applied{color:var(--grn);border:1px solid var(--grn)}
+.pchip.st-reverted{color:var(--ink-faint);border:1px solid var(--line)}
+.pchip.st-refused{color:var(--verm);border:1px solid var(--verm)}
+.pchip.st-rejected,.pchip.st-purged{color:var(--ink-faint)}
+.pmeta .pwhen{margin-left:auto;padding-left:10px;color:var(--ink-faint);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pmeta{display:flex;align-items:center;gap:4px;min-width:0}
+.pact button.prv:hover,.pact button.prd:hover{color:var(--blue);border-color:var(--blue-line)}
+.ag-propfoot{
+  flex:none;display:flex;align-items:center;gap:8px;
+  padding:6px 10px;border-top:1px solid var(--line);
+  font:9px var(--mono);color:var(--ink-faint);
+}
+.ag-propfoot .mbtn{margin-left:auto}
+#prop-pending{font-variant-numeric:tabular-nums}
+
+/* budget top-up under the inspector's BUDGET row */
+.agm-topup{display:flex;align-items:center;gap:6px;padding:4px 10px 6px;flex-wrap:wrap}
+.agm-topup[hidden]{display:none}   /* a stopped/done mission has no ceiling to raise — the explicit flex must not beat the hidden attribute */
+.agm-topup input{
+  width:92px;background:var(--panel);border:1px solid var(--line-strong);border-radius:2px;
+  color:var(--ink);font:10px var(--mono);padding:3px 6px;outline:none;font-variant-numeric:tabular-nums;
+}
+.agm-topup input:focus{border-color:var(--blue)}
+.agm-topup-hint{flex-basis:100%;font:9.5px/1.4 var(--mono);color:var(--org);white-space:normal}
+.agm-topup-hint:empty{display:none}
+.mc-need{font:9px var(--mono);color:var(--org);padding-top:4px}
+
+/* review inspector (agents view rail) */
+#ag-insp{flex:1;overflow-y:auto;min-height:0}
+#ag-insp[hidden]{display:none}
+.agi-rat{
+  font:10.5px/1.55 var(--sans);color:var(--ink-dim);
+  padding-top:6px;
+}
+.gd-del{color:var(--verm);text-decoration:line-through}
+.gd-add{background:rgba(0,158,115,.16);border-radius:1px;padding:0 1px}
+.gd-bot{
+  font:600 7px/1 var(--sans);color:var(--agt);
+  border:1px solid var(--agt-line);border-radius:2px;padding:1px 3px;margin-left:4px;
+}
+.gd-ghost{color:var(--ink-faint);font-style:italic}
+.ckr{display:flex;align-items:center;gap:7px;font:10px var(--mono);color:var(--ink-dim);padding:1px 10px;white-space:nowrap}
+.ckr .s-done{color:var(--grn)}
+.ckr .s-mid{color:var(--org)}
+.ckr .s-pend{color:var(--ink-faint)}
+#agi-mission .xrow{overflow:hidden;text-overflow:ellipsis}
+
+/* ==================== WORKBENCH VIEWS (strings / runs / search) ========== */
+.viewwrap{display:flex;flex-direction:column;flex:1;min-height:0;background:var(--paper)}
+.viewwrap[hidden]{display:none}
+.vtoolbar{
+  flex:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  padding:5px 10px;background:var(--panel);border-bottom:1px solid var(--line);
+  font:10px var(--mono);color:var(--ink-dim);user-select:none;
+}
+.vtoolbar input[type="text"], .vtoolbar input:not([type]){
+  background:var(--paper);border:1px solid var(--line-strong);border-radius:2px;
+  color:var(--ink);font:11px var(--mono);padding:3px 8px;outline:none;cursor:text;
+}
+.vtoolbar input:focus{border-color:var(--blue)}
+.vcount{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--ink-faint)}
+.vscroll{flex:1;overflow-y:auto;min-height:0}
+
+/* strings table */
+.srow{
+  display:grid;grid-template-columns:minmax(0,1fr) auto 44px minmax(120px,220px);
+  align-items:center;gap:10px;padding:2px 12px;
+  font:10.5px var(--mono);color:var(--ink-dim);cursor:default;white-space:nowrap;
+  transition:background var(--t);
+}
+.srow:hover{background:var(--blue-soft)}
+.srow.sel{background:var(--blue-soft);box-shadow:inset 2px 0 0 var(--blue)}
+.sval{color:var(--ink);overflow:hidden;text-overflow:ellipsis}
+.styp{
+  font:600 7px/1 var(--sans);letter-spacing:.08em;border-radius:2px;padding:2px 5px;
+  border:1px solid var(--line-strong);color:var(--ink-dim);
+}
+.styp.crypto{color:var(--verm);border-color:var(--verm-line)}
+.styp.url{color:var(--blue);border-color:var(--blue-line)}
+.styp.intent{color:var(--org);border-color:var(--org)}
+.styp.lex{border-style:dashed}                    /* lexical-only, unconfirmed */
+.sref{text-align:right;font-variant-numeric:tabular-nums}
+.swho{overflow:hidden;text-overflow:ellipsis;color:var(--ink-faint)}
+
+/* runs view */
+.devbar b{color:var(--ink)}
+.runs-main{flex:1;display:flex;min-height:0}
+/* each column: pinned mini-title header + one scroller under it */
+.runs-bpcol{
+  width:280px;flex:none;min-height:0;                     /* mockup width — kept */
+  display:flex;flex-direction:column;border-right:1px solid var(--line);
+}
+.runs-bps{flex:1;overflow-y:auto;min-height:0;padding:2px 8px 10px}
+.bprow{
+  display:flex;align-items:center;gap:7px;padding:2px 4px;
+  font:10.5px var(--mono);color:var(--ink-dim);cursor:default;white-space:nowrap;
+  border-radius:2px;transition:background var(--t),opacity var(--t);
+}
+.bprow:hover{background:var(--blue-soft)}
+.bprow.off{opacity:.4}
+.bprow input{accent-color:var(--blue);cursor:pointer;margin:0}
+.bprow .bpn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}  /* + title set in JS */
+.bprow .cond,.bprow .tgt,.bprow .hits{flex:none}
+.bprow .hits{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--ink-faint)}
+.bprow .cond{color:var(--org);font-size:9px}
+.bprow .tgt{font-size:8px;color:var(--blue-ink)}
+.bprow .tgt.dim{color:var(--ink-faint)}
+.rtab .tgt{font-size:8px;color:var(--ink-faint);padding-left:5px}
+.runs-feed{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+/* wider method/thread tracks than the dock copy — this column has the room */
+.runs-feed .rtab{grid-template-columns:76px 220px minmax(0,1fr) 118px;padding:2px 10px}
+.runs-feed > .rtab.head{flex:none;padding-top:4px;padding-bottom:3px}
+.hitfeed{flex:1;overflow-y:auto;min-height:0;padding:2px 0 10px}
+.hitempty{
+  display:flex;flex-direction:column;gap:5px;align-items:center;justify-content:center;
+  height:100%;min-height:120px;padding:24px 18px;text-align:center;
+  font:10.5px var(--mono);color:var(--ink-faint);user-select:none;
+}
+.hitempty b{color:var(--ink-dim);font-size:11px}
+.hit-detail{
+  flex:none;border-top:1px solid var(--line-strong);background:var(--panel);
+  padding:6px 12px;font:10px var(--mono);color:var(--ink-dim);max-height:34%;overflow-y:auto;
+}
+.hit-detail[hidden]{display:none}
+.runs-histcol{
+  width:260px;flex:none;min-height:0;
+  display:flex;flex-direction:column;border-left:1px solid var(--line);
+}
+.runs-hist{flex:1;overflow-y:auto;min-height:0;padding:4px 8px 10px}
+.runs-hist .mbtn{width:100%;margin-top:2px}
+.runs-hist .mbtn:disabled{color:var(--ink-faint);opacity:.5;cursor:default}
+.runs-hist .mbtn:disabled:hover{color:var(--ink-faint);border-color:var(--line-strong)}
+.runs-hist .dockhint{padding:4px 1px 0}
+.rcard{
+  border:1px solid var(--line-strong);border-radius:2px;background:var(--panel);
+  box-shadow:var(--bevel);padding:7px 9px;margin-bottom:7px;cursor:default;user-select:none;
+  transition:border-color var(--t),background var(--t);
+}
+.rcard:hover{border-color:var(--blue-line)}
+.rcard.sel{border-color:var(--blue);background:var(--blue-soft)}
+.rcard .rt{font:600 10px var(--mono);color:var(--ink)}
+.rcov{height:5px;background:var(--paper);border:1px solid var(--line-soft);border-radius:2px;margin-top:5px;overflow:hidden}
+.rcov i{display:block;height:100%;background:var(--grn)}
+#diff-panel{
+  border:1px dashed var(--blue-line);border-radius:2px;background:var(--blue-soft);
+  padding:6px 9px;font:9.5px var(--mono);color:var(--ink-dim);margin-top:6px;
+}
+#diff-panel[hidden]{display:none}
+#diff-panel b{color:var(--ink)}
+#diff-panel .diff-delta{margin:0 0 5px;padding:0 0 4px;border-bottom:1px solid var(--line-soft);font-variant-numeric:tabular-nums}
+#diff-panel .d-net{color:var(--ink);font-weight:600}
+#diff-panel .d-gain{color:var(--grn)}
+#diff-panel .d-loss{color:var(--verm)}
+/* OUTLINE dock panel — methods (blue rule) and fields (dim) of the open class, each a jump */
+#outline-rows .olrow{display:flex;align-items:center;gap:7px;padding:2px 6px;cursor:pointer;font:11px var(--mono);color:var(--ink-dim);border-radius:2px;border-left:2px solid transparent;transition:background var(--t),color var(--t)}
+#outline-rows .olrow:hover{background:var(--blue-soft);color:var(--ink)}
+#outline-rows .olm{border-left-color:var(--blue-line)}
+#outline-rows .olf{border-left-color:var(--line-strong)}
+#outline-rows .oln{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#outline-rows .olf .oln{color:var(--ink-dim)}
+#outline-rows .oltag{margin-left:auto;font-size:9px;color:var(--org);text-transform:uppercase;letter-spacing:.06em}
+
+/* search view */
+.sq-big{flex:1;max-width:420px;font-size:12px}
+.sgroup{border-bottom:1px solid var(--line-soft)}
+.sgh{
+  display:flex;align-items:center;gap:7px;padding:3px 12px;
+  font:600 10px var(--mono);color:var(--ink);cursor:pointer;user-select:none;
+  transition:background var(--t);
+}
+.sgh:hover{background:var(--blue-soft)}
+.sgh .caret{font-size:8px;width:10px;transition:transform var(--t);display:inline-block}
+.sgh .caret.cl{transform:rotate(-90deg)}
+.sgh .eng{margin-left:auto;font:8px var(--mono);color:var(--ink-faint)}
+.shit{
+  display:flex;gap:8px;padding:1px 12px 1px 30px;
+  font:10px var(--mono);color:var(--ink-dim);cursor:default;white-space:nowrap;
+  transition:background var(--t);
+}
+.shit:hover{background:var(--blue-soft)}
+.shit.sel{background:var(--blue-soft);box-shadow:inset 2px 0 0 var(--blue)}
+.shit .sln{color:var(--ink-faint);width:30px;flex:none;text-align:right}
+.shit .spv{overflow:hidden;text-overflow:ellipsis}
+.mk{background:rgba(230,159,0,.35);border-radius:1px;padding:0 1px}   /* match: OI orange wash */
+.sstats{
+  flex:none;padding:4px 12px;border-top:1px solid var(--line);
+  font:9px var(--mono);color:var(--ink-faint);font-variant-numeric:tabular-nums;
+}
+
+/* rail containers for view inspectors */
+.vinsp{flex:1;overflow-y:auto;min-height:0}
+.vinsp[hidden]{display:none}
+.evrow{display:flex;gap:7px;font:10px var(--mono);color:var(--ink-dim);padding:2px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* dock tables */
+.dtbl{width:100%;font:10.5px var(--mono);color:var(--ink-dim)}
+#tags-rows .drow{user-select:none}   /* a double-click navigates; it must not select the tag text (user 2026-09-19) */
+/* Dock rows (TAGS, HISTORY, FLOWS, BOOKMARKS, RUNTIME) speak the inspector's row grammar
+   (.xrow, user 2026-09-19: "the bottom panel doesn't use the same design language"): 11px mono,
+   dim ink, a led or glyph at the left, the symbol in blue, the old name struck and faint, the new
+   name in full ink, the timestamp faint and tabular at the right. The buttons are the shared
+   bevelled .mbtn; agents are a led, not an emoji. */
+.drow{
+  display:flex;align-items:center;gap:7px;padding:2px 6px;white-space:nowrap;
+  border-radius:2px;transition:background var(--t),color var(--t);
+  font:11px var(--mono);color:var(--ink-dim);
+}
+.drow:hover{background:var(--blue-soft);color:var(--ink)}
+.drow > span:not(.led):not(.tdot):not(.dt):not(.hundo){min-width:0;overflow:hidden;text-overflow:ellipsis}
+.drow b{color:var(--ink);font-weight:600}
+.drow s{color:var(--ink-faint)}
+.drow .dnote.err{color:var(--verm)}   /* beats .drow .dnote (fix-review r1 M1) */
+.drow .dt{margin-left:auto;flex:none;color:var(--ink-faint);font-size:10px;font-variant-numeric:tabular-nums}
+.drow .dnote{color:var(--ink-faint)}
+.drow .dsym{color:var(--blue);cursor:pointer;flex:0 0 auto;max-width:40%}   /* the symbol stays whole; the text column takes the ellipsis */
+.drow .led{margin-left:2px}
+.hundo{
+  flex:none;border:1px solid var(--line-strong);border-radius:2px;
+  background:linear-gradient(var(--btn-top),var(--btn-bot));box-shadow:var(--bevel);
+  color:var(--ink-dim);font:600 8px/1 var(--sans);letter-spacing:.1em;padding:3px 7px;cursor:pointer;
+  transition:color var(--t),border-color var(--t);
+}
+.hundo:hover{color:var(--blue);border-color:var(--blue-line)}
+.drow.undone .dsym,.drow.undone .dren{text-decoration:line-through;opacity:.6}
+
+/* ---------------------------- device catalog ----------------------------- */
+/* Tab strip: one tab per catalog kind + ALL + the two derived views (ANNOTATED,
+   CHANGED). Single selection — the active tab picks the rows AND the columns —
+   so these are tabs (dock-tab grammar: underline on the active one), not the
+   multi-toggle .fchips they replaced. Wraps rather than scrolls: a hidden tab is
+   an unreachable view, and at 1280 the strip needs a second line. */
+.dvtabbar{padding:0 12px;gap:0}
+.dvtabs{display:flex;flex-wrap:wrap;align-items:center;gap:2px;flex:1 1 auto;min-width:0}
+.dvtab{
+  display:flex;align-items:baseline;gap:5px;flex:none;
+  background:none;border:0;border-bottom:2px solid transparent;
+  padding:7px 9px 5px;
+  font:600 9px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-faint);cursor:pointer;
+  transition:color var(--t),border-color var(--t);
+}
+.dvtab:hover{color:var(--ink-dim)}
+.dvtab.on{color:var(--blue);border-bottom-color:var(--blue)}
+.dvtab .n{
+  font:9px var(--mono);letter-spacing:0;font-variant-numeric:tabular-nums;
+  color:var(--ink-faint);opacity:.85;
+}
+.dvtab.on .n{color:var(--blue)}
+.dvtab.empty{opacity:.5}                    /* a kind this catalog has none of — still openable */
+.dvtab.empty.on{opacity:1}                  /* …and fully legible once you are in it */
+/* "606+": the device has that many, the capped scan collected fewer. The dotted rule
+   marks the number as a floor, and the tab title spells out both numbers. */
+.dvtab.capped .n{border-bottom:1px dotted currentColor}
+.dvtabbar #dev-filter{flex:none;width:172px;margin:4px 0 4px 10px}
+
+/* Table. The active tab writes its own track list into --dvcols on #dev-table, and
+   the header row and every data row read that one value — header and cells cannot
+   drift apart. Fixed tracks are clamp-on-vw, never auto/min-content: each row is its
+   own grid, so a *content*-sized track would resolve differently row to row. */
+#dev-table{--dvcols:20px minmax(0,1fr) 124px}
+.dvhead,.dvrow{display:grid;grid-template-columns:var(--dvcols);align-items:center;gap:8px}
+.dvhead{
+  position:sticky;top:0;z-index:2;                       /* stays put while the table scrolls */
+  padding:5px 12px 4px;
+  background:var(--panel);border-bottom:1px solid var(--line-strong);
+  font:600 8px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-faint);user-select:none;
+}
+.dvrow{
+  padding:2px 12px;
+  font:10.5px var(--mono);color:var(--ink-dim);white-space:nowrap;cursor:default;
+  transition:background var(--t);
+}
+.dvrow:hover{background:var(--blue-soft)}
+.dvrow.sel{background:var(--blue-soft);box-shadow:inset 2px 0 0 var(--blue)}
+/* every cell clips to its track and carries its full string in a title — the row
+   never spills into its neighbour, and nothing is lost to the ellipsis */
+.dvc{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dvc-icon{color:var(--ink-faint);text-align:center;overflow:visible}
+.dvrow .dvc-name{color:var(--ink)}
+.dvrow .dvc-dim{color:var(--ink-faint);font-size:9.5px}
+.dvrow .dvc-none{color:var(--ink-faint);opacity:.45}     /* field absent on this entry */
+.dvc-num{text-align:right;font-variant-numeric:tabular-nums}
+.dvhead .dvc-flags{text-align:right}
+.dvrow .dvc-flags{display:flex;align-items:center;justify-content:flex-end;gap:6px}
+.dvrow .dvfb{flex:none;font-size:10px}
+.dvrow .dvfp{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  color:var(--blue);font-size:9px}
+.dvempty{padding:10px 12px;font:10px var(--mono);color:var(--ink-faint)}
+
+/* Process-row expander. The caret was already the `process` kind icon; making it a
+   control is a rotation, not a new glyph — ▶ turns into ▼ at 90°, and the transition
+   is the only motion in the row. Hit area is the whole icon track (20px), so the
+   click target is the caret's cell rather than the 8px glyph inside it. */
+.dvc-exp{cursor:pointer;transition:transform var(--t),color var(--t);transform-origin:50% 50%}
+.dvc-exp:hover{color:var(--blue)}
+.dvc-exp:focus-visible{outline:1px solid var(--blue);outline-offset:1px;border-radius:2px}
+.dvc-exp.open{transform:rotate(90deg);color:var(--blue)}
+
+/* The panel itself is a sibling of the row, not a cell in it: a plain block child of
+   #dev-table, so it spans the whole table at any width and owes the --dvcols grid
+   nothing (the row grid would otherwise clip it to one track). */
+.dvexp{
+  padding:6px 12px 8px 32px;                       /* text lines up past the icon gutter */
+  background:var(--panel2);
+  border-bottom:1px solid var(--line-soft);
+  box-shadow:inset 2px 0 0 var(--blue-line);
+  font:10px var(--mono);color:var(--ink-dim);
+}
+.dvexp .dvxsum{color:var(--ink);white-space:normal;overflow-wrap:anywhere}
+.dvexp .dvxsub{color:var(--ink-faint);font-size:9.5px;padding-top:2px;
+  white-space:normal;overflow-wrap:anywhere}
+.dvexp .dvxcmd{
+  color:var(--ink-dim);font-size:9.5px;padding-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;    /* full string in the title */
+}
+.dvexp .dvxnote{padding:2px 0;font-size:9.5px;color:var(--ink-faint)}
+.dvexp .dvxnote.gone{color:var(--org)}
+
+/* Two sections side by side while there is room; at a narrow window they stack rather
+   than squeeze the thread grid into one column per line. */
+.dvexp .dvxcols{display:flex;flex-wrap:wrap;gap:10px 22px;padding-top:6px;align-items:flex-start}
+.dvexp .dvxsec{min-width:0}
+.dvexp .dvxmem{flex:0 0 210px}       /* always six rows — fixed track */
+.dvexp .dvxthr{flex:1 1 260px}       /* 1 thread or 64 — takes the slack, wraps below at ~470px */
+.dvexp .dvxh{
+  display:flex;align-items:baseline;gap:6px;padding-bottom:3px;
+  font:600 8px/1 var(--sans);letter-spacing:.14em;color:var(--ink-faint);
+  text-transform:uppercase;user-select:none;
+}
+.dvexp .dvxh b{font:9px var(--mono);font-weight:400;letter-spacing:0;color:var(--ink-faint);opacity:.8}
+
+/* THREADS: COMM · STATE per thread, in as many columns as the width allows. Fixed
+   track width so the state letters line up into a scannable column. */
+.dvexp .dvxtg{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:0 10px}
+.dvexp .dvxt{display:flex;align-items:baseline;gap:5px;min-width:0}
+.dvexp .dvxts{flex:none;width:7px;font-weight:400;color:var(--ink-faint)}
+.dvexp .dvxts.s-R{color:var(--grn)}                 /* running — the one worth spotting */
+.dvexp .dvxts.s-D{color:var(--org)}                 /* uninterruptible sleep */
+.dvexp .dvxts.s-Z,.dvexp .dvxts.s-T,.dvexp .dvxts.s-t{color:var(--verm)}
+.dvexp .dvxtc{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--ink-dim);font-size:9.5px}
+/* the main thread, first in the list. NOT `.main` — that is the layout grid's class,
+   and its border-bottom would print a rule under this one cell. */
+.dvexp .dvxtc.dvxmain{color:var(--ink);font-weight:500}
+
+/* MEMORY: label/value pairs, values right-aligned so the MB numbers compare */
+.dvexp .dvxmg{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:0 10px}
+.dvexp .dvxm{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0}
+.dvexp .dvxk{color:var(--ink-faint);font-size:9.5px}
+.dvexp .dvxv{color:var(--ink-dim);font-size:9.5px;font-variant-numeric:tabular-nums;flex:none}
+
+/* device inspector IDENTITY + COMPONENTS — the view's full-fidelity surfaces.
+   Override the rail's default nowrap+ellipsis row grammar (.xrow, line ~618): a
+   value here is never truncated, it wraps (at the <wbr>s device.js puts after
+   path/FQCN separators). Component class names get the same deal as identity
+   values — an FQCN is exactly the kind of string an ellipsis destroys. */
+#dev-identity .xrow, #dev-comps .xrow{align-items:flex-start;white-space:normal}
+#dev-identity .xrow .led, #dev-comps .xrow .led{margin-top:5px}
+#dev-identity .xk{flex:none;color:var(--ink-faint)}
+#dev-identity .xv, #dev-comps .xv{
+  flex:1 1 auto;min-width:0;
+  overflow:visible;text-overflow:clip;white-space:normal;
+  overflow-wrap:anywhere;word-break:break-word;   /* pathological unbroken tokens still fit */
+}
+#dev-identity .xv.cpy, #dev-comps .xv.cpy{cursor:pointer;border-radius:2px}
+#dev-identity .xv.cpy:hover, #dev-comps .xv.cpy:hover{color:var(--blue)}
+
+/* COMPONENTS: kind groups, each headed by its own count; attributes the dump
+   carried (permission, provider authorities) sit under the class, dimmer. */
+#dev-comps .dvck{
+  display:flex;align-items:baseline;gap:6px;
+  padding:7px 6px 2px;font:600 8px/1 var(--sans);letter-spacing:.14em;
+  color:var(--ink-dim);text-transform:uppercase;user-select:none;
+}
+#dev-comps .dvck:first-child{padding-top:1px}
+#dev-comps .dvck b{color:var(--ink-faint);font-weight:400;letter-spacing:.04em}
+#dev-comps .dvcbody{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1 1 auto}
+#dev-comps .dvcattr{font-size:9.5px;color:var(--ink-faint);overflow-wrap:anywhere}
+#dev-comps .dvcmore{
+  padding:3px 6px;font:10px var(--mono);color:var(--blue);cursor:pointer;border-radius:2px;
+}
+#dev-comps .dvcmore:hover{background:var(--blue-soft)}
+#dev-comps .dvcnote{padding:3px 6px;font:10px var(--mono);color:var(--org);white-space:normal}
+
+/* RELATION pane — MAP section */
+.mr-line{display:flex;align-items:center;gap:8px;padding-top:6px;flex-wrap:wrap}
+.mr-agent{font:10px var(--mono);color:var(--agt)}
+.mr-gates{
+  font:10px var(--mono);color:var(--ink-dim);
+  border-top:1px dashed var(--line-soft);margin-top:6px;padding-top:5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;   /* truncate, full text in title */
+}
+#mr-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#mr-kind{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mr-fields{padding:2px 10px 8px}
+.fr{
+  display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:8px;
+  font:10px var(--mono);color:var(--ink-dim);padding:2px 0;
+}
+.fr > span{white-space:nowrap}
+.fr.head{color:var(--ink-faint);font-size:8px;letter-spacing:.14em;border-bottom:1px solid var(--line-soft)}
+.fr .fv-authored{color:var(--verm)}
+.fr .fv-identity{color:var(--grn)}
+.fr .fv-constrained{color:var(--org)}
+.fr .fe{                                                     /* evidence: remainder, ellipsis */
+  color:var(--ink-dim);text-align:right;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.cstep{                                                      /* chain step: compact 2-line block */
+  display:block;padding:2px 10px;cursor:pointer;border-radius:2px;
+  transition:background var(--t);
+}
+.cstep:hover{background:var(--blue-soft)}
+.cs-l1{                                                      /* line 1: number + label, never wraps */
+  display:flex;align-items:center;gap:8px;white-space:nowrap;
+  font:11px var(--mono);color:var(--ink-dim);
+}
+.cstep:hover .cs-l1{color:var(--ink)}
+.cs-l1 .cn{color:var(--blue);width:14px;flex:none;text-align:right}
+.cs-addr{                                                    /* line 2: addr, dim mono, ellipsis */
+  font:9.5px var(--mono);color:var(--ink-dim);padding-left:22px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+
+/* ============================ TOOLTIP =================================== */
+/* One JS-driven tooltip div (chrome.js initTips). The old [data-tip]:hover::after
+   tips were clipped by overflow:hidden ancestors (.status .sitem ellipsizes, the
+   rail, tabs) — hovering showed nothing there. A fixed-position body-level div
+   has no clipping ancestor at all. */
+#tip{position:fixed;z-index:400;background:var(--panel);border:1px solid var(--line-strong);
+  border-radius:2px;box-shadow:var(--bevel),0 8px 24px rgba(28,36,48,.28);color:var(--ink);font:10px var(--mono);
+  padding:3px 8px;white-space:pre-line;width:max-content;max-width:70ch;
+  overflow-wrap:anywhere;   /* an unbroken token (a server openError path) must not defeat the cap */
+  max-height:min(40vh,320px);overflow:hidden;   /* a tall tip falls off the viewport unreadable (r4 F7) */
+  pointer-events:none}
+body.dark #tip{box-shadow:var(--bevel),0 8px 24px rgba(0,0,0,.5)}
+#tip[hidden]{display:none}
+/* long tips (openError and friends carry unbounded server messages): tighter cap */
+#tip.wrap{max-width:38ch;text-align:left}
+
+/* ============================ SCROLLBARS ================================= */
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--raise);border:2px solid var(--panel);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--line-strong)}
+
+/* ============ M2: workbench modals (rename/comment dialog, target launcher) ============ */
+.wbmodal{position:fixed;inset:0;background:rgba(28,36,48,.35);display:flex;align-items:flex-start;justify-content:center;padding:8vh 16px;z-index:90;overflow-y:auto}   /* padding both ends + overflow: a tall card (many providers) never runs off-screen, and the overlay itself scrolls as a safety net */
+body.dark .wbmodal{background:rgba(16,19,23,.6)}
+.wbmodal[hidden]{display:none}
+/* the saving box: a real bar (bytes written vs the size before the write), indeterminate until
+   the first status answer, green on success, vermillion on failure */
+.sv-card{width:460px;max-width:92vw}
+.sv-bar{height:8px;margin-top:10px;background:var(--well);border:1px solid var(--line-soft);border-radius:3px;overflow:hidden;position:relative}
+.sv-bar i{display:block;height:100%;width:0;background:var(--blue);transition:width .15s linear}
+.sv-bar.indet i{width:30%;animation:svslide 1.2s ease-in-out infinite}
+@keyframes svslide{0%{margin-left:-30%}100%{margin-left:100%}}
+.sv-bar.ok i{background:var(--grn);width:100%}
+.sv-bar.err i{background:var(--verm);width:100%}
+.sv-meta{display:flex;gap:8px;margin-top:6px;font:10px var(--mono);color:var(--ink-dim);font-variant-numeric:tabular-nums}
+.wbm-row[hidden]{display:none}
+.wbm-card{width:460px;background:var(--paper,#f4f2ec);border:1px solid var(--line,#d8d4c8);box-shadow:0 8px 32px rgba(28,36,48,.25);padding:12px}
+.wbm-title{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--ink,#1c2430);margin-bottom:6px}
+.wbm-sym{font-size:10px;color:var(--ink-faint);margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wbm-card input{width:100%;box-sizing:border-box;font:inherit;font-size:12px;padding:5px 7px;background:var(--paper2,#eceadf);color:var(--ink,#1c2430);border:1px solid var(--line,#d8d4c8);outline:none}
+.wbm-card input:focus{border-color:var(--blue,#0072B2)}
+.wbm-err{min-height:14px;font-size:10px;color:var(--verm,#D55E00);margin-top:5px}
+.wbm-prog{min-height:14px;font-size:10px;color:var(--ink-dim);margin-top:5px;font-variant-numeric:tabular-nums}
+.wbm-row{display:flex;justify-content:flex-end;gap:6px;margin-top:8px}
+.wbm-row .spring{flex:1}
+
+/* ============ RETAINED METHODPARAMETERS (ui/params.ts): inspector section + mapping dialog ============ */
+#mp-sec[hidden]{display:none}
+.mp-title{display:flex;align-items:center;gap:6px}
+.mp-toggle{cursor:pointer;color:var(--ink-faint);width:10px;user-select:none}
+.mp-copy{margin-left:auto;font-size:9px;padding:1px 5px}
+#mp-sec.collapsed .mp-head,#mp-sec.collapsed .mp-list,#mp-sec.collapsed .mp-foot,#mp-sec.collapsed .mp-actions{display:none}   /* the title line (count, COPY) stays */
+.mp-head{font:10px/1.4 var(--mono);color:var(--org);padding:2px 0 4px}
+.mp-list{display:flex;flex-direction:column;gap:2px}
+.mp-row{display:grid;grid-template-columns:22px 1fr auto;gap:6px;align-items:start;font:11px var(--mono);color:var(--ink);padding:1px 0;border-radius:2px}
+.mp-row:focus{outline:1px solid var(--blue-line);outline-offset:1px}
+.mp-row .mp-i{color:var(--ink-faint);font-size:9px;text-align:right;padding-top:2px}
+.mp-row .mp-name{white-space:normal;overflow-wrap:anywhere}                   /* the whole name, wrapped — never cut behind a hidden button */
+.mp-row .mp-name.null{color:var(--ink-faint);font-style:italic}
+.mp-row .mp-flags{color:var(--ink-faint);font-size:9px;margin-left:4px;white-space:nowrap}
+.mp-row .mp-dim{color:var(--ink-faint);font-size:9px}
+.mp-row .mbtn{font-size:9px;padding:1px 5px;opacity:.55}                       /* always there (keyboard: focus the row, ⏎), full on hover/focus */
+.mp-row:hover .mbtn,.mp-row:focus-within .mbtn,.mp-row:focus .mbtn{opacity:1}
+.mp-foot{font:10px/1.45 var(--mono);color:var(--ink-dim);padding-top:4px;white-space:pre-wrap}
+.mp-foot .bad{color:var(--verm)}
+.mp-foot .warn{color:var(--org)}
+.mp-foot .dim{color:var(--ink-dim)}
+.mp-args{width:100%;border-collapse:collapse;font:10px var(--mono);color:var(--ink);margin-top:3px}
+.mp-args th{font-size:9px;letter-spacing:.08em;color:var(--ink-faint);text-align:left;padding:2px 4px 1px 0;border-bottom:1px solid var(--line-soft)}
+.mp-args td{padding:1px 6px 1px 0;vertical-align:top;overflow-wrap:anywhere}
+.mp-args td.dim{color:var(--ink-faint)}
+.mp-swap{display:block;margin-top:6px}
+.mp-actions{padding:4px 0 6px}
+.mp-card{width:600px;max-width:94vw}
+.mp-card .wbm-sym{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.4}
+.mp-warn{font:10px/1.45 var(--mono);color:var(--org);border:1px solid var(--line-soft);background:var(--well);padding:5px 7px;margin-bottom:8px}
+.mp-table{width:100%;border-collapse:collapse;font:11px var(--mono);color:var(--ink)}
+.mp-table th{font-size:9px;letter-spacing:.08em;color:var(--ink-faint);text-align:left;padding:2px 6px;border-bottom:1px solid var(--line)}
+.mp-table td{padding:3px 6px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+.mp-table td.dim{color:var(--ink-faint)}
+.mp-table td.bad{color:var(--verm)}
+.mp-table td.warn{color:var(--org)}                      /* overwrites an analyst's name: a warning, not an "ok" */
+.mp-table tr.pick{cursor:pointer}
+.mp-table tr.pick:hover{background:var(--raise)}
+.mp-table tr.sel{background:var(--well);outline:1px solid var(--blue-line)}
+.mp-table .arrow{color:var(--ink-faint);padding:0 4px}
+
+/* ============ COURSE ROOM card (ui/course.ts — course mode only) ============ */
+.course-card{width:560px;max-width:92vw}
+.course-card .wbm-sym{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.4}
+.crs-status{border:1px solid var(--line-soft);background:var(--well);padding:6px 8px;margin-bottom:4px;font:10px/1.45 var(--mono);color:var(--ink-dim)}
+.crs-line{display:flex;align-items:center;gap:6px;color:var(--ink)}
+.crs-line b{font-weight:600;letter-spacing:.06em}
+.crs-fix{color:var(--org)}
+.crs-fix:empty,.crs-deps:empty{display:none}
+.crs-sec{font-size:9px;font-weight:700;letter-spacing:.1em;color:var(--ink-faint);margin:10px 0 5px;border-bottom:1px solid var(--line);padding-bottom:2px}
+.crs-h{font-weight:400;letter-spacing:0;color:var(--ink-faint);font-size:9px;align-self:center}
+.crs-grid{display:flex;gap:6px}
+.crs-grid select{font:inherit;font-size:12px;padding:4px 6px;background:var(--paper2,#eceadf);color:var(--ink);border:1px solid var(--line);margin-bottom:6px}
+.crs-grid input{flex:1}
+.course-card input{margin-bottom:6px}
+.course-card textarea{width:100%;box-sizing:border-box;font:inherit;font-size:12px;padding:5px 7px;background:var(--paper2,#eceadf);color:var(--ink);border:1px solid var(--line);outline:none;resize:vertical}
+.course-card textarea:focus{border-color:var(--blue)}
+.crs-note{min-height:14px;font:10px/1.45 var(--mono);color:var(--ink-dim);margin-top:5px;white-space:pre-wrap}
+.crs-note:empty{display:none}
+
+/* launcher BROWSE pane (server-side fs.list — a pick is a path, not an upload) */
+.wbm-fs{margin-top:8px;border:1px solid var(--line,#d8d4c8);background:var(--paper2,#eceadf)}
+.wbm-fsbar{display:flex;align-items:center;gap:6px;padding:4px 6px;border-bottom:1px solid var(--line,#d8d4c8)}
+.wbm-fsbar .btn{font-size:9px;padding:2px 6px}
+.wbm-fsdir{flex:1;min-width:0;font:10px var(--mono);color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+.wbm-fslist{max-height:224px;overflow-y:auto;font:11px var(--mono);color:var(--ink)}
+.fsrow{display:flex;align-items:baseline;gap:8px;padding:1.5px 6px;cursor:pointer}
+.fsrow:hover{background:var(--raise)}
+.fsrow .fsnm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fsrow.fsd .fsnm{font-weight:600;color:var(--blue-ink)}
+.fsrow .fssz{flex:none;font-size:9px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.fsrow.fsmore{color:var(--ink-faint);cursor:default}
+
+/* ============ keyboard shortcuts sheet (#keyhelp) ============ */
+/* the card is the frame, .kh-cols is the scroller — so the title row stays
+   pinned on short viewports instead of scrolling away */
+.kh-card{width:640px;max-width:calc(100vw - 24px);max-height:76vh;padding-top:10px;
+  display:flex;flex-direction:column;overflow:hidden}
+.kh-esc{float:right;font-weight:400;color:var(--ink-faint);letter-spacing:.04em}
+.kh-cols{display:flex;gap:18px;flex-wrap:wrap;overflow-y:auto;min-height:0;outline:none}
+.kh-grp{flex:1 1 180px;min-width:0}
+.kh-h{font-size:9px;font-weight:700;letter-spacing:.1em;color:var(--ink-faint);margin:9px 0 3px;border-bottom:1px solid var(--line);padding-bottom:2px}
+.kh-grp .kh-h:first-child{margin-top:0}
+.kh-r{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink);padding:1.5px 0}
+.kh-k{display:inline-flex;gap:2px;min-width:64px;flex:none}
+
+
+/* ============ M3: search stats rebuild link, context hit line, string chip cell ============ */
+.rblink{color:var(--blue);cursor:pointer;text-decoration:underline}
+.rblink:hover{color:var(--blue-ink)}
+.mkline{background:rgba(240,228,66,.18)}
+#str-table .styp-cell{display:flex;gap:3px;flex-wrap:wrap;overflow:hidden}
+.styp.path{color:var(--org);border-color:var(--org)}
+.styp.hex,.styp.base64{color:var(--ink-dim);border-color:var(--line)}
+.styp.permission{color:var(--verm);border-color:var(--verm-line)}
+.styp.content-uri{color:var(--blue);border-color:var(--blue-line)}
+
+/* ============ M4: glyph-margin tags + bookmarks, flow rows ============ */
+.gtag{display:inline-block;width:5px;height:5px;border-radius:1px;margin-right:2px;vertical-align:2px}
+.gbm{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--blue);margin-right:2px;vertical-align:2px}
+.gbp{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--verm);margin-right:2px;vertical-align:1px}   /* breakpoint on the method declared here */
+.gbp.off{background:none;border:1px solid var(--verm);width:5px;height:5px}
+.drow.sel{background:var(--blue-soft);box-shadow:inset 2px 0 0 var(--blue)}
+#flow-detail{border-top:1px solid var(--line-soft);margin-top:4px}
+
+/* ============ M5: coverage stripe in the glyph margin ============ */
+.gcov{display:inline-block;width:3px;height:9px;background:var(--grn);opacity:.75;margin-right:2px;vertical-align:1px}
+.cond{font:600 8px var(--mono);color:var(--org)}
+.bprow .tgt{margin-left:auto}
+.rcard{cursor:pointer}
+
+/* ============ tree filter (M2) ============ */
+.tfcnt{color:var(--blue);font-size:10px;margin-left:auto}
+#col-side .filter .hl{background:rgba(240,228,66,.65);color:#1c2430;font-style:normal;border-radius:1px}
+body.dark #col-side .filter .hl{color:#1c2430}
+
+/* ============ M3: empty target state ============ */
+.codempty{display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:28px 22px;color:var(--ink-dim);font:11px var(--mono)}
+.codempty b{color:var(--ink);font-size:12px}
+
+/* hover-× on target chips: close target (auto-saves) — space reserved so
+   chips never shift when the × appears (visibility, not display) */
+.tchip .tx{visibility:hidden;margin-left:2px;color:var(--ink-faint);cursor:pointer;font-size:11px;line-height:1;padding:0 1px;border-radius:2px}
+.tchip:hover .tx{visibility:visible}
+.tchip .tx:hover{color:var(--verm);background:var(--raise)}
+.tchip .tx.busy{visibility:visible;color:var(--ink-dim);cursor:default}
+
+/* ===================== DISABLED CONTROLS (P0.6) ============================
+   a disabled control reads disabled: dimmed, default cursor, no hover lift.
+   (.runs-hist scoped this before; the mission ⏸/⏹, mapbar and menu rows need it too) */
+.mbtn:disabled{color:var(--ink-faint);opacity:.5;cursor:default}
+.mbtn:disabled:hover{color:var(--ink-faint);border-color:var(--line-strong)}
+.pm-item[aria-disabled="true"]{opacity:.35;cursor:default}
+.pm-item[aria-disabled="true"]:hover{background:transparent;color:inherit}
+/* sidecar persist issues — amber next to STATE; hidden unless the count is > 0 */
+#sidecar-item .lbl,#sidecar-item b{color:var(--org)}
+
+/* ===================== AGENTS: spawn gate + proposal ghosts (P0.4 / P0.5) ==
+   .spawnmsg — the NEW MISSION card's one message line: a faint gate hint while
+   the goal is empty, vermillion (.err — the .wbm-err voice) after a failed
+   spawn. It lives UNDER the card's controls so a failure never overwrites the
+   typed goal (views/agents.js initSpawn).
+   .cx.ghost — a proposed comment/tag/verdict row in the rail excerpt is prose,
+   not code: wrap it instead of pushing the excerpt into horizontal scroll. */
+.mcard.new .spawnmsg{min-height:14px;font:10px var(--mono);color:var(--ink-faint);margin-top:5px;overflow-wrap:anywhere}
+.mcard.new .spawnmsg.err{color:var(--verm,#D55E00)}
+.mr-code-body .cx.ghost{white-space:pre-wrap;min-width:0;overflow-wrap:anywhere}
+.mr-code-body .cx.ghost .vchip{vertical-align:1px}
+
+/* ===================== MAP EMPTY STATE (P0.1) ===============================
+   the canvas's own honest empty state — the runs feed's .hitempty idiom,
+   rendered by map.js renderEmpty into #mapempty: empty map (the NEW MAP
+   landing) / all nodes hidden by TYPES / map failed to load / no map open.
+   The outer box is click-transparent so pan + wheel still reach #mapview;
+   only the text block (.me) takes the pointer, for its ＋NODE / TYPES buttons. */
+.mapempty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.mapempty[hidden]{display:none}              /* author display:flex beats [hidden] otherwise (.sitem's lesson) */
+.mapempty .me{
+  pointer-events:auto;display:flex;flex-direction:column;gap:6px;align-items:center;
+  max-width:440px;padding:24px 18px;text-align:center;
+  font:10.5px/1.5 var(--mono);color:var(--ink-faint);user-select:none;
+}
+.mapempty .me b{color:var(--ink-dim);font-size:11px}
+.mapempty.err .me b{color:var(--verm)}       /* the failed-load arm reads as a failure, not a hint */
+.mapempty .me .mbtn{vertical-align:middle;margin:0 2px}
+
+/* ===================== MAP INSPECTOR WRITES (P0.2) ==========================
+   verdict chip → registry-driven <select> in the same .vchip skin (the chevron
+   is a background IMAGE so map.js's backgroundColor paint keeps it; .dk is the
+   dark glyph for light chips); node hover-× in the header; EDGES rows with a
+   hover-×; the projmenu's row-becomes-the-confirm classes (.pm-confirm /
+   .pm-go / .pm-cancel, shell.css ~198) reused verbatim, laid out for the rail. */
+.vpick{
+  appearance:none;-webkit-appearance:none;border:0;outline:none;cursor:pointer;
+  padding-right:14px;text-transform:uppercase;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 6'><path d='M0 0h8L4 6z' fill='%23ffffff'/></svg>");
+  background-repeat:no-repeat;background-position:right 4px center;background-size:6px 4px;
+}
+.vpick.dk{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 6'><path d='M0 0h8L4 6z' fill='%231c2430'/></svg>")}
+.vpick:disabled{cursor:default;opacity:.5;background-image:none;padding-right:5px}   /* blanked rail: a plain — chip */
+.vpick option{background:var(--panel);color:var(--ink);text-transform:uppercase}
+#map-rel .symhead .tx{visibility:hidden;margin-left:auto;color:var(--ink-faint);cursor:pointer;font-size:11px;line-height:1;padding:0 2px;border-radius:2px}
+#map-rel .symhead:hover .tx{visibility:visible}
+#map-rel .symhead .tx:hover{color:var(--verm);background:var(--raise)}
+#map-rel .pm-confirm{display:flex;align-items:center;gap:8px;padding:3px 0;font:10px var(--mono);color:var(--ink-dim)}
+#map-rel .pm-confirm[hidden]{display:none}
+#map-rel .pm-confirm .pm-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#mr-edges{padding:2px 10px 8px}
+.erow{
+  display:flex;align-items:center;gap:6px;padding:2px 4px;border-radius:2px;
+  font:10px var(--mono);color:var(--ink-dim);cursor:pointer;transition:background var(--t);
+}
+.erow:hover{background:var(--blue-soft)}
+.erow .ed{color:var(--blue);flex:none;width:10px;text-align:center}
+.erow .en{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.erow .ek{margin-left:auto;flex:none;font-size:9px}
+.erow .tx{visibility:hidden;flex:none;color:var(--ink-faint);font-size:11px;line-height:1;padding:0 2px;border-radius:2px}
+.erow:hover .tx{visibility:visible}
+.erow .tx:hover{color:var(--verm);background:var(--raise)}
+.erow.pm-confirm{cursor:default}
+.erow.pm-confirm:hover{background:transparent}
+/* ===================== DEVICE: empty state + selector (P0-1 / P0-3) =========
+   #dev-table with nothing to catalog: the .codempty grammar (a <b> title over
+   mono lines, left-aligned — a reader scans it like the rest of the table) plus
+   the one command that fixes the cause, styled as the input it would be typed
+   into and click-to-copy like an IDENTITY value. The note line is the disconnect
+   the poll saw (amber = caution, the ribbon's colour for it); the err line is
+   adb's own message. The selector is the .mcard select, sized to a toolbar row. */
+.dvnodev{display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:28px 22px;color:var(--ink-dim);font:11px var(--mono)}
+.dvnodev b{color:var(--ink);font-size:12px}
+.dvnodev .dvnd-note{color:var(--org)}
+.dvnodev .dvnd-err{color:var(--verm);opacity:.85;white-space:pre-wrap;overflow-wrap:anywhere}
+.dvnodev .dvnd-dim{color:var(--ink-faint);font-size:10px}
+.dvnodev .dvnd-cmd{
+  margin-top:4px;padding:3px 8px;border:1px solid var(--line-strong);border-radius:2px;
+  background:var(--paper);color:var(--ink);cursor:pointer;user-select:all;
+  transition:color var(--t),border-color var(--t);
+}
+.dvnodev .dvnd-cmd:hover{color:var(--blue);border-color:var(--blue-line)}
+.dvsel{
+  background:var(--paper);border:1px solid var(--line-strong);border-radius:2px;
+  color:var(--ink);font:11px var(--mono);padding:2px 5px;outline:none;cursor:pointer;max-width:320px;
+}
+.dvsel:focus{border-color:var(--blue)}
+/* ===================== RUNS FEED: filter + ⏸ (P0.6) ========================
+   the mockup's #feed-toolbar (runs.html:442-446) as a .vtoolbar pinned above
+   the column headers. One row, never wraps: the input takes the slack. */
+.runs-feed .feedbar{flex-wrap:nowrap;gap:8px;padding:3px 8px}
+.runs-feed .feedbar input{flex:1;min-width:0;padding:1px 6px;font-size:10.5px}
+.feedbar .mbtn{flex:none;white-space:nowrap}
+.feedbar .mbtn.on{color:var(--org);border-color:var(--org)}        /* paused reads paused (caution) */
+.feedbar .pnew{color:var(--verm);font-weight:600;margin-left:3px}  /* "N new" while paused */
+.feedbar .vcount{flex:none;white-space:nowrap}
+.hrow.fout{display:none}                                           /* filtered out — kept, not dropped */
+.hitfeed{overflow-anchor:none}                                     /* prependHit compensates scrollTop itself */
+.hitnomatch span{color:var(--org)}
+
+/* ===================== BP ROWS: remove + cond (P0.7) ========================
+   hover-× is the .tchip .tx idiom (visibility, not display: nothing shifts);
+   the armed row is the projmenu confirm (.pm-confirm .pm-go/.pm-cancel apply) */
+.bprow .tx{visibility:hidden;flex:none;color:var(--ink-faint);cursor:pointer;font-size:11px;line-height:1;padding:0 2px;border-radius:2px}
+.bprow:hover .tx{visibility:visible}
+.bprow .tx:hover{color:var(--verm);background:var(--raise)}
+.bprow.pm-confirm,.bprow.pm-confirm:hover{background:var(--verm-soft)}
+.bprow.pm-confirm .bpn{color:var(--ink)}
+.bprow .cond{cursor:pointer}
+.bprow .cond:hover{text-decoration:underline}
+.bprow .cond.unset{visibility:hidden;color:var(--ink-faint)}       /* "+cond": hover-only, space reserved */
+.bprow:hover .cond.unset{visibility:visible}
+.bprow .condedit{
+  flex:1;min-width:60px;font:10px var(--mono);background:var(--paper);color:var(--ink);
+  border:1px solid var(--blue-line);outline:none;padding:1px 5px;
+}
+
+/* ===================== AGENTS: blocked reason (P0.3) =========================
+   .mc-reason — WHY a blocked mission blocked, under the goal on its card
+   (Mission.reason = the blocked event's text; the activity row alone scrolls
+   off). One vermillion line, ellipsis; the full text rides title= (the QA 25
+   ellipsis-tooltip idiom). Vermillion = the stream's BLOCKED voice.
+   #agm-reason — the same text as the mission inspector's REASON row. The rail
+   is the full-detail surface, so it wraps where the card ellipses (overrides
+   the .xrow nowrap) and keeps its colour under the .xrow hover. */
+.mc-reason{font:10px/1.35 var(--mono);color:var(--verm);padding-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#agm-reason,#agm-reason:hover{color:var(--verm);white-space:normal;overflow-wrap:anywhere;align-items:flex-start}
+/* ===================== LAUNCHER BROWSE pane: B1-B3, B5-B7 (2026-09-08) ========
+   The list is ONE tab
+   stop (role=listbox + aria-activedescendant, launcher.js): the cursor row is
+   .sel in the .drow/.dvrow idiom and focus stays on the container, so a descent's
+   re-render never drops focus on <body> (B1). Dim = extension outside the
+   openable hint set; the magic-byte detector is the truth (B2). */
+.wbm-fslist{outline:none}
+.wbm-fslist:focus-visible{box-shadow:inset 0 0 0 1px var(--blue)}
+.fsrow.sel{background:var(--blue-soft);box-shadow:inset 2px 0 0 var(--blue)}   /* selection wins over :hover (later rule) */
+.fsrow.fsdim .fsnm{color:var(--ink-faint)}
+.fsrow.sel.fsdim .fsnm{color:var(--ink-dim)}                                   /* still legible under the cursor */
+.wbm-fscount{flex:none;font:9px var(--mono);color:var(--ink-faint);white-space:nowrap;font-variant-numeric:tabular-nums}  /* B7 */
+#launch-dots{font-size:12px;font-weight:700;line-height:1;padding:0 6px;align-self:stretch}   /* B2: the · toggle, UP's height */
+#launch-dots.on{color:var(--blue);background:var(--blue-soft);border-color:var(--blue-line)}   /* the .rbtn.on look */
+/* ===================== CONTEXT MENU + TREE KEYS (P0.2 / P0.4) ==============
+   the symbol menu (navigation.js openCtx) IS the projmenu — same rows, same
+   kbd column — anchored to the pointer instead of the chip: fixed, placed
+   and clamped inline. pm-cur is the ↑↓-lit row (the navhist dropdown marks
+   its current entry with text; a menu you drive with keys must highlight).
+   The head is the symbol's name, mono-cased — not a section label. */
+.projmenu.ctxmenu{position:fixed;left:0;top:0;min-width:200px;max-width:340px;outline:none}
+.ctxmenu .pm-head{font-size:10px;letter-spacing:0;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctxmenu .pm-item.pm-cur{background:var(--blue-soft);color:var(--ink)}
+/* #tree owns the keyboard (tabindex on the host): no default ring on the box;
+   the .sel row shows the focus instead, and only while the tree has it —
+   otherwise .sel stays the passive open-class marker (shell.css .tnode.sel) */
+.tree{outline:none}
+.tree:focus .tnode.sel{box-shadow:inset 2px 0 0 var(--blue),inset 0 0 0 1px var(--blue-line)}
+/* ===================== STRINGS: double-click → use (segS) ==================
+   .srow is arrow (a click selects into the rail; the hover bg carries that).
+   A row whose string HAS xrefs also navigates on double-click — hand, per the
+   CURSOR CONTRACT (hand = navigates); a zero-xref row has nowhere to go and
+   stays arrow. The value stays selectable (a single-click drag copies it);
+   only the gesture's own word-select is suppressed (strings.js mousedown). */
+.srow.jmp{cursor:pointer}
+/* ===================== OPEN STATUS CARDS (2026-09-08) =====================
+   One NON-modal card per target.open in flight (js/ui/openstatus.js),
+   anchored bottom-right of the center surface: the editor bay is the one
+   element every center view (code / map / agents / the pane views) lives
+   inside, so the card never covers the inspector rail or the dock. z 40 —
+   over the map's TYPES menu (30), under the float layer (70), floating
+   panels (80) and the modals (90): a dialog or a dragged-out panel may cover
+   a card, never the reverse. The host is click-through; only the cards take
+   the pointer. .wbm-prog (the launcher's old progress line) is retired. */
+.bay.editor{position:relative}
+/* left AND right set: the host spans the surface (click-through), so the
+   card's max-width resolves against a real width — a percentage against a
+   shrink-to-fit host is undefined layout (CSS 2.1 §10.4) */
+#openstatus{position:absolute;left:12px;right:12px;bottom:12px;z-index:40;display:flex;flex-direction:column;align-items:flex-end;gap:6px;pointer-events:none}
+.oscard{
+  pointer-events:auto;width:320px;max-width:100%;
+  background:var(--panel);border:1px solid var(--line-strong);border-radius:3px;
+  box-shadow:var(--bevel),0 8px 24px rgba(28,36,48,.22);
+  padding:7px 9px 8px;font:11px var(--mono);color:var(--ink-dim);
+  animation:osin .18s ease;
+}
+body.dark .oscard{box-shadow:var(--bevel),0 8px 24px rgba(0,0,0,.5)}
+@keyframes osin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.os-head{display:flex;align-items:center;gap:7px;min-width:0}
+.os-name{flex:1;min-width:0;color:var(--ink);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.os-eng{flex:none;font-size:10px;color:var(--ink-faint)}
+.os-x{flex:none;border:none;background:none;color:var(--ink-faint);font:12px/1 var(--mono);padding:0 3px;cursor:pointer;border-radius:2px}
+.os-x:hover{color:var(--verm);background:var(--raise)}
+.os-x[hidden]{display:none}
+.os-msg{margin-top:4px;color:var(--ink-dim);overflow-wrap:anywhere}
+.os-aside{margin-top:3px;font-size:10px;color:var(--ink-faint);overflow-wrap:anywhere}
+.os-aside.warn{color:var(--org)}                         /* basisWarn: the caution voice */
+.os-aside[hidden]{display:none}
+.os-aside.act{font-size:11px;color:var(--ink-dim)}        /* a re-key's note: what happened to this target — body voice */
+.os-undo{margin-top:6px;pointer-events:auto}
+.os-undo[hidden]{display:none}
+.os-foot{display:flex;align-items:baseline;gap:5px;margin-top:5px;font-variant-numeric:tabular-nums}
+.os-foot b{font-weight:500;color:var(--ink-dim);margin-right:6px}
+.os-foot [hidden]{display:none}
+.os-k{font:600 8px/1 var(--sans);letter-spacing:.14em;color:var(--ink-faint);text-transform:uppercase}   /* the ribbon's .lbl voice */
+/* state voices — the strip's LED idiom: orange = not ready (ledFor paints an
+   analyzing JEB chip orange), green = ready, vermillion = the error voice,
+   plain = link down / closed */
+.oscard.loading .led{animation:agpulse 1.6s linear infinite}
+.oscard.ready{border-color:var(--grn)}
+.oscard.ready .os-msg,.oscard.ready .os-state{color:var(--grn)}
+.oscard.error{border-color:var(--verm-line)}
+.oscard.error .os-msg,.oscard.error .os-state{color:var(--verm)}
+.oscard.link .os-msg,.oscard.closed .os-state{color:var(--ink-faint)}
+/* ===================== STRINGS: populating / failed / empty (segU) ==========
+   User report 2026-09-08: the table sat blank for the seconds the first page
+   takes — indistinguishable from "no strings". strings.js renderState keeps
+   ONE element inside #str-table while it is empty, in the runs feed's
+   .hitempty idiom (centred, height:100% of the scroll box): loading = the
+   open-status card's pulsing orange LED + "populating strings…" + an elapsed
+   readout that ticks 1/s (text, no bar — the strings pass has nothing to
+   measure against); error = the vermillion voice (.mapempty.err's rule);
+   notarget / empty = the hint voice. Rows present → the element is gone; a
+   rebuild over stale rows or a failed page notes itself on the count line
+   instead (.vcount .note / .err). The .t span keeps its line while blank so
+   the block does not re-centre when the first "1s" lands. */
+.strstate b{display:flex;align-items:center;gap:6px}
+.strstate.loading .led{animation:agpulse 1.6s linear infinite}
+.strstate .t{font-variant-numeric:tabular-nums;min-height:1.3em}
+.strstate.error b{color:var(--verm)}
+.strstate.error span{color:var(--ink-dim);max-width:440px;overflow-wrap:anywhere}
+.vcount .err{color:var(--verm)}
+/* ===================== JUMP STATUS CARD (segU) ==============================
+   js/ui/jumpstatus.js — "decompiling <X>" + phase + elapsed while a strings
+   jump's loadSymbol runs, in the open-status corner (#openstatus) with the
+   open-status card's markup, voices and z-order reused verbatim (.oscard,
+   .os-*): orange pulse = in flight, vermillion = failed (× shown, 6s linger).
+   Mounted only past 300ms, dismissed on landing. .jcard carries the one
+   difference: the head's tag is the jump's ORIGIN (strings) in the .os-k
+   label voice, not an engine readout, and the name is a symbol's dotted
+   label (tooltip = the raw addr) — medium weight, not a target's bold. */
+.jcard .os-name{font-weight:500}
+.jcard .os-eng{font:600 8px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase}
+/* ===================== PROJECT EDITOR (segW) ===============================
+   chrome.js initProjMenu mountEditor/renderEditor: a project row's hover-✎
+   (the .tx visibility-on-hover idiom, blue on hover — it is not destructive)
+   expands the row into the project's TARGETS from project.targets, the MAPS
+   section's own grammar (pm-item rows, hover-×, row-becomes-the-confirm)
+   indented under a blue rule so the members read as the row's children.
+   LEDs are the strip's voices (app.js ledFor: green ready, orange not ready
+   — pulsing here, the open-status card's in-flight reading — vermillion
+   error); a CLOSED member (on disk only, state 'closed') gets the hollow
+   ring: no engine, nothing live. DELETE PROJECT is the vermillion voice at
+   rest and its confirm a vermillion-washed row (.bprow.pm-confirm's rule)
+   carrying the NOT-parked copy as a wrapped second line; forget (the ON DISK
+   ×) stays the plain confirm it was — the two must never look alike. The
+   confirm rows wrap so the .pm-copy line sits under name / GO / cancel. */
+.pm-item .tx.pm-ed{font-size:10px}
+.pm-item .tx.pm-ed:hover{color:var(--blue)}
+.pm-item.pm-editing{background:var(--blue-soft)}
+.pm-item.pm-editing .tx.pm-ed{visibility:visible;color:var(--blue)}
+.pm-edit{margin:0 6px 3px 16px;border-left:2px solid var(--blue-line);padding:1px 0 2px}
+.pm-edit .pm-head{padding-left:8px}
+.pm-edit .pm-item{padding:3px 6px 3px 8px}
+.pm-edit .pm-name{max-width:220px}           /* caps the menu's shrink-to-fit width under a long artifact name */
+.pm-edit .pm-sp{width:6px;flex:none}         /* the LED column, kept for the add / delete rows */
+.pm-edit .led.x{background:transparent;box-shadow:inset 0 0 0 1px var(--line-strong)}
+.pm-edit .led.o{animation:agpulse 1.6s linear infinite}
+.pm-edit .pm-add .pm-name{color:var(--ink-dim)}
+.pm-edit .pm-add:hover .pm-name{color:var(--ink)}
+.pm-edit .pm-del .pm-name{color:var(--verm)}
+.pm-edit .pm-del:hover{background:var(--verm-soft)}
+.pm-edit .pm-confirm{flex-wrap:wrap;row-gap:2px}
+.pm-edit .pm-confirm.pm-del,.pm-edit .pm-confirm.pm-del:hover{background:var(--verm-soft)}
+.pm-edit .pm-confirm.pm-del .pm-name{color:var(--ink)}
+.pm-copy{flex-basis:100%;font-size:9px;line-height:1.35;color:var(--ink-dim);white-space:normal;cursor:default}
+.pm-err{padding:2px 6px 3px 8px;font-size:9px;line-height:1.35;color:var(--verm);white-space:normal;max-width:320px;overflow-wrap:anywhere;cursor:default}
+.pm-err[hidden]{display:none}
+.pm-note{padding:3px 10px 4px;font-size:9px;line-height:1.35;color:var(--ink-dim);white-space:normal;max-width:340px;cursor:default}
+.pm-note b{color:var(--org);font-weight:600}   /* the count in the caution voice: disk the store now holds for nobody */
+.pm-note[hidden]{display:none}
+/* ===================== STRINGS: the rail's XREFS load (segX) ================
+   User report 2026-09-09: "when clicking on a string line, it seems to take a
+   long time to populate the xref panel … when clicking on the string when the
+   xrefs have not yet been populated, nothing happens". strings.js
+   renderXrState keeps ONE element inside #strd-xrefs, the table's .strstate
+   idiom with the same voices: loading = the open-status card's pulsing orange
+   LED + "loading xrefs…" + an elapsed readout ticking 1/s (text, no bar —
+   one string.xrefs is one request with no progress channel); "refreshing
+   xrefs…" over rows kept from the SAME string, which sit under it dimmed
+   (#strd-xrefs.stale — the last known rows, visibly not current, until the
+   fresh ones land); error = the vermillion voice (server text via
+   textContent); empty = the hint voice ("no xrefs"). Rows showing → the
+   element is gone. Geometry: the rail is a narrow column, not a scroll box —
+   .hitempty's centred, 100%-high, 24px-padded block is overridden to a
+   compact left-aligned group in the .xrow grammar (mono, the rows' inset).
+   The .t span keeps its line while blank (the first "1s" must not reflow).
+   The jump that waits on the fetch wears the jump card (.jcard, above) in an
+   'xrefs' phase — no CSS of its own. */
+.xrstate{height:auto;min-height:0;padding:3px 6px 7px;gap:2px;align-items:flex-start;text-align:left;font-size:10px}
+.xrstate b{display:flex;align-items:center;gap:6px;font-size:10.5px}
+.xrstate.loading .led{animation:agpulse 1.6s linear infinite}
+.xrstate .t{font-variant-numeric:tabular-nums;min-height:1.3em}
+.xrstate.error b{color:var(--verm)}
+.xrstate.error span,.xrstate.empty span{color:var(--ink-dim);white-space:normal;overflow-wrap:anywhere}
+#strd-xrefs.stale .xrow{opacity:.5}
+#strd-xrefs.stale .xrow:hover{opacity:.85}   /* still the last known rows and still live: a hover says so */
+
+/* ---- batch 2 (scope model): run cards, DETACH confirm, proposal target chip, dock RELATION list */
+.rcard.insp{box-shadow:inset 2px 0 0 var(--grn)}
+.rcard .ab{float:right;font:600 9px var(--mono);color:var(--blue);border:1px solid var(--blue-line);border-radius:2px;padding:0 3px;margin-left:6px}
+.rcard .tbadge{font:600 9px var(--mono);color:var(--ink-dim);background:var(--well);border-radius:2px;padding:0 4px;margin-left:6px}
+.mbtn.arm{color:var(--verm);border-color:var(--verm-line)}
+.pchip{font:600 9px var(--mono);color:var(--ink-dim);background:var(--well);border-radius:2px;padding:0 4px;margin-right:4px}
+#dock-rel-rows{overflow-y:auto;max-height:100%}
+.rtab.dhit{opacity:.95}
+.vtoolbar .vsel{font:600 10px var(--mono);color:var(--ink-dim);background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:2px 4px;margin-left:6px}
+.preflight{display:flex;flex-wrap:wrap;gap:2px 14px;padding:3px 10px;font:10px var(--mono);color:var(--ink-dim);border-bottom:1px solid var(--line-soft);background:var(--panel2)}
+.preflight .pf{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48%}
+.preflight .pf.ok{color:var(--grn)} .preflight .pf.warn{color:var(--org)} .preflight .pf.missing{color:var(--verm)}
+.annot-form{display:flex;gap:4px;align-items:center} .annot-form .annot-in{flex:1;min-width:0;font:11px var(--sans);padding:2px 4px;border:1px solid var(--line-soft);border-radius:2px;background:var(--panel);color:var(--ink)}
+.wbm-recent{margin:0 0 8px;border:1px solid var(--line-soft);border-radius:3px;background:var(--panel2)}
+.wbm-recent-head{font:600 10px var(--mono);letter-spacing:.06em;color:var(--ink-dim);padding:4px 8px;border-bottom:1px solid var(--line-soft)}
+.wbm-recent-head .dim{font-weight:400;letter-spacing:0;margin-left:8px}
+.wbm-recent-row{display:flex;gap:8px;align-items:center;padding:3px 8px;font:11px var(--sans);cursor:pointer}
+.wbm-recent-row:hover{background:var(--blue-soft)}
+.wbm-recent-row kbd{font:600 9px var(--mono);color:var(--ink-faint);border:1px solid var(--line-soft);border-radius:2px;padding:0 3px}
+.wbm-recent-row .nm{font-weight:600;color:var(--ink)}
+.wbm-recent-row .pj{color:var(--ink-dim);font-size:10px}
+.wbm-recent-row .ag{margin-left:auto;color:var(--ink-faint);font:10px var(--mono)}
+.wbm-recent-row .open{font:600 9px var(--mono);color:var(--grn)}
+.wbm-recent-row.gone{cursor:default;opacity:.55} .wbm-recent-row .gone{font:9px var(--mono);color:var(--verm)}
+.runs-diffbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:3px 8px;border-bottom:1px solid var(--line-soft)}
+.runs-diffbar #diff-panel{flex-basis:100%;font-size:11px}
+.rcard .rt .rid{font-weight:700}
+.run-uninspect{cursor:pointer;color:var(--blue);margin-left:6px}
+.pchip.nr{color:var(--org)}
+.preflight .pf .fixt{color:var(--ink-dim);margin-left:4px}
+.rcard .rx{float:right;margin-left:6px;color:var(--ink-faint);cursor:pointer;font:600 10px var(--mono);padding:0 3px;border-radius:2px}
+.rcard .rx:hover{color:var(--verm)} .rcard .rx.arm{color:var(--verm);border:1px solid var(--verm-line)}
+.run-rmall{cursor:pointer;color:var(--ink-faint);margin-left:8px;font-weight:600} .run-rmall:hover{color:var(--verm)} .run-rmall.arm{color:var(--verm)}
+
+/* ---- PROVIDERS window, llm-config design §7 (2026-09-11): provider cards with a MODEL LIST
+   (explicit default radio, ×, add), a rename affordance on the id, a spec chip */
+.llmhint{font:10px var(--mono);color:var(--ink-dim);line-height:1.4;margin:0 0 8px}
+.llmrow .llmid{font:600 10px var(--mono);color:var(--ink-faint);cursor:pointer;text-decoration:underline dotted}
+.llmrow .llmid.nore{cursor:default;text-decoration:none}
+.llmrow .llmren{display:flex;gap:4px;align-items:center;font:10px var(--mono)}
+.llmrow .llmren input{width:130px}
+.llmrow .llmlist{grid-column:1 / -1;display:flex;flex-direction:column;gap:3px}
+.llmrow .llmlist .llmm{display:flex;align-items:center;gap:6px;font:10.5px var(--mono);color:var(--ink)}
+.llmrow .llmlist .llmm input[type=radio]{width:auto;margin:0;cursor:default}   /* not the global input{cursor:text} I-beam — a radio shows the normal arrow */
+.llmrow .llmlist .llmm .llmmid{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.llmrow .llmlist .llmm .llmdef{font:9px var(--mono);color:var(--grn)}
+.llmrow .llmlist .llmm .llmmx{cursor:pointer;color:var(--ink-faint);font-size:11px}
+.llmrow .llmlist .llmm .llmmx.arm{color:var(--verm)}
+.llmrow .llmlist .llmmadd{display:flex;gap:4px;margin-top:2px}
+.llmrow .llmlist .llmmadd input{flex:1;min-width:0}
+.llmrow .llmlist .llmmadd-sel{flex:1;min-width:0;font:10.5px var(--mono);padding:3px 6px;background:var(--panel);color:var(--ink);border:1px solid var(--line-strong);border-radius:2px;outline:none;cursor:pointer}   /* discovered-models picker (↻ fetch fills it) */
+.llmrow .llmlist .llmmadd-sel:focus{border-color:var(--blue)}
+.llmrow .llmlist .llmmadd-fetch{flex:none;white-space:nowrap}
+.llmrow .llmlist .llmmadd-manual{margin-top:2px}
+.llmrow .llmlist .llmmadd-manual input{font-size:10px;opacity:.85}   /* the fallback: type an id the endpoint didn't list */
+/* "how to connect" — the auth choice under a vendor that offers more than one (Anthropic: Claude Code login | API key) */
+.llmrow .llmauth{grid-column:1 / -1;display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;font:10px var(--mono);color:var(--ink-dim);margin:2px 0 4px}
+.llmrow .llmauth .llmauth-cap{color:var(--ink-faint);letter-spacing:.06em;text-transform:uppercase;font-size:9px}
+.llmrow .llmauth label{display:flex;align-items:center;gap:5px;color:var(--ink);cursor:pointer}
+.llmrow .llmauth input[type=radio]{width:auto;margin:0;cursor:default}
+.llmrow .llmauth-note{grid-column:1 / -1;font:9.5px var(--mono);color:var(--verm);line-height:1.4;margin:0 0 4px}   /* the in-place confirm: what the flip replaces, which pins will read UNLISTED (A6) */
+.llmrow .llmlimits{grid-column:1 / -1;font:9.5px var(--mono);color:var(--ink-faint);line-height:1.4;margin:0 0 4px}   /* API-mode compat-surface limits (#5) */
+.llmrow .llmconf.tpl{color:var(--ink-faint)}   /* `custom` as a blank template, not a broken vendor (B9) */
+.llmrow .llmlist .llmm .llmmsub{font:9px var(--mono);color:var(--ink-faint);white-space:nowrap}   /* "the CLI's own default" beside claude-code (B13) */
+#closemodal .wbm-sym{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.4;font-size:10.5px;color:var(--ink)}   /* the close dialog's count line wraps — it is the decision, not a caption */
+.llmrow .llmspec{grid-column:1 / -1;font:9.5px var(--mono);color:var(--ink-dim)}
+.llmrow .llmspec code{color:var(--ink)}
+
+/* Bounded private evidence surface inside Runs. */
+.message-lab { flex: 0 0 auto; border-bottom: 1px solid var(--line); padding: 8px 12px; max-height: 55%; overflow: auto; }
+.message-lab > summary { cursor: pointer; font-weight: 600; }
+.message-lab summary span { font-weight: 400; margin-left: 12px; }
+.lab-body p { max-width: 100ch; margin: 8px 0; line-height: 1.45; }
+.lab-warning { border-left: 3px solid var(--org); padding-left: 10px; }
+.lab-row { display: flex; align-items: end; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+.lab-row label { display: flex; flex-direction: column; gap: 4px; }
+.lab-row label.lab-check { flex-direction: row; align-items: center; }
+.lab-row input, .lab-row textarea, .lab-row select { color: inherit; background: var(--panel); border: 1px solid var(--line); padding: 5px; max-width: 420px; }
+.lab-row textarea { min-width: 300px; }
+.message-lab pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; padding: 8px; background: var(--panel); }
+#lab-error { color: var(--verm); white-space: pre-wrap; }
+
+#lab-comparison table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+#lab-comparison th, #lab-comparison td { text-align: left; vertical-align: top; padding: 6px; border: 1px solid var(--line); overflow-wrap: anywhere; }
+#lab-comparison th:first-child { width: 18%; }
+.lab-warning > summary { cursor: pointer; }
+
+/* Runs: disclosure and evidence identity remain readable without a device. */
+#runswrap details.preflight{display:block}
+#runswrap summary.preflight{display:list-item;list-style-position:inside;cursor:pointer}
+#runswrap details.preflight summary{cursor:pointer}
+.run-history-controls{display:flex;flex-wrap:wrap;gap:5px 12px;padding:5px 10px;font:11px var(--mono);border-bottom:1px solid var(--line-soft)}
+#rund-body .xrow{white-space:normal;overflow-wrap:anywhere}
+#rund-body .xrow>span{white-space:normal;overflow:visible;text-overflow:clip}
+
+#runswrap .preflight .pf{white-space:normal;overflow-wrap:anywhere;overflow:visible;text-overflow:clip}

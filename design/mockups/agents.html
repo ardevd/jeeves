@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<!--
+  Mockup E5 — Agents view (expanded activity-rail panel, workbench-integrated)
+  Same shell as Mockup S (target strip, breadcrumb, activity rail, status bar);
+  the center surface is the Agents panel: left = active agent cards + mission
+  history, center = color-coded activity stream, right = pending proposals queue.
+  This is the workbench-integrated subset of supervision — the full cockpit
+  (per-agent consoles, cost graphs, tool-call replay) lives in Mockup C.
+  Self-contained: inline CSS + JS, no external dependencies, no network requests.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agents — workbench</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='12'%20fill='%230c0e10'/%3E%3Crect%20x='1.5'%20y='1.5'%20width='61'%20height='61'%20rx='10.5'%20fill='none'%20stroke='%2327322c'/%3E%3Ctext%20x='32'%20y='28'%20font-family='monospace'%20font-size='12'%20fill='%233fb950'%20text-anchor='middle'%20letter-spacing='1'%3E64%2065%2078%3C/text%3E%3Ctext%20x='32'%20y='46'%20font-family='monospace'%20font-size='12'%20fill='%233fb950'%20text-anchor='middle'%20letter-spacing='1'%20opacity='.75'%3E0a%2030%2035%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg0:#101214; --bg1:#15181b; --bg2:#1a1e22; --bg3:#20252a; --bg4:#262c32;
+  --border:#272c31; --border-soft:#20252a;
+  --text:#c9d1d9; --text-dim:#7d8590; --text-faint:#545d66;
+  --accent:#2dd4bf; --accent-dim:#134e4a; --accent-glow:rgba(45,212,191,.14);
+  --blue:#58a6ff; --purple:#d2a8ff; --orange:#ffa657; --yellow:#e3b341;
+  --red:#f47067; --green:#7ee787; --pink:#f778ba;
+  --agent:#b892f6; --agent-bg:rgba(184,146,246,.10);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:12.5px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:var(--sans);background:var(--bg0);color:var(--text);
+  overflow:hidden;display:flex;flex-direction:column;font-size:12.5px;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--accent-dim)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#2c333a;border-radius:5px;border:2px solid var(--bg1)}
+::-webkit-scrollbar-track{background:transparent}
+kbd{
+  font-family:var(--mono);font-size:10px;color:var(--text-dim);
+  background:var(--bg2);border:1px solid var(--border);border-bottom-width:2px;
+  border-radius:4px;padding:0 4px;line-height:15px;display:inline-block;white-space:nowrap;
+}
+.icn{font-family:var(--mono);font-style:normal;font-size:15px;line-height:1}
+.dirtydot{width:7px;height:7px;border-radius:50%;background:var(--orange);display:inline-block}
+
+/* ============ TARGET STRIP ============ */
+#targets{
+  height:32px;min-height:32px;background:#0c0e10;border-bottom:1px solid var(--border);
+  display:flex;align-items:stretch;padding:0 8px;gap:2px;overflow-x:auto;
+}
+.tchip{
+  display:flex;align-items:center;gap:7px;padding:0 12px;margin-top:5px;
+  font-family:var(--mono);font-size:11px;color:var(--text-dim);cursor:pointer;white-space:nowrap;
+  background:var(--bg1);border:1px solid var(--border-soft);border-bottom:none;border-radius:7px 7px 0 0;
+}
+.tchip:hover{color:var(--text)}
+.tchip.active{background:var(--bg0);color:var(--text);border-color:var(--border);box-shadow:inset 0 2px 0 var(--accent);position:relative}
+.tchip.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--bg0)}
+.tchip .ft{font-size:11px}
+.eng{font-size:8.5px;letter-spacing:.06em;border-radius:3px;padding:1px 5px;font-weight:700}
+.eng.jeb{background:rgba(45,212,191,.14);color:var(--accent);border:1px solid rgba(45,212,191,.3)}
+.eng.jadx{background:rgba(255,166,87,.12);color:var(--orange);border:1px solid rgba(255,166,87,.3)}
+.eng.ida{background:rgba(88,166,255,.12);color:var(--blue);border:1px solid rgba(88,166,255,.3)}
+.tchip .adot{width:6px;height:6px;border-radius:50%;background:var(--agent);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.tchip .ddev{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.tchip.add{border-style:dashed;color:var(--text-faint);background:transparent}
+.tchip.add:hover{color:var(--accent);border-color:var(--accent-dim)}
+
+/* ============ TOP BAR ============ */
+#topbar{
+  height:42px;min-height:42px;background:var(--bg1);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;padding:0 12px;
+}
+.locbar{
+  display:flex;align-items:center;gap:5px;min-width:0;flex:0 2 auto;overflow:hidden;
+  font-family:var(--mono);font-size:11.5px;
+}
+.lseg{
+  color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;
+  cursor:pointer;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:5px;flex:0 1 auto;
+}
+.lseg:hover{background:var(--bg3);color:var(--text)}
+.lseg.tgt{background:var(--accent-glow);color:var(--accent);border:1px solid rgba(45,212,191,.25);flex:none}
+.lseg.cur{color:var(--text);font-weight:600;flex:none}
+.lseg.flash{background:var(--accent-dim);color:#99f6e4}
+.lsep{color:var(--text-faint);font-size:10px;flex:none}
+.navhist{display:flex;align-items:center;gap:2px;margin-left:4px}
+.navhist button{
+  background:transparent;border:1px solid transparent;color:var(--text-dim);border-radius:5px;
+  width:24px;height:24px;cursor:pointer;font-size:13px;
+}
+.navhist button:hover{background:var(--bg3);color:var(--text)}
+.crumbs{
+  display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:11px;color:var(--text-dim);
+  padding:3px 8px;border-radius:5px;background:var(--bg2);border:1px solid var(--border-soft);
+}
+.crumbs b{color:var(--text);font-weight:600}
+.crumbs .sep{color:var(--text-faint)}
+.jumpbox{
+  flex:0 1 420px;margin:0 auto;display:flex;align-items:center;gap:8px;
+  background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;
+  color:var(--text-faint);font-family:var(--mono);font-size:11.5px;cursor:text;
+}
+.jumpbox:hover{border-color:#31383f}
+.jumpbox .grow{flex:1}
+.proj{
+  display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:6px;padding:4px 9px;font-size:11.5px;color:var(--text);cursor:pointer;
+}
+.proj .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.proj .chev{color:var(--text-faint);font-size:9px}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);
+  color:var(--text);border-radius:6px;padding:4px 10px;font-size:11.5px;cursor:pointer;font-family:var(--sans);
+}
+.btn:hover{background:var(--bg3)}
+.btn.primary{background:var(--accent-dim);border-color:#155e57;color:#99f6e4}
+.btn.primary:hover{background:#165e56}
+
+/* ============ ACTIVITY RAIL ============ */
+#activity{
+  width:48px;min-width:48px;background:var(--bg1);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;padding-top:6px;gap:2px;
+}
+.actbtn{
+  width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  color:var(--text-faint);cursor:pointer;position:relative;font-size:17px;border:none;background:transparent;
+}
+.actbtn:hover{color:var(--text);background:var(--bg3)}
+.actbtn.active{color:var(--accent);background:var(--accent-glow)}
+.actbtn.active::before{content:"";position:absolute;left:-4px;top:8px;bottom:8px;width:2px;background:var(--accent);border-radius:2px}
+.actbtn .badge{
+  position:absolute;top:3px;right:3px;min-width:14px;height:14px;border-radius:7px;background:var(--accent-dim);
+  color:#99f6e4;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0 3px;
+}
+.actbtn .badge.agent{background:var(--agent);color:#1b1030}
+#activity .spacer{flex:1}
+
+/* ============ AGENTS SURFACE: 3 columns ============ */
+#main{flex:1;display:flex;min-height:0}
+#surface{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg0)}
+#cols{flex:1;display:flex;min-height:0}
+.col{
+  display:flex;flex-direction:column;min-height:0;overflow-y:auto;
+}
+#col-left{width:300px;min-width:300px;border-right:1px solid var(--border);background:var(--bg1)}
+#col-center{flex:1;min-width:0}
+#col-right{width:340px;min-width:340px;border-left:1px solid var(--border);background:var(--bg1)}
+
+.col-head{
+  padding:10px 14px 8px;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--text-dim);
+  text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;
+  position:sticky;top:0;background:var(--bg1);z-index:2;border-bottom:1px solid var(--border-soft);
+}
+#col-center .col-head{background:var(--bg0)}
+.col-head .n{font-family:var(--mono);font-weight:400;letter-spacing:0;text-transform:none;color:var(--text-faint)}
+.col-head .count-bubble{
+  min-width:16px;height:15px;border-radius:8px;background:var(--agent-bg);border:1px solid rgba(184,146,246,.3);
+  color:var(--agent);font-family:var(--mono);font-size:9.5px;display:inline-flex;align-items:center;justify-content:center;
+  padding:0 5px;letter-spacing:0;text-transform:none;
+}
+
+/* ---- left: agent cards ---- */
+.acard{
+  margin:10px 10px 0;padding:10px 12px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:8px;cursor:pointer;position:relative;
+}
+.acard:hover{border-color:#31383f}
+.acard.sel{border-color:rgba(184,146,246,.45);box-shadow:inset 2px 0 0 var(--agent)}
+.acard .a-top{display:flex;align-items:center;gap:7px}
+.acard .a-dot{width:7px;height:7px;border-radius:50%;flex:none}
+.acard .a-dot.live{background:var(--green);box-shadow:0 0 5px rgba(126,231,135,.6);animation:pulse 1.8s ease-in-out infinite}
+.acard .a-name{font-weight:600;font-size:12px;color:var(--text)}
+.acard .a-model{
+  font-family:var(--mono);font-size:9.5px;color:var(--purple);border:1px solid rgba(210,168,255,.35);
+  border-radius:3px;padding:0 5px;background:rgba(210,168,255,.07);
+}
+.acard .a-model.local{color:var(--orange);border-color:rgba(255,166,87,.35);background:rgba(255,166,87,.07)}
+.acard .a-loc{
+  margin-top:7px;font-family:var(--mono);font-size:11px;color:var(--text-dim);
+  display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.acard .a-loc .pin{color:var(--agent);flex:none}
+.acard .a-loc .file{color:var(--blue)}
+.acard .a-budget{margin-top:8px;display:flex;align-items:center;gap:7px}
+.acard .bbar{flex:1;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.acard .bbar i{display:block;height:100%;background:var(--agent)}
+.acard .bbar.hot i{background:var(--orange)}
+.acard .blabel{font-family:var(--mono);font-size:9.5px;color:var(--text-faint);white-space:nowrap}
+.acard .a-actions{margin-top:9px;display:flex;align-items:center;gap:10px}
+.tgl{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;color:var(--text-dim);cursor:pointer;user-select:none;white-space:nowrap}
+.tgl .sw{width:22px;height:12px;border-radius:6px;background:var(--bg3);position:relative;flex:none;transition:background .15s}
+.tgl .sw::after{content:"";position:absolute;left:1.5px;top:1.5px;width:9px;height:9px;border-radius:50%;background:var(--text-faint);transition:all .15s}
+.tgl.on{color:var(--text)}
+.tgl.on .sw{background:var(--agent-bg)}
+.tgl.on .sw::after{left:11px;background:var(--agent)}
+.acard .a-kill{margin-left:auto;font-size:10px;color:var(--text-faint);cursor:pointer;border:none;background:transparent;font-family:var(--sans)}
+.acard .a-kill:hover{color:var(--red)}
+
+/* ---- left: mission history ---- */
+.mh-head{
+  margin:14px 10px 0;padding:8px 4px 5px;font-size:10px;font-weight:700;letter-spacing:.12em;
+  color:var(--text-dim);text-transform:uppercase;border-top:1px solid var(--border-soft);
+  display:flex;justify-content:space-between;
+}
+.mh-head .n{font-family:var(--mono);font-weight:400;color:var(--text-faint)}
+.mrow{
+  margin:4px 10px;padding:7px 10px;background:var(--bg2);border:1px solid var(--border-soft);
+  border-radius:6px;cursor:pointer;
+}
+.mrow:hover{background:var(--bg3)}
+.mrow .m-title{font-size:11px;color:var(--text);display:flex;align-items:center;gap:6px}
+.mrow .m-title .done{color:var(--green);font-size:10px}
+.mrow .m-meta{font-family:var(--mono);font-size:9.5px;color:var(--text-faint);margin-top:3px}
+.mrow .m-chips{margin-top:6px;display:flex;gap:4px;flex-wrap:wrap}
+.ochip{
+  font-family:var(--mono);font-size:9px;border-radius:3px;padding:1px 6px;border:1px solid;white-space:nowrap;
+  color:var(--accent);border-color:rgba(45,212,191,.35);background:rgba(45,212,191,.07);
+}
+.ochip.flow{color:var(--blue);border-color:rgba(88,166,255,.35);background:rgba(88,166,255,.07)}
+.ochip.tag{color:var(--pink);border-color:rgba(247,120,186,.35);background:rgba(247,120,186,.07)}
+
+/* ---- center: activity stream ---- */
+#stream-bar{
+  display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--border-soft);
+  background:var(--bg0);position:sticky;top:0;z-index:2;flex-wrap:wrap;
+}
+.sfilter{
+  font-family:var(--mono);font-size:10px;border-radius:10px;padding:2px 9px;cursor:pointer;
+  border:1px solid var(--border);color:var(--text-faint);background:var(--bg2);user-select:none;
+}
+.sfilter:hover{color:var(--text)}
+.sfilter.on{color:var(--text);border-color:currentColor;background:rgba(255,255,255,.04)}
+.sfilter .cdot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:1px}
+#stream-note{margin-left:auto;font-size:10px;color:var(--text-faint)}
+#stream{padding:4px 0 12px}
+.srow{
+  display:flex;gap:10px;padding:4px 14px;font-size:11.5px;border-left:2px solid transparent;
+  cursor:pointer;align-items:baseline;
+}
+.srow:hover{background:var(--bg1)}
+.srow.sel{background:var(--agent-bg);border-left-color:var(--agent)}
+.srow .ts{font-family:var(--mono);font-size:10px;color:var(--text-faint);flex:none;width:56px}
+.srow .who{
+  font-family:var(--mono);font-size:10px;flex:none;width:86px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.srow .body{min-width:0;color:var(--text-dim);line-height:1.5}
+.srow .body b{color:var(--text);font-weight:600;font-family:var(--mono);font-size:11px}
+.srow .body .obf{color:var(--red);font-family:var(--mono);font-size:11px;text-decoration:line-through;text-decoration-color:rgba(244,112,103,.5)}
+.srow .body .arr{color:var(--text-faint)}
+.srow .conf{
+  font-family:var(--mono);font-size:9.5px;border-radius:3px;padding:0 5px;border:1px solid;flex:none;align-self:center;
+}
+.conf.hi{color:var(--green);border-color:rgba(126,231,135,.35);background:rgba(126,231,135,.07)}
+.conf.md{color:var(--yellow);border-color:rgba(227,179,65,.35);background:rgba(227,179,65,.07)}
+.conf.lo{color:var(--orange);border-color:rgba(255,166,87,.35);background:rgba(255,166,87,.07)}
+.srow.blocked{border-left-color:var(--red)}
+.srow.blocked .body{color:var(--red)}
+.srow.blocked .body b{color:var(--red)}
+.srow.flag{border-left-color:var(--yellow)}
+.srow .kind{font-family:var(--mono);font-size:9px;color:var(--text-faint);flex:none;width:58px;letter-spacing:.04em;text-transform:uppercase}
+.srow .kind.rename{color:var(--accent)}
+.srow .kind.xref{color:var(--blue)}
+.srow .kind.block{color:var(--red)}
+.srow .kind.flagk{color:var(--yellow)}
+.srow .kind.tag{color:var(--pink)}
+.srow .kind.note{color:var(--text-faint)}
+
+/* ---- right: proposals ---- */
+#reviewall-wrap{padding:10px 12px 6px;border-bottom:1px solid var(--border-soft)}
+#reviewall{justify-content:center;width:100%}
+.prop{
+  margin:10px 12px 0;padding:9px 11px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:8px;transition:opacity .2s;
+}
+.prop .p-kind{
+  font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;
+  margin-bottom:5px;display:flex;align-items:center;gap:6px;
+}
+.prop .p-kind .from{font-weight:400;letter-spacing:0;text-transform:none;color:var(--text-faint);margin-left:auto}
+.prop .p-body{font-family:var(--mono);font-size:11px;color:var(--text);line-height:1.6;word-break:break-word}
+.prop .p-body .obf{color:var(--red);text-decoration:line-through;text-decoration-color:rgba(244,112,103,.5)}
+.prop .p-body .arrow{color:var(--text-faint)}
+.prop .p-body .new{color:var(--accent)}
+.prop .p-why{font-size:10.5px;color:var(--text-dim);margin-top:5px;line-height:1.5}
+.prop .p-foot{margin-top:8px;display:flex;align-items:center;gap:7px}
+.vote{
+  width:24px;height:22px;border-radius:5px;border:1px solid var(--border);background:var(--bg3);
+  color:var(--text-dim);cursor:pointer;font-size:12px;display:inline-flex;align-items:center;justify-content:center;
+}
+.vote:hover{color:var(--text);background:var(--bg4)}
+.vote.ok:hover{color:var(--green);border-color:rgba(126,231,135,.4)}
+.vote.no:hover{color:var(--red);border-color:rgba(244,112,103,.4)}
+.prop.settled{opacity:.55}
+.prop.settled .vote{pointer-events:none;opacity:.4}
+.prop .verdict{font-family:var(--mono);font-size:9.5px;border-radius:3px;padding:1px 6px;border:1px solid;margin-left:auto}
+.verdict.acc{color:var(--green);border-color:rgba(126,231,135,.4);background:rgba(126,231,135,.08)}
+.verdict.rej{color:var(--red);border-color:rgba(244,112,103,.4);background:rgba(244,112,103,.08)}
+.prop.flashy{animation:propflash .35s ease}
+@keyframes propflash{0%{background:var(--accent-dim)}100%{background:var(--bg2)}}
+#props-empty{margin:14px 12px;padding:14px;color:var(--text-faint);font-size:11px;text-align:center;display:none;
+  border:1px dashed var(--border);border-radius:8px}
+
+/* ---- footer note ---- */
+#footnote{
+  padding:7px 14px;border-top:1px solid var(--border);background:var(--bg1);
+  font-size:10.5px;color:var(--text-faint);display:flex;align-items:center;gap:8px;flex:none;
+}
+#footnote .go{color:var(--agent);cursor:pointer}
+#footnote .go:hover{text-decoration:underline}
+.info-hint{
+  font-size:10.5px;color:var(--text-faint);cursor:help;white-space:nowrap;
+  border-bottom:1px dotted var(--text-faint);padding-bottom:1px;
+}
+.info-hint:hover{color:var(--text-dim)}
+
+/* ============ STATUS BAR ============ */
+#status{
+  height:24px;min-height:24px;background:var(--bg1);border-top:1px solid var(--border);
+  display:flex;align-items:center;padding:0 10px;gap:14px;font-size:10.5px;color:var(--text-dim);
+  font-family:var(--mono);
+}
+.st{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.st .heapbar{width:52px;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.st .heapbar i{display:block;height:100%;background:var(--yellow)}
+.spinner{width:9px;height:9px;border:1.5px solid var(--accent-dim);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.agentchip{
+  display:flex;align-items:center;gap:6px;background:var(--agent-bg);border:1px solid rgba(184,146,246,.3);
+  color:var(--agent);border-radius:10px;padding:1px 9px;font-size:10px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;
+}
+.follow{display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:auto}
+.follow .sw{width:22px;height:12px;border-radius:6px;background:var(--accent-dim);position:relative}
+.follow .sw::after{content:"";position:absolute;right:1.5px;top:1.5px;width:9px;height:9px;border-radius:50%;background:var(--accent)}
+</style>
+</head>
+<body>
+
+<!-- ================= TARGET STRIP ================= -->
+<div id="targets">
+  <div class="tchip active" title="gmail.apk · JEB — switch ⌘1">
+    <span class="ft" style="color:var(--orange)">▣</span> gmail.apk <span class="eng jeb">JEB</span> <span class="dirtydot"></span>
+  </div>
+  <div class="tchip" title="gmail.apk · JADX — switch ⌘2 · read-only · sidecar names">
+    <span class="ft" style="color:var(--orange)">▣</span> gmail.apk <span class="eng jadx">JADX</span>
+  </div>
+  <div class="tchip" title="libgmail.so · IDA — switch ⌘3 · agent active">
+    <span class="ft" style="color:var(--blue)">◈</span> libgmail.so <span class="eng ida">IDA</span> <span class="adot"></span>
+  </div>
+  <div class="tchip" title="wallet.apk · JADX — switch ⌘4 · device attached: pixel-7">
+    <span class="ft" style="color:var(--orange)">▣</span> wallet.apk <span class="eng jadx">JADX</span> <span class="ddev"></span>
+  </div>
+  <div class="tchip add" title="Open target…">+</div>
+</div>
+
+<!-- ================= TOP BAR ================= -->
+<div id="topbar">
+  <nav class="locbar" title="Current location — hierarchy, not history">
+    <span class="lseg tgt"><span class="eng jeb">JEB</span>gmail.apk</span><span class="lsep">›</span>
+    <span class="lseg cur">Agents</span>
+  </nav>
+  <div class="navhist" title="Navigation history">
+    <button title="Back (Alt+←)">‹</button>
+    <button title="Forward (Alt+→)">›</button>
+  </div>
+  <div class="crumbs" title="Navigation history · Alt+← / Alt+→">
+    <span>sync.c</span><span class="sep">→</span><span>decryptPayload</span><span class="sep">→</span><span><b>agents</b></span><span class="sep">▾</span>
+  </div>
+  <div class="jumpbox" title="Jump anywhere">
+    <span style="color:var(--accent)">➜</span>
+    <span class="grow">Jump to class, method, string, offset…</span>
+    <kbd>G</kbd>
+  </div>
+  <div class="proj" title="Project">
+    <span class="dot"></span> gmail_9.41.apk <span class="chev">▾</span>
+  </div>
+  <button class="btn primary" title="Save project (⌘S)"><span class="dirtydot"></span> Save <span id="dirtycount" style="font-family:var(--mono);font-size:10px;opacity:.85">· 7</span></button>
+  <button class="btn" title="More actions">⋯</button>
+</div>
+
+<!-- ================= MAIN ================= -->
+<div id="main">
+
+  <!-- activity rail -->
+  <div id="activity">
+    <button class="actbtn" title="Explorer"><i class="icn">⛁</i></button>
+    <button class="actbtn" title="Search (⌘⇧F)"><i class="icn">⌕</i></button>
+    <button class="actbtn" title="Strings"><i class="icn">❝</i></button>
+    <button class="actbtn" title="Bookmarks &amp; Tags"><i class="icn">⚑</i><span class="badge">14</span></button>
+    <button class="actbtn" title="Runs — dynamic analysis"><i class="icn">▶</i></button>
+    <button class="actbtn active" title="Agents"><i class="icn">🤖</i><span class="badge agent">2</span></button>
+    <div class="spacer"></div>
+    <button class="actbtn" title="Settings"><i class="icn">⚙</i></button>
+  </div>
+
+  <!-- agents surface -->
+  <div id="surface">
+    <div id="cols">
+
+      <!-- ============ LEFT: active agents + mission history ============ -->
+      <div class="col" id="col-left">
+        <div class="col-head"><span>Active agents</span><span class="n">2 running</span></div>
+
+        <div class="acard sel" data-agent="a7" title="reverse-agent #7 — cloud model via JEB bridge. Click to filter the stream.">
+          <div class="a-top">
+            <span class="a-dot live" style="--c:var(--agent)"></span>
+            <span class="a-name">reverse-agent #7</span>
+            <span class="a-model" title="deepseek-v4 · remote API · key: env:JEEVEE_DS_KEY">deepseek-v4</span>
+          </div>
+          <div class="a-loc" title="Live position — the agent's cursor in the decompilation view. Follow snaps the editor to it on every move.">
+            <span class="pin">⌖</span> at <span class="file">sync.c</span> · onMessage <span style="color:var(--text-faint)">L61</span>
+          </div>
+          <div class="a-budget" title="Token budget for this mission — hard stop at 100k; the agent is paused (not killed) at the cap so you can top up or abort.">
+            <span class="bbar"><i style="width:41%"></i></span>
+            <span class="blabel">41k / 100k tok</span>
+          </div>
+          <div class="a-actions">
+            <span class="tgl on" data-follow="a7" title="Follow this agent: editor jumps wherever it looks. Per-agent, independent of the global Follow in the status bar."><span class="sw"></span> Follow</span>
+            <button class="a-kill" title="Pause mission (state checkpointed — resumable)">⏸ pause</button>
+          </div>
+        </div>
+
+        <div class="acard" data-agent="q3" title="local qwen3-32b #3 — runs fully on-device (llama.cpp, Metal). Nothing leaves the machine: safe for sensitive targets. Click to filter the stream.">
+          <div class="a-top">
+            <span class="a-dot live"></span>
+            <span class="a-name">local qwen3-32b #3</span>
+            <span class="a-model local" title="On-device inference · 0 network egress · ~19 tok/s on M-series">local</span>
+          </div>
+          <div class="a-loc" title="Live position — currently walking the crypto helper.">
+            <span class="pin">⌖</span> at <span class="file">crypto.f</span> · unwrapKey <span style="color:var(--text-faint)">L23</span>
+          </div>
+          <div class="a-budget" title="Local models have no token cost; the budget bounds wall-clock context instead.">
+            <span class="bbar"><i style="width:18%"></i></span>
+            <span class="blabel">18k / 100k ctx</span>
+          </div>
+          <div class="a-actions">
+            <span class="tgl" data-follow="q3" title="Follow this agent: editor jumps wherever it looks."><span class="sw"></span> Follow</span>
+            <button class="a-kill" title="Pause mission (state checkpointed — resumable)">⏸ pause</button>
+          </div>
+        </div>
+
+        <div class="mh-head"><span>Mission history</span><span class="n">3 done</span></div>
+
+        <div class="mrow" title="Finished 09:52 · reverse-agent #5 · 78k tok · all changes merged to project">
+          <div class="m-title"><span class="done">✓</span> Map invite.v2 handling path</div>
+          <div class="m-meta">reverse-agent #5 · 09:52 · 78k tok</div>
+          <div class="m-chips"><span class="ochip">12 classes renamed</span><span class="ochip flow">4 flows proposed</span></div>
+        </div>
+        <div class="mrow" title="Finished 08:31 · local qwen3-32b #1 · merged with 2 manual edits">
+          <div class="m-title"><span class="done">✓</span> Classify crypto strings in sync.e</div>
+          <div class="m-meta">local qwen3-32b #1 · 08:31 · local</div>
+          <div class="m-chips"><span class="ochip tag">9 tags applied</span></div>
+        </div>
+        <div class="mrow" title="Finished yesterday · reverse-agent #2 · aborted at budget cap, partial results kept">
+          <div class="m-title"><span class="done" style="color:var(--yellow)">◐</span> Trace MailSyncService entry points</div>
+          <div class="m-meta">reverse-agent #2 · yesterday · capped at 100k</div>
+          <div class="m-chips"><span class="ochip">6 classes renamed</span><span class="ochip flow">2 flows proposed</span></div>
+        </div>
+      </div>
+
+      <!-- ============ CENTER: activity stream ============ -->
+      <div class="col" id="col-center">
+        <div class="col-head">
+          <span>Activity stream</span>
+          <span class="n" title="Every agent action against the project, newest at the bottom, unified across agents. Color = which agent did it.">live · unified log</span>
+        </div>
+        <div id="stream-bar">
+          <span class="sfilter on" data-f="all" title="Show all agents">all</span>
+          <span class="sfilter" data-f="a7" style="color:var(--agent)" title="reverse-agent #7 only"><span class="cdot" style="background:var(--agent)"></span>#7</span>
+          <span class="sfilter" data-f="q3" style="color:var(--orange)" title="local qwen3-32b #3 only"><span class="cdot" style="background:var(--orange)"></span>#3</span>
+          <span class="sfilter" data-f="alert" style="color:var(--red)" title="Only events needing attention: blocked writes + low-confidence flags">⚠ alerts</span>
+          <span id="stream-note" title="Write actions never apply directly — they become proposals (right column) unless auto-accept is on for that action class.">writes → proposals</span>
+        </div>
+        <div id="stream"></div>
+      </div>
+
+      <!-- ============ RIGHT: pending proposals ============ -->
+      <div class="col" id="col-right">
+        <div class="col-head">
+          <span>Pending proposals</span>
+          <span class="count-bubble" id="pending-count" title="Proposals awaiting your verdict. Accepting applies the change to the project and marks it dirty (unsaved).">3 pending</span>
+        </div>
+        <div id="reviewall-wrap">
+          <button class="btn primary" id="reviewall" title="Open the review walkthrough: each proposal full-screen with diff, rationale and evidence, ⌘⏎ accept / ⌘⌫ reject.">Review all <kbd>⌘R</kbd></button>
+        </div>
+
+        <div class="prop" data-pid="p1">
+          <div class="p-kind" style="color:var(--accent)">rename <span class="from">from #7 · conf <b>0.9</b></span></div>
+          <div class="p-body"><span class="obf">a</span> <span class="arrow">→</span> <span class="new">handleInvite</span> <span style="color:var(--text-faint)">· sync.c</span></div>
+          <div class="p-why">Sole caller passes topic <b>invite.v2</b>; body branches on <b>action</b> field and calls <b>sendAck</b>. 3 xref sites agree.</div>
+          <div class="p-foot">
+            <button class="vote ok" data-v="acc" title="Accept — apply rename project-wide (⌘⏎ inside Review all)">✓</button>
+            <button class="vote no" data-v="rej" title="Reject — discard proposal, agent is told why it was wrong (feeds its next attempt)">✗</button>
+          </div>
+        </div>
+
+        <div class="prop" data-pid="p2">
+          <div class="p-kind" style="color:var(--blue)">comment <span class="from">from #3 · conf <b>0.8</b></span></div>
+          <div class="p-body" style="color:var(--text-dim)">// AES-128-GCM, key from Keystore alias "gmail-ls";<br>// nonce = first 12 bytes of frame — crypto.f.unwrapKey</div>
+          <div class="p-why">Derived from <b>Cipher.getInstance("AES/GCM/NoPadding")</b> call site + IV length check at L19.</div>
+          <div class="p-foot">
+            <button class="vote ok" data-v="acc" title="Accept — attach comment to crypto.f.unwrapKey">✓</button>
+            <button class="vote no" data-v="rej" title="Reject — discard proposal">✗</button>
+          </div>
+        </div>
+
+        <div class="prop" data-pid="p3">
+          <div class="p-kind" style="color:var(--pink)">tag <span class="from">#7 · conf <b>0.7</b></span></div>
+          <div class="p-body"><span class="new">pii</span> <span class="arrow">on</span> <b>GeminiClient.classify</b></div>
+          <div class="p-why">Method forwards message bodies to <b>gemini-classify</b> endpoint — user content leaves the device. Suggest reviewing before release builds.</div>
+          <div class="p-foot">
+            <button class="vote ok" data-v="acc" title="Accept — apply tag 'pii' to GeminiClient.classify">✓</button>
+            <button class="vote no" data-v="rej" title="Reject — discard proposal">✗</button>
+          </div>
+        </div>
+
+        <div id="props-empty">queue clear — nothing awaiting review</div>
+      </div>
+
+    </div>
+
+    <!-- footer note -->
+    <div id="footnote">
+      <span>ⓘ</span>
+      <span>This panel is the workbench-integrated subset of agent supervision — enough to follow, filter, and approve without leaving your analysis.
+        The full supervision UI (per-agent consoles, tool-call replay, cost graphs, parallel-mission diff) lives in the
+        <span class="go" title="Mockup C — dedicated full-window agent cockpit">Agent Cockpit view</span> (mockup C).</span>
+      <span style="margin-left:auto" class="info-hint" title="Design note: proposals, not autopilot. Agents propose; humans dispose. Auto-accept is opt-in per action class and off by default for renames in shared projects.">why proposals?</span>
+    </div>
+  </div>
+</div>
+
+<!-- ================= STATUS BAR ================= -->
+<div id="status">
+  <span class="st" title="Decompiled classes">◈ 18,204 classes</span>
+  <span class="st" title="Decompiler engine">jadx 1.5.1-dev · jeb-bridge</span>
+  <span class="st" title="Target heap — gmail.apk·JEB"><span class="heapbar"><i style="width:52%"></i></span> heap 3.2g</span>
+  <span class="st" title="Global ceiling — 4 targets, 9.1 of 24 GB"><span class="heapbar" style="width:64px"><i style="width:38%;background:var(--red)"></i></span> Σ 9.1g / 24g</span>
+  <span class="st" title="reverse-agent #7 mid-mission"><span class="spinner"></span> 2 agents</span>
+  <span class="st" title="Unsaved changes — accepting a proposal bumps this"><span class="dirtydot"></span> <span id="st-dirty">7 unsaved</span></span>
+  <span class="agentchip" title="Agent activity — click to jump to the agent's position">🤖 agent reviewing <b>&nbsp;gmail.apk :: sync.c</b></span>
+  <span class="follow" title="Follow live runtime events (global — per-agent Follow toggles are on the agent cards)">Follow <span class="sw"></span></span>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---- activity stream data ---- */
+  var AGENTS = { a7:{name:"#7", color:"var(--agent)"}, q3:{name:"#3", color:"var(--orange)"} };
+  var EVENTS = [
+    {t:"11:02:14", a:"a7", k:"rename", html:'rename <span class="obf">b</span> <span class="arr">→</span> <b>sendAck</b> · sync.c', conf:["hi","0.93"]},
+    {t:"11:02:31", a:"a7", k:"xref",   html:'xref walk <b>sendAck</b> · 3 call sites · all in sync.*', },
+    {t:"11:03:02", a:"q3", k:"tag",    html:'tag <b>crypto</b> on <b>crypto.f.unwrapKey</b>', conf:["hi","0.91"]},
+    {t:"11:03:40", a:"a7", k:"rename", html:'rename <span class="obf">d</span> <span class="arr">→</span> <b>parseFrame</b> · sync.c', conf:["hi","0.88"]},
+    {t:"11:04:11", a:"a7", k:"block",  html:'<b>BLOCKED</b> write to <b>gms.auth</b> — outside write-scope <b>sync.*</b>', alert:true},
+    {t:"11:04:12", a:"a7", k:"note",   html:'write-scope declined · continues read-only on gms.auth'},
+    {t:"11:05:27", a:"q3", k:"xref",   html:'xref walk <b>Cipher.getInstance</b> · 6 sites · 2 unreachable'},
+    {t:"11:06:03", a:"q3", k:"rename", html:'rename <span class="obf">k</span> <span class="arr">→</span> <b>loadGmailKeystore</b> · a.a.a.k', conf:["md","0.74"]},
+    {t:"11:06:48", a:"a7", k:"flag",   html:'<b>low-confidence hub</b>: <b>a.a.a.q</b> dispatches 14 callees via reflection — reachability uncertain', alert:true, conf:["lo","0.41"]},
+    {t:"11:07:19", a:"a7", k:"xref",   html:'reaches <b>MailSyncService.onStartCommand</b> <span class="arr">→</span> <b>handleInvite</b> · depth 4 · tagedges 2'},
+    {t:"11:08:02", a:"q3", k:"tag",    html:'tag <b>base64?</b> on string <b>a3F9k==</b> · lexical only, unconfirmed', conf:["md","0.66"]},
+    {t:"11:08:55", a:"a7", k:"rename", html:'propose <span class="obf">a</span> <span class="arr">→</span> <b>handleInvite</b> · queued for review', conf:["hi","0.90"]},
+    {t:"11:09:20", a:"q3", k:"note",   html:'budget check · 18k/100k ctx · continuing'},
+    {t:"11:10:07", a:"a7", k:"flag",   html:'<b>GeminiClient.classify</b> sends message bodies off-device — flagged <b>pii</b>, proposal queued', alert:true}
+  ];
+
+  var stream = document.getElementById("stream");
+  var selRow = null;
+
+  function renderStream(filter){
+    stream.innerHTML = "";
+    EVENTS.forEach(function(ev, i){
+      if (filter === "alert" && !ev.alert) return;
+      if (filter !== "all" && filter !== "alert" && ev.a !== filter) return;
+      var row = document.createElement("div");
+      row.className = "srow" + (ev.k === "block" ? " blocked" : "") + (ev.k === "flag" ? " flag" : "");
+      var kindLabel = {rename:"rename", xref:"xref", block:"blocked", flag:"flag", tag:"tag", note:"note"}[ev.k];
+      var kindCls = {rename:"rename", xref:"xref", block:"block", flag:"flagk", tag:"tag", note:"note"}[ev.k];
+      var conf = ev.conf ? '<span class="conf ' + ev.conf[0] + '" title="Model self-reported confidence. <0.5 always requires human review; the agent cannot auto-apply below 0.8.">' + ev.conf[1] + "</span>" : "";
+      row.innerHTML =
+        '<span class="ts">' + ev.t + "</span>" +
+        '<span class="who" style="color:' + AGENTS[ev.a].color + '">' + AGENTS[ev.a].name + "</span>" +
+        '<span class="kind ' + kindCls + '">' + kindLabel + "</span>" +
+        '<span class="body">' + ev.html + "</span>" + conf;
+      row.title = ev.k === "block"
+        ? "Agents carry a per-mission write-scope (path/class globs). Writes outside scope are refused by the workbench, not by the model — so a prompt-injected agent still can't touch gms.auth."
+        : (ev.k === "flag" ? "Amber flags are things the agent is unsure about — surfaced, not silently dropped." : "Click to pin this entry.");
+      row.addEventListener("click", function(){
+        if (selRow) selRow.classList.remove("sel");
+        selRow = (selRow === row) ? null : row;
+        if (selRow) selRow.classList.add("sel");
+      });
+      stream.appendChild(row);
+    });
+  }
+
+  /* ---- stream filters ---- */
+  var activeFilter = "all";
+  document.querySelectorAll(".sfilter").forEach(function(f){
+    f.addEventListener("click", function(){
+      activeFilter = f.getAttribute("data-f");
+      document.querySelectorAll(".sfilter").forEach(function(x){ x.classList.toggle("on", x === f); });
+      renderStream(activeFilter);
+    });
+  });
+
+  /* ---- agent cards: click = filter stream to that agent ---- */
+  document.querySelectorAll(".acard").forEach(function(card){
+    card.addEventListener("click", function(e){
+      if (e.target.closest(".tgl") || e.target.closest(".a-kill")) return;
+      document.querySelectorAll(".acard").forEach(function(c){ c.classList.remove("sel"); });
+      card.classList.add("sel");
+      var a = card.getAttribute("data-agent");
+      activeFilter = a;
+      document.querySelectorAll(".sfilter").forEach(function(x){
+        x.classList.toggle("on", x.getAttribute("data-f") === a);
+      });
+      renderStream(a);
+    });
+  });
+
+  /* ---- per-agent follow toggles ---- */
+  document.querySelectorAll("[data-follow]").forEach(function(tgl){
+    tgl.addEventListener("click", function(){ tgl.classList.toggle("on"); });
+  });
+
+  /* ---- proposals: accept / reject ---- */
+  var pending = 3;
+  var dirty = 7;
+  var pendingCount = document.getElementById("pending-count");
+  var dirtyCount = document.getElementById("dirtycount");
+  var stDirty = document.getElementById("st-dirty");
+  var emptyNote = document.getElementById("props-empty");
+
+  function refreshCounts(){
+    pendingCount.textContent = pending + (pending === 1 ? " pending" : " pending");
+    dirtyCount.textContent = "· " + dirty;
+    stDirty.textContent = dirty + " unsaved";
+    emptyNote.style.display = pending === 0 ? "block" : "none";
+  }
+
+  document.querySelectorAll(".prop").forEach(function(prop){
+    prop.querySelectorAll(".vote").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        if (prop.classList.contains("settled")) return;
+        var acc = btn.getAttribute("data-v") === "acc";
+        prop.classList.add("settled");
+        var v = document.createElement("span");
+        v.className = "verdict " + (acc ? "acc" : "rej");
+        v.textContent = acc ? "✓ applied" : "✗ rejected";
+        v.title = acc ? "Change applied to the project (unsaved — ⌘S to persist)."
+                        : "Discarded. The proposing agent gets the rejection as feedback.";
+        prop.querySelector(".p-foot").appendChild(v);
+        pending--;
+        if (acc) dirty++; /* accepted proposals dirty the project; rejects don't */
+        refreshCounts();
+      });
+    });
+  });
+
+  /* ---- Review all: flash pending rows in sequence ---- */
+  function reviewAll(){
+    var open = Array.prototype.filter.call(document.querySelectorAll(".prop"), function(p){
+      return !p.classList.contains("settled");
+    });
+    if (!open.length){ emptyNote.style.display = "block"; return; }
+    open.forEach(function(p, i){
+      setTimeout(function(){
+        p.scrollIntoView({block:"nearest"});
+        p.classList.remove("flashy");
+        void p.offsetWidth; /* restart animation */
+        p.classList.add("flashy");
+      }, i * 320);
+    });
+  }
+  document.getElementById("reviewall").addEventListener("click", reviewAll);
+  document.addEventListener("keydown", function(e){
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "r"){ e.preventDefault(); reviewAll(); }
+  });
+
+  /* ---- target strip + breadcrumb + follow (same as workbench) ---- */
+  document.querySelectorAll("#targets .tchip:not(.add)").forEach(function(chip){
+    chip.addEventListener("click", function(){
+      document.querySelectorAll("#targets .tchip").forEach(function(c){ c.classList.remove("active"); });
+      chip.classList.add("active");
+    });
+  });
+  document.querySelectorAll(".locbar .lseg").forEach(function(seg){
+    seg.addEventListener("click", function(){
+      seg.classList.add("flash");
+      setTimeout(function(){ seg.classList.remove("flash"); }, 250);
+    });
+  });
+  document.querySelector(".follow").addEventListener("click", function(){
+    var sw = this.querySelector(".sw");
+    var on = sw.style.background !== "var(--bg3)";
+    sw.style.background = on ? "var(--bg3)" : "var(--accent-dim)";
+  });
+
+  /* ---- init ---- */
+  renderStream("all");
+  refreshCounts();
+})();
+</script>
+</body>
+</html>

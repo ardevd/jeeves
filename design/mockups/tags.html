@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<!--
+  Mockup E3 — TAGS expanded (activity-rail "Tags" view as full surface)
+  Same shell as Mockup S/A2 (target strip, breadcrumb, activity rail, status bar);
+  the center surface is the tags browser: families sidebar + tagged-items table
+  + selection detail strip. No editor.
+  Self-contained: inline CSS + JS, no external dependencies, no network requests.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>64 65 78 0a 30 33 35 00 — workbench</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='12'%20fill='%230c0e10'/%3E%3Crect%20x='1.5'%20y='1.5'%20width='61'%20height='61'%20rx='10.5'%20fill='none'%20stroke='%2327322c'/%3E%3Ctext%20x='32'%20y='28'%20font-family='monospace'%20font-size='12'%20fill='%233fb950'%20text-anchor='middle'%20letter-spacing='1'%3E64%2065%2078%3C/text%3E%3Ctext%20x='32'%20y='46'%20font-family='monospace'%20font-size='12'%20fill='%233fb950'%20text-anchor='middle'%20letter-spacing='1'%20opacity='.75'%3E0a%2030%2035%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg0:#101214; --bg1:#15181b; --bg2:#1a1e22; --bg3:#20252a; --bg4:#262c32;
+  --border:#272c31; --border-soft:#20252a;
+  --text:#c9d1d9; --text-dim:#7d8590; --text-faint:#545d66;
+  --accent:#2dd4bf; --accent-dim:#134e4a; --accent-glow:rgba(45,212,191,.14);
+  --blue:#58a6ff; --purple:#d2a8ff; --orange:#ffa657; --yellow:#e3b341;
+  --red:#f47067; --green:#7ee787; --pink:#f778ba;
+  --agent:#b892f6; --agent-bg:rgba(184,146,246,.10);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:12.5px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:var(--sans);background:var(--bg0);color:var(--text);
+  overflow:hidden;display:flex;flex-direction:column;font-size:12.5px;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--accent-dim)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#2c333a;border-radius:5px;border:2px solid var(--bg1)}
+::-webkit-scrollbar-track{background:transparent}
+kbd{
+  font-family:var(--mono);font-size:10px;color:var(--text-dim);
+  background:var(--bg2);border:1px solid var(--border);border-bottom-width:2px;
+  border-radius:4px;padding:0 4px;line-height:15px;display:inline-block;white-space:nowrap;
+}
+.icn{font-family:var(--mono);font-style:normal;font-size:15px;line-height:1}
+.dirtydot{width:7px;height:7px;border-radius:50%;background:var(--orange);display:inline-block}
+
+/* ============ TARGET STRIP ============ */
+#targets{
+  height:32px;min-height:32px;background:#0c0e10;border-bottom:1px solid var(--border);
+  display:flex;align-items:stretch;padding:0 8px;gap:2px;overflow-x:auto;
+}
+.tchip{
+  display:flex;align-items:center;gap:7px;padding:0 12px;margin-top:5px;
+  font-family:var(--mono);font-size:11px;color:var(--text-dim);cursor:pointer;white-space:nowrap;
+  background:var(--bg1);border:1px solid var(--border-soft);border-bottom:none;border-radius:7px 7px 0 0;
+}
+.tchip:hover{color:var(--text)}
+.tchip.active{background:var(--bg0);color:var(--text);border-color:var(--border);box-shadow:inset 0 2px 0 var(--accent);position:relative}
+.tchip.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--bg0)}
+.tchip .ft{font-size:11px}
+.eng{font-size:8.5px;letter-spacing:.06em;border-radius:3px;padding:1px 5px;font-weight:700}
+.eng.jeb{background:rgba(45,212,191,.14);color:var(--accent);border:1px solid rgba(45,212,191,.3)}
+.eng.jadx{background:rgba(255,166,87,.12);color:var(--orange);border:1px solid rgba(255,166,87,.3)}
+.eng.ida{background:rgba(88,166,255,.12);color:var(--blue);border:1px solid rgba(88,166,255,.3)}
+.tchip .adot{width:6px;height:6px;border-radius:50%;background:var(--agent);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.tchip .ddev{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.tchip.add{border-style:dashed;color:var(--text-faint);background:transparent}
+.tchip.add:hover{color:var(--accent);border-color:var(--accent-dim)}
+
+/* ============ TOP BAR ============ */
+#topbar{
+  height:42px;min-height:42px;background:var(--bg1);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;padding:0 12px;
+}
+.locbar{
+  display:flex;align-items:center;gap:5px;min-width:0;flex:0 2 auto;overflow:hidden;
+  font-family:var(--mono);font-size:11.5px;
+}
+.lseg{
+  color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;
+  cursor:pointer;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:5px;flex:0 1 auto;
+}
+.lseg:hover{background:var(--bg3);color:var(--text)}
+.lseg.tgt{background:var(--accent-glow);color:var(--accent);border:1px solid rgba(45,212,191,.25);flex:none}
+.lseg.cur{color:var(--text);font-weight:600;flex:none}
+.lseg.flash{background:var(--accent-dim);color:#99f6e4}
+.lsep{color:var(--text-faint);font-size:10px;flex:none}
+.navhist{display:flex;align-items:center;gap:2px;margin-left:4px}
+.navhist button{
+  background:transparent;border:1px solid transparent;color:var(--text-dim);border-radius:5px;
+  width:24px;height:24px;cursor:pointer;font-size:13px;
+}
+.navhist button:hover{background:var(--bg3);color:var(--text)}
+.crumbs{
+  display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:11px;color:var(--text-dim);
+  padding:3px 8px;border-radius:5px;background:var(--bg2);border:1px solid var(--border-soft);
+}
+.crumbs b{color:var(--text);font-weight:600}
+.crumbs .sep{color:var(--text-faint)}
+.jumpbox{
+  flex:0 1 420px;margin:0 auto;display:flex;align-items:center;gap:8px;
+  background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;
+  color:var(--text-faint);font-family:var(--mono);font-size:11.5px;cursor:text;
+}
+.jumpbox:hover{border-color:#31383f}
+.jumpbox .grow{flex:1}
+.proj{
+  display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:6px;padding:4px 9px;font-size:11.5px;color:var(--text);cursor:pointer;
+}
+.proj .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.proj .chev{color:var(--text-faint);font-size:9px}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);
+  color:var(--text);border-radius:6px;padding:4px 10px;font-size:11.5px;cursor:pointer;font-family:var(--sans);
+}
+.btn:hover{background:var(--bg3)}
+.btn.primary{background:var(--accent-dim);border-color:#155e57;color:#99f6e4}
+.btn.primary:hover{background:#165e56}
+
+/* ============ ACTIVITY RAIL ============ */
+#activity{
+  width:48px;min-width:48px;background:var(--bg1);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;padding-top:6px;gap:2px;
+}
+.actbtn{
+  width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  color:var(--text-faint);cursor:pointer;position:relative;font-size:17px;border:none;background:transparent;
+}
+.actbtn:hover{color:var(--text);background:var(--bg3)}
+.actbtn.active{color:var(--accent);background:var(--accent-glow)}
+.actbtn.active::before{content:"";position:absolute;left:-4px;top:8px;bottom:8px;width:2px;background:var(--accent);border-radius:2px}
+.actbtn .badge{
+  position:absolute;top:3px;right:3px;min-width:14px;height:14px;border-radius:7px;background:var(--accent-dim);
+  color:#99f6e4;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0 3px;
+}
+.actbtn .badge.agent{background:var(--agent);color:#1b1030}
+#activity .spacer{flex:1}
+
+/* ============ TAGS SURFACE ============ */
+#main{flex:1;display:flex;min-height:0}
+
+/* families sidebar */
+#families{
+  width:240px;min-width:240px;background:var(--bg1);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;min-height:0;
+}
+.fam-head{
+  padding:10px 14px 6px;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--text-dim);
+  text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;cursor:help;
+}
+.fam-head .n{font-family:var(--mono);font-weight:400;color:var(--text-faint);letter-spacing:0}
+.fam-list{flex:1;overflow-y:auto;padding:2px 6px}
+.fam{
+  display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;
+  border:1px solid transparent;user-select:none;
+}
+.fam:hover{background:var(--bg2)}
+.fam.on{background:var(--bg2);border-color:var(--border)}
+.fam .dot{width:9px;height:9px;border-radius:50%;flex:none}
+.fam .nm{font-family:var(--mono);font-size:11.5px;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fam .ct{font-family:var(--mono);font-size:10px;color:var(--text-faint)}
+.fam .ed{color:var(--text-faint);font-size:11px;opacity:0;flex:none}
+.fam:hover .ed{opacity:1}
+.fam .ed:hover{color:var(--accent)}
+.fam .cbadge{font-size:8px;letter-spacing:.06em;border-radius:3px;padding:1px 4px;color:var(--pink);border:1px solid rgba(247,120,186,.4);flex:none}
+.fam-foot{
+  border-top:1px solid var(--border-soft);padding:8px 14px;display:flex;flex-direction:column;gap:6px;
+}
+.fam-foot a{color:var(--text-dim);font-size:11px;cursor:pointer;text-decoration:none;display:flex;align-items:center;gap:6px}
+.fam-foot a:hover{color:var(--accent)}
+.fam-foot .hint{font-size:10px;color:var(--text-faint);line-height:1.5;cursor:help;border-bottom:1px dotted var(--border-soft);padding-bottom:6px}
+
+/* main column */
+#surface{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg0)}
+#toolbar{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;
+  background:var(--bg1);border-bottom:1px solid var(--border);
+}
+.filter{
+  flex:0 1 260px;min-width:180px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;
+  display:flex;align-items:center;gap:6px;padding:4px 8px;
+}
+.filter:focus-within{border-color:var(--accent-dim)}
+.filter input{
+  background:transparent;border:none;outline:none;color:var(--text);font-family:var(--mono);
+  font-size:11.5px;width:100%;
+}
+.filter input::placeholder{color:var(--text-faint)}
+.chipbar{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.chipbar .clabel{font-size:10px;color:var(--text-faint);letter-spacing:.08em;text-transform:uppercase;margin-right:2px}
+.tchipf{
+  font-family:var(--mono);font-size:10px;border-radius:10px;padding:2px 8px;cursor:pointer;
+  border:1px solid var(--border);color:var(--text-faint);background:var(--bg2);user-select:none;
+  display:inline-flex;align-items:center;gap:5px;
+}
+.tchipf .cdot{width:6px;height:6px;border-radius:50%}
+.tchipf:hover{color:var(--text)}
+.tchipf.on{color:var(--text);border-color:currentColor;background:rgba(255,255,255,.04)}
+.seg{display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--bg2)}
+.seg button{
+  background:transparent;border:none;color:var(--text-faint);font-size:11px;padding:4px 10px;cursor:pointer;
+  font-family:var(--sans);display:flex;align-items:center;gap:5px;
+}
+.seg button + button{border-left:1px solid var(--border-soft)}
+.seg button:hover{color:var(--text)}
+.seg button.on{background:var(--bg4);color:var(--text)}
+#rescount{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--text-faint);white-space:nowrap}
+#rescount b{color:var(--text-dim);font-weight:600}
+.info-hint{
+  font-size:10.5px;color:var(--text-faint);cursor:help;white-space:nowrap;
+  border-bottom:1px dotted var(--text-faint);padding-bottom:1px;
+}
+.info-hint:hover{color:var(--text-dim)}
+
+/* table */
+#tablewrap{flex:1;overflow:auto;min-height:0}
+#tagtable{width:100%;border-collapse:collapse;font-size:12px}
+#tagtable th{
+  text-align:left;color:var(--text-faint);font-weight:600;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  padding:7px 12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg1);z-index:2;
+  white-space:nowrap;user-select:none;
+}
+#tagtable td{padding:5px 12px;border-bottom:1px solid var(--border-soft);white-space:nowrap;vertical-align:middle}
+#tagtable tbody tr{cursor:pointer}
+#tagtable tbody tr:hover td{background:var(--bg2)}
+#tagtable tbody tr.sel td{background:var(--accent-glow);box-shadow:inset 2px 0 0 var(--accent)}
+#tagtable tbody tr.flashrow td{background:var(--accent-dim)}
+
+/* tag chips */
+.tg{
+  font-family:var(--mono);font-size:9.5px;border-radius:3px;padding:1px 6px;margin-right:4px;
+  border:1px solid;white-space:nowrap;cursor:pointer;
+}
+.tg:hover{filter:brightness(1.25)}
+.tg.crypto{color:var(--purple);border-color:rgba(210,168,255,.35);background:rgba(210,168,255,.07)}
+.tg.network{color:var(--blue);border-color:rgba(88,166,255,.35);background:rgba(88,166,255,.07)}
+.tg.pii{color:var(--orange);border-color:rgba(255,166,87,.35);background:rgba(255,166,87,.07)}
+.tg.hypothesis{color:var(--yellow);border-color:rgba(227,179,65,.35);background:rgba(227,179,65,.07)}
+.tg.invites{color:var(--pink);border-color:rgba(247,120,186,.35);background:rgba(247,120,186,.07)}
+
+td.tgtcell{font-family:var(--mono);font-size:11.5px;max-width:340px;overflow:hidden;text-overflow:ellipsis}
+td.tgtcell .m{color:var(--text)}
+td.tgtcell .ln{color:var(--blue)}
+.was{
+  font-family:var(--mono);font-size:9px;color:var(--text-faint);border:1px solid var(--border);
+  border-radius:3px;padding:0 4px;margin-left:7px;
+}
+td.notecell{color:var(--text-dim);font-size:11.5px;max-width:300px;overflow:hidden;text-overflow:ellipsis}
+.by{
+  display:inline-flex;align-items:center;gap:5px;font-size:10px;border-radius:9px;padding:1px 8px;
+  border:1px solid var(--border);color:var(--text-dim);white-space:nowrap;
+}
+.by.agent{color:var(--agent);border-color:rgba(184,146,246,.35);background:var(--agent-bg)}
+.by.human{color:var(--green);border-color:rgba(126,231,135,.3);background:rgba(126,231,135,.06)}
+td.tscell{font-family:var(--mono);font-size:10.5px;color:var(--text-faint);text-align:right}
+
+/* ============ DETAIL STRIP ============ */
+#detail{
+  height:138px;min-height:138px;background:var(--bg1);border-top:1px solid var(--border);
+  display:flex;min-width:0;
+}
+#detail.hidden{display:none}
+.dt-left{flex:1;min-width:0;padding:10px 16px;display:flex;flex-direction:column;gap:7px}
+.dt-head{font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--text-dim);text-transform:uppercase;display:flex;gap:10px;align-items:center}
+.dt-head .dt-eng{font-weight:400;letter-spacing:0;text-transform:none}
+.dt-sig{
+  font-family:var(--mono);font-size:11.5px;color:#a5d6ff;background:var(--bg2);border:1px solid var(--border);
+  border-radius:6px;padding:7px 10px;white-space:nowrap;overflow-x:auto;
+}
+.dt-sig .ln{color:var(--blue)}
+.dt-sig .ret{color:var(--text-faint)}
+.dt-tags{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dt-tags .lab{font-size:10px;color:var(--text-faint);letter-spacing:.08em;text-transform:uppercase;margin-right:2px}
+.dtg{position:relative;padding-right:14px}
+.dtg .x{
+  position:absolute;right:3px;top:50%;transform:translateY(-50%);color:inherit;opacity:.55;font-size:9px;cursor:pointer;
+}
+.dtg .x:hover{opacity:1;color:var(--red)}
+.dt-right{
+  width:380px;min-width:380px;border-left:1px solid var(--border-soft);padding:10px 14px;
+  display:flex;flex-direction:column;gap:7px;
+}
+.dt-note{
+  flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 9px;
+  color:var(--text);font-family:var(--sans);font-size:11.5px;resize:none;outline:none;line-height:1.45;
+}
+.dt-note:focus{border-color:var(--accent-dim)}
+.dt-note::placeholder{color:var(--text-faint)}
+.dt-actions{display:flex;gap:8px;align-items:center}
+.dt-actions .sp{flex:1}
+.dt-meta{font-family:var(--mono);font-size:10px;color:var(--text-faint)}
+
+/* ============ STATUS BAR ============ */
+#status{
+  height:24px;min-height:24px;background:var(--bg1);border-top:1px solid var(--border);
+  display:flex;align-items:center;padding:0 10px;gap:14px;font-size:10.5px;color:var(--text-dim);
+  font-family:var(--mono);
+}
+.st{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.st .heapbar{width:52px;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.st .heapbar i{display:block;height:100%;background:var(--yellow)}
+.spinner{width:9px;height:9px;border:1.5px solid var(--accent-dim);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.agentchip{
+  display:flex;align-items:center;gap:6px;background:var(--agent-bg);border:1px solid rgba(184,146,246,.3);
+  color:var(--agent);border-radius:10px;padding:1px 9px;font-size:10px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.follow{display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:auto}
+.follow .sw{width:22px;height:12px;border-radius:6px;background:var(--accent-dim);position:relative}
+.follow .sw::after{content:"";position:absolute;right:1.5px;top:1.5px;width:9px;height:9px;border-radius:50%;background:var(--accent)}
+</style>
+</head>
+<body>
+
+<!-- ================= TARGET STRIP ================= -->
+<div id="targets">
+  <div class="tchip active" title="gmail.apk · JEB — switch ⌘1">
+    <span class="ft" style="color:var(--orange)">▣</span> gmail.apk <span class="eng jeb">JEB</span> <span class="dirtydot"></span>
+  </div>
+  <div class="tchip" title="gmail.apk · JADX — switch ⌘2 · read-only · sidecar names">
+    <span class="ft" style="color:var(--orange)">▣</span> gmail.apk <span class="eng jadx">JADX</span>
+  </div>
+  <div class="tchip" title="libgmail.so · IDA — switch ⌘3 · agent active">
+    <span class="ft" style="color:var(--blue)">◈</span> libgmail.so <span class="eng ida">IDA</span> <span class="adot"></span>
+  </div>
+  <div class="tchip" title="wallet.apk · JADX — switch ⌘4 · device attached: pixel-7">
+    <span class="ft" style="color:var(--orange)">▣</span> wallet.apk <span class="eng jadx">JADX</span> <span class="ddev"></span>
+  </div>
+  <div class="tchip add" title="Open target…">+</div>
+</div>
+
+<!-- ================= TOP BAR ================= -->
+<div id="topbar">
+  <nav class="locbar" title="Current location — hierarchy, not history">
+    <span class="lseg tgt"><span class="eng jeb">JEB</span>gmail.apk</span><span class="lsep">›</span>
+    <span class="lseg cur">Tags</span>
+  </nav>
+  <div class="navhist" title="Navigation history">
+    <button title="Back (Alt+←)">‹</button>
+    <button title="Forward (Alt+→)">›</button>
+  </div>
+  <div class="crumbs" title="Navigation history · Alt+← / Alt+→">
+    <span>sync.c</span><span class="sep">→</span><span>decryptPayload</span><span class="sep">→</span><span><b>tags</b></span><span class="sep">▾</span>
+  </div>
+  <div class="jumpbox" title="Jump anywhere">
+    <span style="color:var(--accent)">➜</span>
+    <span class="grow">Jump to class, method, string, offset…</span>
+    <kbd>G</kbd>
+  </div>
+  <div class="proj" title="Project">
+    <span class="dot"></span> gmail_9.41.apk <span class="chev">▾</span>
+  </div>
+  <button class="btn primary" title="Save project (⌘S)"><span class="dirtydot"></span> Save</button>
+  <button class="btn" title="More actions">⋯</button>
+</div>
+
+<!-- ================= MAIN ================= -->
+<div id="main">
+
+  <!-- activity rail -->
+  <div id="activity">
+    <button class="actbtn" title="Explorer"><i class="icn">⛁</i></button>
+    <button class="actbtn" title="Search (⌘⇧F)"><i class="icn">⌕</i></button>
+    <button class="actbtn" title="Strings"><i class="icn">❝</i></button>
+    <button class="actbtn active" title="Bookmarks &amp; Tags"><i class="icn">⚑</i><span class="badge">36</span></button>
+    <button class="actbtn" title="Runs — dynamic analysis"><i class="icn">▶</i></button>
+    <button class="actbtn" title="Agents"><i class="icn">🤖</i><span class="badge agent">2</span></button>
+    <div class="spacer"></div>
+    <button class="actbtn" title="Settings"><i class="icn">⚙</i></button>
+  </div>
+
+  <!-- families sidebar -->
+  <aside id="families">
+    <div class="fam-head" title="Tag families are user-defined — nothing here is hardcoded. Names, colors, and which tags belong to a family are all editable per project. Agents can propose new families but never create them silently."><span>Tag families</span><span class="n">5</span></div>
+    <div class="fam-list" id="famlist"></div>
+    <div class="fam-foot">
+      <span class="hint" title="Tag families are user-defined — not hardcoded. The workbench ships zero built-in families; this set grew out of this project.">ⓘ families are user-defined, not hardcoded</span>
+      <a id="manage" title="Rename, recolor, merge, or delete families · ⌘⇧T">⚙ manage families…</a>
+    </div>
+  </aside>
+
+  <!-- tags surface -->
+  <div id="surface">
+    <div id="toolbar">
+      <div class="filter"><span style="color:var(--text-faint)">⌕</span><input id="filter" placeholder="filter tags, targets, notes…  (F)" spellcheck="false"></div>
+      <div class="chipbar" id="chipbar"><span class="clabel">family</span></div>
+      <div class="seg" id="byseg" title="Filter by who attached the tag">
+        <button data-by="all" class="on">All</button>
+        <button data-by="human">🧑 human</button>
+        <button data-by="agent">🤖 agent</button>
+      </div>
+      <span id="rescount"><b id="shown">0</b> of <b id="total">0</b> tagged items</span>
+      <span class="info-hint" title="Tags are sticky annotations on artifacts (class / method / line). They survive renames and re-decompilation because they bind to stable dex offsets, not names — 'was:' badges show the obfuscated original.">ⓘ how tags bind</span>
+      <button class="btn" id="export" title="Export filtered tags as JSON (bindings + notes + provenance)">⤓ Export</button>
+    </div>
+    <div id="tablewrap">
+      <table id="tagtable">
+        <thead>
+          <tr>
+            <th>tags</th>
+            <th>target artifact</th>
+            <th>analyst note</th>
+            <th>added by</th>
+            <th style="text-align:right">when</th>
+          </tr>
+        </thead>
+        <tbody id="tagbody"></tbody>
+      </table>
+    </div>
+
+    <!-- selection detail strip -->
+    <div id="detail" class="hidden">
+      <div class="dt-left">
+        <div class="dt-head"><span>Tagged item</span><span class="dt-eng eng jeb">gmail.apk·JEB</span><span class="dt-meta" id="dt-off"></span></div>
+        <div class="dt-sig" id="dt-sig"></div>
+        <div class="dt-tags"><span class="lab">tags</span><span id="dt-tags"></span></div>
+      </div>
+      <div class="dt-right">
+        <textarea class="dt-note" id="dt-note" spellcheck="false" placeholder="add an analyst note…"></textarea>
+        <div class="dt-actions">
+          <button class="btn primary" id="dt-open" title="Open artifact in the decompiler (↵)">Open ↵</button>
+          <span class="sp"></span>
+          <span class="dt-meta" id="dt-by"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= STATUS BAR ================= -->
+<div id="status">
+  <span class="st" title="Decompiled classes">◈ 18,204 classes</span>
+  <span class="st" title="Decompiler engine">jadx 1.5.1-dev · jeb-bridge</span>
+  <span class="st" title="Tagged artifacts in this target">⚑ 36 tags · 5 families</span>
+  <span class="st" title="Target heap — gmail.apk·JEB"><span class="heapbar"><i style="width:52%"></i></span> heap 3.2g</span>
+  <span class="st" title="Global ceiling — 4 targets, 9.1 of 24 GB"><span class="heapbar" style="width:64px"><i style="width:38%;background:var(--red)"></i></span> Σ 9.1g / 24g</span>
+  <span class="st" title="Unsaved changes"><span class="dirtydot"></span> unsaved</span>
+  <span class="agentchip" title="Agent activity">🤖 agent tagging <b>&nbsp;gmail.apk :: a.a.a.k</b></span>
+  <span class="follow" title="Follow live runtime events">Follow <span class="sw"></span></span>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---- data ---- */
+  var FAMILIES = [
+    {id:"crypto",     color:"var(--purple)", n:14, desc:"key material, cipher usage, certs, hashes"},
+    {id:"network",    color:"var(--blue)",   n:9,  desc:"endpoints, headers, auth flows, framing"},
+    {id:"pii",        color:"var(--orange)", n:7,  desc:"data that may leave the device — audit before release"},
+    {id:"hypothesis", color:"var(--yellow)", n:3,  desc:"unverified guesses, mostly agent-proposed"},
+    {id:"invites",    color:"var(--pink)",   n:2,  desc:"custom family — invite.v2 protocol flow", custom:true}
+  ];
+  var FAM = {};
+  FAMILIES.forEach(function(f){ FAM[f.id] = f; });
+
+  /* tag = [family, name]; by: human|agent; was: obfuscated original name */
+  var ROWS = [
+    {tags:[["crypto","aes-gcm"],["crypto","key-schedule"]], sig:"sync.c.decryptPayload(byte[])", short:"sync.c.decryptPayload", was:"a.a.a.k.a", off:"0x1f3a20",
+     note:"key schedule — verify against native (libgmail.so round fn)", by:"human", ts:"2h ago"},
+    {tags:[["crypto","aes-gcm"]], sig:"sync.e.rotateKey()", short:"sync.e.rotateKey", was:"c.d.b", off:"0x1f7c10",
+     note:"rotates every 24h? confirm trigger", by:"agent", ts:"2h ago"},
+    {tags:[["hypothesis","agent-guess"],["crypto","aes-gcm"]], sig:"a.a.a.k.a(byte[], int)", short:"a.a.a.k.a:9", off:"0x1f3b04",
+     note:"lowConf xref — key unwrap? agent rename pending", by:"agent", ts:"25m ago"},
+    {tags:[["crypto","pem"]], sig:"a.a.a.k.<clinit>()", short:"a.a.a.k.<clinit>", off:"0x1f4100",
+     note:"embedded cert block — unreachable from traced paths?", by:"agent", ts:"1d ago"},
+    {tags:[["crypto","weak-hash"]], sig:"a.a.a.q.a(String)", short:"a.a.a.q.a:12", off:"0x2033d8",
+     note:"MD5 — legacy or decoy? flag for run", by:"agent", ts:"3h ago"},
+    {tags:[["crypto","key-derivation"]], sig:"sync.c.<init>()", short:"sync.c.<init>:38", off:"0x1f2e88",
+     note:"sync_key from SharedPrefs used as kdf seed", by:"human", ts:"6h ago"},
+    {tags:[["network","endpoint"]], sig:"sync.c.onMessage(String, byte[])", short:"sync.c.onMessage", off:"0x1f5260",
+     note:"wss endpoint, protobuf framing", by:"human", ts:"5h ago"},
+    {tags:[["network","endpoint"],["pii","device-id"]], sig:"sync.d.a(Map)", short:"sync.d.a", was:"b.b.f", off:"0x1fa014",
+     note:"x-gm-device-id header — uploads unredacted snippet?", by:"agent", ts:"5h ago"},
+    {tags:[["network","auth"]], sig:"gms.auth.a(String, String)", short:"gms.auth.a", off:"0x22c74c",
+     note:"oauth token flow, refresh on 401", by:"human", ts:"2d ago"},
+    {tags:[["network","endpoint"]], sig:"MailSyncService.onStartCommand(Intent, int, int)", short:"MailSyncService.onStartCommand", off:"0x24b190",
+     note:"com.google.android.gm.intent.SYNC entry", by:"human", ts:"2d ago"},
+    {tags:[["network","tls-pin"]], sig:"sync.c.<clinit>()", short:"sync.c.<clinit>:101", off:"0x1f2f30",
+     note:"v3/pull endpoint — TLS 1.3, pin set?", by:"human", ts:"8h ago"},
+    {tags:[["invites","invite.v2-flow"]], sig:"sync.c.onMessage(String, byte[])", short:"sync.c.onMessage:47", off:"0x1f53a8",
+     note:"topic switch — invite.v2 branch never hit in trace", by:"human", ts:"4h ago"},
+    {tags:[["invites","invite.v2-flow"],["network","endpoint"]], sig:"invite.v2.Session.open(String)", short:"invite.v2.Session.open", was:"d.e.c", off:"0x261a44",
+     note:"invite.v2 handshake — token in query param", by:"human", ts:"4h ago"},
+    {tags:[["pii","email-address"]], sig:"provider.g.query(Uri, String[])", short:"provider.g.query", off:"0x218830",
+     note:"raw address in projection — check redaction", by:"human", ts:"1d ago"},
+    {tags:[["pii","device-id"]], sig:"gms.auth.b()", short:"gms.auth.b", off:"0x22c9d0",
+     note:"JWT carries device claim", by:"agent", ts:"1d ago"},
+    {tags:[["pii","contacts"]], sig:"AndroidManifest.xml", short:"manifest: READ_CONTACTS", off:"—",
+     note:"declared, no runtime gate found yet", by:"agent", ts:"3d ago"},
+    {tags:[["pii","email-address"]], sig:"ui.h.onBind(View, int)", short:"ui.h.onBind:214", off:"0x27e05c",
+     note:"address rendered to view — log-leak risk", by:"agent", ts:"1d ago"},
+    {tags:[["hypothesis","agent-guess"]], sig:"GeminiClient.classify(String)", short:"GeminiClient.classify", was:"ai.b.a", off:"0x29b310",
+     note:"agent rename, lowConf — verify against strings", by:"agent", ts:"30m ago"},
+    {tags:[["hypothesis","unverified"]], sig:"a.a.a.q.a(String)", short:"a.a.a.q.a", off:"0x2033d8",
+     note:"duplicate of weak-hash? merge candidates", by:"agent", ts:"3h ago"}
+  ];
+
+  /* ---- state ---- */
+  var activeFams = {};           // empty = no family filter
+  var byFilter = "all";
+  var selIdx = -1;
+  var noteDrafts = {};           // per-row edited notes
+
+  var tbody = document.getElementById("tagbody");
+  var shownEl = document.getElementById("shown");
+  document.getElementById("total").textContent = ROWS.length;
+
+  function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+  function byIcon(by){ return by === "agent" ? "🤖" : "🧑"; }
+  function noteOf(r, i){ return noteDrafts[i] !== undefined ? noteDrafts[i] : r.note; }
+
+  function chipHtml(t, removable, rowI){
+    var fam = t[0];
+    var title = FAM[fam].desc + " — click to toggle '" + fam + "' filter";
+    var x = removable ? '<span class="x" data-x="1" title="remove tag from item">✕</span>' : '';
+    return '<span class="tg ' + fam + (removable ? ' dtg' : '') + '" data-fam="' + fam + '" data-row="' +
+           (rowI === undefined ? "" : rowI) + '" data-tag="' + esc(t[1]) + '" title="' + esc(title) + '">' +
+           esc(t[1]) + x + '</span>';
+  }
+
+  function targetHtml(r){
+    var s = esc(r.short);
+    if (r.short.indexOf(":") !== -1){
+      var p = r.short.split(":");
+      s = esc(p[0]) + '<span class="ln">:' + esc(p.slice(1).join(":")) + '</span>';
+    }
+    return '<span class="m">' + s + '</span>' +
+           (r.was ? '<span class="was" title="obfuscated original — renamed by ' + r.by + '">was: ' + esc(r.was) + '</span>' : '');
+  }
+
+  function visible(r){
+    var famKeys = Object.keys(activeFams);
+    if (famKeys.length && !r.tags.some(function(t){ return activeFams[t[0]]; })) return false;
+    if (byFilter !== "all" && r.by !== byFilter) return false;
+    return true;
+  }
+
+  function matchesQuery(r, i, q){
+    if (!q) return true;
+    var hay = (r.sig + " " + r.short + " " + (r.was || "") + " " + noteOf(r, i) + " " +
+               r.tags.map(function(t){ return t[0] + " " + t[1]; }).join(" ")).toLowerCase();
+    return hay.indexOf(q) !== -1;
+  }
+
+  function render(){
+    var q = document.getElementById("filter").value.trim().toLowerCase();
+    tbody.innerHTML = "";
+    var n = 0;
+    ROWS.forEach(function(r, i){
+      if (!visible(r) || !matchesQuery(r, i, q)) return;
+      n++;
+      var tr = document.createElement("tr");
+      tr.setAttribute("data-i", i);
+      if (i === selIdx) tr.classList.add("sel");
+      tr.innerHTML =
+        '<td>' + r.tags.map(function(t){ return chipHtml(t, false, i); }).join("") + '</td>' +
+        '<td class="tgtcell">' + targetHtml(r) + '</td>' +
+        '<td class="notecell">' + esc(noteOf(r, i)) + '</td>' +
+        '<td><span class="by ' + r.by + '" title="' + (r.by === "agent" ? "attached by agent — human review pending" : "attached by analyst") + '">' + byIcon(r.by) + ' ' + r.by + '</span></td>' +
+        '<td class="tscell">' + r.ts + '</td>';
+      tr.addEventListener("click", function(){ select(i); });
+      tr.addEventListener("dblclick", function(){ flash(tr); });
+      tbody.appendChild(tr);
+    });
+    shownEl.textContent = n;
+    if (selIdx >= 0 && !(visible(ROWS[selIdx]) && matchesQuery(ROWS[selIdx], selIdx, q))){
+      selIdx = -1;
+      document.getElementById("detail").classList.add("hidden");
+    }
+  }
+
+  function flash(tr){
+    tr.classList.add("flashrow");
+    setTimeout(function(){ tr.classList.remove("flashrow"); }, 220);
+  }
+
+  /* ---- families sidebar ---- */
+  var famlist = document.getElementById("famlist");
+  function renderFamilies(){
+    famlist.innerHTML = "";
+    FAMILIES.forEach(function(f){
+      var d = document.createElement("div");
+      d.className = "fam" + (activeFams[f.id] ? " on" : "");
+      d.title = f.desc + " — click to filter" + (f.custom ? " · custom family, created in this project" : "");
+      d.innerHTML =
+        '<span class="dot" style="background:' + f.color + '"></span>' +
+        '<span class="nm">' + f.id + '</span>' +
+        (f.custom ? '<span class="cbadge" title="custom family — user-defined">custom</span>' : '') +
+        '<span class="ct" title="' + f.n + ' tags defined in this family">' + f.n + '</span>' +
+        '<span class="ed" title="rename / recolor family (⌘⇧T)">✎</span>';
+      d.addEventListener("click", function(e){
+        if (e.target.classList.contains("ed")) return; // edit affordance (no-op in mockup)
+        toggleFam(f.id);
+      });
+      famlist.appendChild(d);
+    });
+  }
+
+  /* ---- toolbar family chips ---- */
+  var chipbar = document.getElementById("chipbar");
+  FAMILIES.forEach(function(f){
+    var c = document.createElement("span");
+    c.className = "tchipf";
+    c.setAttribute("data-fam", f.id);
+    c.title = "filter family: " + f.id;
+    c.innerHTML = '<span class="cdot" style="background:' + f.color + '"></span>' + f.id;
+    c.addEventListener("click", function(){ toggleFam(f.id); });
+    chipbar.appendChild(c);
+  });
+
+  function syncFamUI(){
+    chipbar.querySelectorAll(".tchipf").forEach(function(c){
+      c.classList.toggle("on", !!activeFams[c.getAttribute("data-fam")]);
+    });
+    renderFamilies();
+  }
+
+  function toggleFam(fam){
+    if (activeFams[fam]) delete activeFams[fam]; else activeFams[fam] = true;
+    syncFamUI();
+    render();
+  }
+
+  /* ---- added-by segmented filter ---- */
+  document.getElementById("byseg").querySelectorAll("button").forEach(function(b){
+    b.addEventListener("click", function(){
+      byFilter = b.getAttribute("data-by");
+      document.getElementById("byseg").querySelectorAll("button").forEach(function(x){
+        x.classList.toggle("on", x === b);
+      });
+      render();
+    });
+  });
+
+  /* ---- text filter ---- */
+  document.getElementById("filter").addEventListener("input", function(){ render(); });
+
+  /* ---- detail strip ---- */
+  function select(i){
+    selIdx = i;
+    var r = ROWS[i];
+    tbody.querySelectorAll("tr").forEach(function(tr){
+      tr.classList.toggle("sel", +tr.getAttribute("data-i") === i);
+    });
+    var det = document.getElementById("detail");
+    det.classList.remove("hidden");
+    document.getElementById("dt-off").textContent = "dex off " + r.off;
+    var sig = esc(r.sig);
+    if (r.short.indexOf(":") !== -1){
+      var linePart = r.short.split(":").slice(1).join(":");
+      sig += ' <span class="ln">:' + esc(linePart) + '</span>';
+    }
+    document.getElementById("dt-sig").innerHTML = '<span class="ret">public </span>' + sig;
+    document.getElementById("dt-tags").innerHTML =
+      r.tags.map(function(t){ return chipHtml(t, true, i); }).join("") ||
+      '<span style="color:var(--text-faint);font-size:10.5px">no tags — item stays bookmarked</span>';
+    document.getElementById("dt-note").value = noteOf(r, i);
+    document.getElementById("dt-by").textContent = byIcon(r.by) + " " + r.by + " · " + r.ts;
+  }
+
+  /* tag chip clicks: row chips toggle family filter; strip ✕ removes the tag */
+  document.addEventListener("click", function(e){
+    var chip = e.target.closest(".tg");
+    if (!chip) return;
+    var fam = chip.getAttribute("data-fam");
+    var rowI = +chip.getAttribute("data-row");
+    if (e.target.getAttribute("data-x")){
+      e.stopPropagation();
+      var name = chip.getAttribute("data-tag");
+      ROWS[rowI].tags = ROWS[rowI].tags.filter(function(t){ return !(t[0] === fam && t[1] === name); });
+      render();
+      if (selIdx === rowI) select(rowI);
+      return;
+    }
+    e.stopPropagation();
+    toggleFam(fam);
+  });
+
+  /* note editing (draft persisted per row) */
+  document.getElementById("dt-note").addEventListener("input", function(){
+    if (selIdx >= 0) noteDrafts[selIdx] = this.value;
+  });
+  document.getElementById("dt-note").addEventListener("blur", function(){
+    render();
+  });
+
+  /* Open ↵ flashes the selected row as the "jump" affordance */
+  document.getElementById("dt-open").addEventListener("click", function(){
+    if (selIdx < 0) return;
+    var tr = tbody.querySelector('tr[data-i="' + selIdx + '"]');
+    if (tr){ tr.scrollIntoView({block:"center"}); flash(tr); }
+  });
+
+  /* export filtered rows as JSON (real download) */
+  document.getElementById("export").addEventListener("click", function(){
+    var q = document.getElementById("filter").value.trim().toLowerCase();
+    var out = ROWS.filter(function(r, i){ return visible(r) && matchesQuery(r, i, q); })
+      .map(function(r, i){
+        return {signature:r.sig, offset:r.off, was:r.was || null,
+                tags:r.tags.map(function(t){ return {family:t[0], tag:t[1]}; }),
+                note:noteOf(r, ROWS.indexOf(r)), addedBy:r.by, added:r.ts};
+      });
+    var blob = new Blob([JSON.stringify(out, null, 2)], {type:"application/json"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "gmail_9.41.tags.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    var btn = this;
+    btn.textContent = "✓ " + out.length + " items exported";
+    setTimeout(function(){ btn.textContent = "⤓ Export"; }, 1600);
+  });
+
+  /* ---- hotkeys ---- */
+  document.addEventListener("keydown", function(e){
+    var inField = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
+    if (e.key === "f" && !inField && !e.metaKey && !e.ctrlKey){
+      e.preventDefault();
+      document.getElementById("filter").focus();
+      return;
+    }
+    if (e.key === "Escape"){
+      document.getElementById("filter").value = "";
+      render();
+      document.activeElement.blur();
+      return;
+    }
+    if (inField) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp"){
+      e.preventDefault();
+      var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+      if (!rows.length) return;
+      var cur = rows.findIndex(function(tr){ return +tr.getAttribute("data-i") === selIdx; });
+      var next = e.key === "ArrowDown" ? Math.min(cur + 1, rows.length - 1) : Math.max(cur - 1, 0);
+      if (cur === -1) next = 0;
+      select(+rows[next].getAttribute("data-i"));
+      rows[next].scrollIntoView({block:"nearest"});
+      return;
+    }
+    if (e.key === "Enter" && selIdx >= 0){
+      var tr = tbody.querySelector('tr[data-i="' + selIdx + '"]');
+      if (tr) flash(tr);
+    }
+  });
+
+  /* ---- target strip + breadcrumb + follow (same as workbench) ---- */
+  document.querySelectorAll("#targets .tchip:not(.add)").forEach(function(chip){
+    chip.addEventListener("click", function(){
+      document.querySelectorAll("#targets .tchip").forEach(function(c){ c.classList.remove("active"); });
+      chip.classList.add("active");
+    });
+  });
+  document.querySelectorAll(".locbar .lseg").forEach(function(seg){
+    seg.addEventListener("click", function(){
+      seg.classList.add("flash");
+      setTimeout(function(){ seg.classList.remove("flash"); }, 250);
+    });
+  });
+  document.querySelector(".follow").addEventListener("click", function(){
+    var sw = this.querySelector(".sw");
+    var on = sw.style.background !== "var(--bg3)";
+    sw.style.background = on ? "var(--bg3)" : "var(--accent-dim)";
+  });
+
+  /* ---- init ---- */
+  syncFamUI();
+  render();
+  select(0);
+})();
+</script>
+</body>
+</html>

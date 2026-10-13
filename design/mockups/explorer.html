@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<!--
+  Mockup E1 — Explorer view (full-height package/class tree surface)
+  Same shell as Mockup A2/S (target strip, breadcrumb, activity rail, status bar);
+  the center surface is the maximized package tree for gmail.apk · JEB.
+  Self-contained: inline CSS + JS, no external dependencies, no network requests.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>64 65 78 0a 30 33 35 00 — workbench</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='12'%20fill='%230c0e10'/%3E%3Crect%20x='1.5'%20y='1.5'%20width='61'%20height='61'%20rx='10.5'%20fill='none'%20stroke='%2327322c'/%3E%3Ctext%20x='32'%20y='28'%20font-family='monospace'%20font-size='12'%20fill='%233fb950'%20text-anchor='middle'%20letter-spacing='1'%3E64%2065%2078%3C/text%3E%3Ctext%20x='32'%20y='46'%20font-family='monospace'%20font-size='12'%20fill='%233fb950'%20text-anchor='middle'%20letter-spacing='1'%20opacity='.75'%3E0a%2030%2035%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg0:#101214; --bg1:#15181b; --bg2:#1a1e22; --bg3:#20252a; --bg4:#262c32;
+  --border:#272c31; --border-soft:#20252a;
+  --text:#c9d1d9; --text-dim:#7d8590; --text-faint:#545d66;
+  --accent:#2dd4bf; --accent-dim:#134e4a; --accent-glow:rgba(45,212,191,.14);
+  --blue:#58a6ff; --purple:#d2a8ff; --orange:#ffa657; --yellow:#e3b341;
+  --red:#f47067; --green:#7ee787; --pink:#f778ba;
+  --agent:#b892f6; --agent-bg:rgba(184,146,246,.10);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:12.5px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:var(--sans);background:var(--bg0);color:var(--text);
+  overflow:hidden;display:flex;flex-direction:column;font-size:12.5px;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--accent-dim)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#2c333a;border-radius:5px;border:2px solid var(--bg1)}
+::-webkit-scrollbar-track{background:transparent}
+kbd{
+  font-family:var(--mono);font-size:10px;color:var(--text-dim);
+  background:var(--bg2);border:1px solid var(--border);border-bottom-width:2px;
+  border-radius:4px;padding:0 4px;line-height:15px;display:inline-block;white-space:nowrap;
+}
+.icn{font-family:var(--mono);font-style:normal;font-size:15px;line-height:1}
+.dirtydot{width:7px;height:7px;border-radius:50%;background:var(--orange);display:inline-block}
+
+/* ============ TARGET STRIP ============ */
+#targets{
+  height:32px;min-height:32px;background:#0c0e10;border-bottom:1px solid var(--border);
+  display:flex;align-items:stretch;padding:0 8px;gap:2px;overflow-x:auto;
+}
+.tchip{
+  display:flex;align-items:center;gap:7px;padding:0 12px;margin-top:5px;
+  font-family:var(--mono);font-size:11px;color:var(--text-dim);cursor:pointer;white-space:nowrap;
+  background:var(--bg1);border:1px solid var(--border-soft);border-bottom:none;border-radius:7px 7px 0 0;
+}
+.tchip:hover{color:var(--text)}
+.tchip.active{background:var(--bg0);color:var(--text);border-color:var(--border);box-shadow:inset 0 2px 0 var(--accent);position:relative}
+.tchip.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--bg0)}
+.tchip .ft{font-size:11px}
+.eng{font-size:8.5px;letter-spacing:.06em;border-radius:3px;padding:1px 5px;font-weight:700}
+.eng.jeb{background:rgba(45,212,191,.14);color:var(--accent);border:1px solid rgba(45,212,191,.3)}
+.eng.jadx{background:rgba(255,166,87,.12);color:var(--orange);border:1px solid rgba(255,166,87,.3)}
+.eng.ida{background:rgba(88,166,255,.12);color:var(--blue);border:1px solid rgba(88,166,255,.3)}
+.tchip .adot{width:6px;height:6px;border-radius:50%;background:var(--agent);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.tchip .ddev{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.tchip.add{border-style:dashed;color:var(--text-faint);background:transparent}
+.tchip.add:hover{color:var(--accent);border-color:var(--accent-dim)}
+
+/* ============ TOP BAR ============ */
+#topbar{
+  height:42px;min-height:42px;background:var(--bg1);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;padding:0 12px;
+}
+.locbar{
+  display:flex;align-items:center;gap:5px;min-width:0;flex:0 2 auto;overflow:hidden;
+  font-family:var(--mono);font-size:11.5px;
+}
+.lseg{
+  color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;
+  cursor:pointer;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:5px;flex:0 1 auto;
+}
+.lseg:hover{background:var(--bg3);color:var(--text)}
+.lseg.tgt{background:var(--accent-glow);color:var(--accent);border:1px solid rgba(45,212,191,.25);flex:none}
+.lseg.cur{color:var(--text);font-weight:600;flex:none}
+.lseg.flash{background:var(--accent-dim);color:#99f6e4}
+.lsep{color:var(--text-faint);font-size:10px;flex:none}
+.navhist{display:flex;align-items:center;gap:2px;margin-left:4px}
+.navhist button{
+  background:transparent;border:1px solid transparent;color:var(--text-dim);border-radius:5px;
+  width:24px;height:24px;cursor:pointer;font-size:13px;
+}
+.navhist button:hover{background:var(--bg3);color:var(--text)}
+.crumbs{
+  display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:11px;color:var(--text-dim);
+  padding:3px 8px;border-radius:5px;background:var(--bg2);border:1px solid var(--border-soft);
+}
+.crumbs b{color:var(--text);font-weight:600}
+.crumbs .sep{color:var(--text-faint)}
+.jumpbox{
+  flex:0 1 420px;margin:0 auto;display:flex;align-items:center;gap:8px;
+  background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;
+  color:var(--text-faint);font-family:var(--mono);font-size:11.5px;cursor:text;
+}
+.jumpbox:hover{border-color:#31383f}
+.jumpbox .grow{flex:1}
+.proj{
+  display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:6px;padding:4px 9px;font-size:11.5px;color:var(--text);cursor:pointer;
+}
+.proj .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.proj .chev{color:var(--text-faint);font-size:9px}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);
+  color:var(--text);border-radius:6px;padding:4px 10px;font-size:11.5px;cursor:pointer;font-family:var(--sans);
+}
+.btn:hover{background:var(--bg3)}
+.btn.primary{background:var(--accent-dim);border-color:#155e57;color:#99f6e4}
+.btn.primary:hover{background:#165e56}
+
+/* ============ ACTIVITY RAIL ============ */
+#activity{
+  width:48px;min-width:48px;background:var(--bg1);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;padding-top:6px;gap:2px;
+}
+.actbtn{
+  width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  color:var(--text-faint);cursor:pointer;position:relative;font-size:17px;border:none;background:transparent;
+}
+.actbtn:hover{color:var(--text);background:var(--bg3)}
+.actbtn.active{color:var(--accent);background:var(--accent-glow)}
+.actbtn.active::before{content:"";position:absolute;left:-4px;top:8px;bottom:8px;width:2px;background:var(--accent);border-radius:2px}
+.actbtn .badge{
+  position:absolute;top:3px;right:3px;min-width:14px;height:14px;border-radius:7px;background:var(--accent-dim);
+  color:#99f6e4;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0 3px;
+}
+.actbtn .badge.agent{background:var(--agent);color:#1b1030}
+#activity .spacer{flex:1}
+
+/* ============ EXPLORER SURFACE ============ */
+#main{flex:1;display:flex;min-height:0}
+#surface{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg0)}
+#toolbar{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;
+  background:var(--bg1);border-bottom:1px solid var(--border);
+}
+.filter{
+  flex:0 1 300px;min-width:200px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;
+  display:flex;align-items:center;gap:6px;padding:4px 8px;
+}
+.filter:focus-within{border-color:var(--accent-dim)}
+.filter input{
+  background:transparent;border:none;outline:none;color:var(--text);font-family:var(--mono);
+  font-size:11.5px;width:100%;
+}
+.filter input::placeholder{color:var(--text-faint)}
+.tgl{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);cursor:pointer;user-select:none;white-space:nowrap}
+.tgl .sw{width:22px;height:12px;border-radius:6px;background:var(--bg3);position:relative;flex:none;transition:background .15s}
+.tgl .sw::after{content:"";position:absolute;left:1.5px;top:1.5px;width:9px;height:9px;border-radius:50%;background:var(--text-faint);transition:all .15s}
+.tgl.on{color:var(--text)}
+.tgl.on .sw{background:var(--accent-dim)}
+.tgl.on .sw::after{left:11px;background:var(--accent)}
+#rescount{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--text-faint);white-space:nowrap}
+#rescount b{color:var(--text-dim);font-weight:600}
+.info-hint{
+  font-size:10.5px;color:var(--text-faint);cursor:help;white-space:nowrap;
+  border-bottom:1px dotted var(--text-faint);padding-bottom:1px;
+}
+.info-hint:hover{color:var(--text-dim)}
+
+/* ============ TREE ============ */
+#treewrap{flex:1;overflow:auto;min-height:0;padding:4px 0 12px}
+.trow{
+  display:flex;align-items:center;gap:6px;height:24px;padding-right:12px;
+  cursor:pointer;user-select:none;white-space:nowrap;position:relative;
+}
+.trow:hover{background:var(--bg2)}
+.trow.sel{background:var(--accent-glow);box-shadow:inset 2px 0 0 var(--accent)}
+.trow.keynav:not(.sel){background:var(--bg2);box-shadow:inset 2px 0 0 var(--text-faint)}
+.twist{
+  width:16px;flex:none;text-align:center;color:var(--text-faint);font-size:9px;
+  font-family:var(--mono);
+}
+.trow.leaf .twist{visibility:hidden}
+.tico{
+  width:15px;height:15px;flex:none;border-radius:3.5px;display:inline-flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:9px;font-weight:700;border:1px solid;
+}
+.tico.pkg{color:var(--yellow);border-color:rgba(227,179,65,.4);background:rgba(227,179,65,.08)}
+.tico.class{color:var(--blue);border-color:rgba(88,166,255,.4);background:rgba(88,166,255,.08)}
+.tico.iface{color:var(--green);border-color:rgba(126,231,135,.4);background:rgba(126,231,135,.08)}
+.tico.enum{color:var(--orange);border-color:rgba(255,166,87,.4);background:rgba(255,166,87,.08)}
+.tico.abs{color:var(--purple);border-color:rgba(210,168,255,.4);background:rgba(210,168,255,.08)}
+.tico.method{color:var(--pink);border-color:rgba(247,120,186,.35);background:rgba(247,120,186,.06)}
+.tico.field{color:var(--accent);border-color:rgba(45,212,191,.35);background:rgba(45,212,191,.06)}
+.tname{font-size:12px}
+.tname.mono{font-family:var(--mono);font-size:11.5px}
+.tname .obf{color:var(--text-dim)}
+.tname mark{background:var(--accent-dim);color:#99f6e4;border-radius:2px;padding:0 1px}
+.tname mark.obfm{background:rgba(88,166,255,.22);color:#a5d6ff}
+.was{
+  font-family:var(--mono);font-size:9px;color:var(--text-faint);border:1px solid var(--border);
+  border-radius:3px;padding:0 4px;background:var(--bg2);
+}
+.was b{color:var(--orange);font-weight:600}
+.tdot{width:7px;height:7px;border-radius:50%;flex:none;cursor:help}
+.txr{font-family:var(--mono);font-size:9.5px;color:var(--text-faint)}
+.tdim{opacity:.34}
+.children{display:none}
+.children.open{display:block}
+
+/* ============ CONTEXT MENU ============ */
+#ctxmenu{
+  position:fixed;z-index:50;min-width:190px;background:var(--bg3);border:1px solid var(--border);
+  border-radius:8px;padding:4px;box-shadow:0 8px 28px rgba(0,0,0,.55);display:none;
+}
+#ctxmenu .mi{
+  display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:5px;
+  font-size:11.5px;color:var(--text);cursor:pointer;
+}
+#ctxmenu .mi:hover{background:var(--accent-glow);color:#99f6e4}
+#ctxmenu .mi .grow{flex:1}
+#ctxmenu .mi kbd{margin-left:14px}
+#ctxmenu .sep{height:1px;background:var(--border);margin:4px 6px}
+
+/* ============ DETAIL CARD ============ */
+#preview{
+  width:300px;min-width:300px;background:var(--bg1);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;
+}
+.pv-head{
+  padding:10px 14px 6px;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--text-dim);
+  text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;
+}
+.pv-head .pv-kind{font-family:var(--mono);font-weight:400;letter-spacing:0;text-transform:none;color:var(--text-faint)}
+.pv-sig{
+  margin:2px 14px 10px;padding:8px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;
+  font-family:var(--mono);font-size:11px;color:#a5d6ff;word-break:break-all;line-height:1.6;max-height:150px;overflow-y:auto;
+}
+.pv-sig .kw{color:var(--purple)}
+.pv-sig .tn{color:var(--blue)}
+.pv-sig .ob{color:var(--text-faint)}
+.pv-meta{padding:0 14px 10px;display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.pv-sec{
+  padding:8px 14px 4px;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--text-dim);
+  text-transform:uppercase;border-top:1px solid var(--border-soft);display:flex;justify-content:space-between;
+}
+.pv-sec .n{font-family:var(--mono);font-weight:400;color:var(--text-faint)}
+.pv-x{padding:5px 14px;font-family:var(--mono);font-size:11px;cursor:pointer;border-left:2px solid transparent}
+.pv-x:hover{background:var(--bg2)}
+.pv-x .from{color:var(--blue)}
+.pv-x .meta{color:var(--text-faint);font-size:10px;margin-top:1px}
+.pv-kv{display:flex;justify-content:space-between;padding:3px 14px;font-size:11px}
+.pv-kv .k{color:var(--text-faint)}
+.pv-kv .v{font-family:var(--mono);color:var(--text-dim)}
+.flagchip{
+  font-family:var(--mono);font-size:9px;border-radius:3px;padding:1px 6px;border:1px solid var(--border);
+  color:var(--text-dim);background:var(--bg2);
+}
+.tagchip{
+  font-family:var(--mono);font-size:9.5px;border-radius:9px;padding:1px 8px;border:1px solid;cursor:help;
+  display:inline-flex;align-items:center;gap:5px;
+}
+.tagchip i{width:6px;height:6px;border-radius:50%;display:inline-block}
+#pv-actions{margin:12px 14px 14px;display:flex;gap:6px}
+#pv-actions .btn{flex:1;justify-content:center}
+.pv-empty{padding:24px 14px;color:var(--text-faint);font-size:11.5px;text-align:center}
+
+/* ============ HINT BAR ============ */
+#hintbar{
+  height:26px;min-height:26px;background:var(--bg1);border-top:1px solid var(--border);
+  display:flex;align-items:center;padding:0 12px;gap:16px;font-size:10.5px;color:var(--text-faint);
+  overflow:hidden;white-space:nowrap;
+}
+#hintbar .hint{display:flex;align-items:center;gap:5px}
+#hintbar .sep{width:1px;height:12px;background:var(--border)}
+
+/* ============ STATUS BAR ============ */
+#status{
+  height:24px;min-height:24px;background:var(--bg1);border-top:1px solid var(--border);
+  display:flex;align-items:center;padding:0 10px;gap:14px;font-size:10.5px;color:var(--text-dim);
+  font-family:var(--mono);
+}
+.st{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.st .heapbar{width:52px;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.st .heapbar i{display:block;height:100%;background:var(--yellow)}
+.spinner{width:9px;height:9px;border:1.5px solid var(--accent-dim);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.agentchip{
+  display:flex;align-items:center;gap:6px;background:var(--agent-bg);border:1px solid rgba(184,146,246,.3);
+  color:var(--agent);border-radius:10px;padding:1px 9px;font-size:10px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.follow{display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:auto}
+.follow .sw{width:22px;height:12px;border-radius:6px;background:var(--accent-dim);position:relative}
+.follow .sw::after{content:"";position:absolute;right:1.5px;top:1.5px;width:9px;height:9px;border-radius:50%;background:var(--accent)}
+</style>
+</head>
+<body>
+
+<!-- ================= TARGET STRIP ================= -->
+<div id="targets">
+  <div class="tchip active" title="gmail.apk · JEB — switch ⌘1">
+    <span class="ft" style="color:var(--orange)">▣</span> gmail.apk <span class="eng jeb">JEB</span> <span class="dirtydot"></span>
+  </div>
+  <div class="tchip" title="gmail.apk · JADX — switch ⌘2 · read-only · sidecar names">
+    <span class="ft" style="color:var(--orange)">▣</span> gmail.apk <span class="eng jadx">JADX</span>
+  </div>
+  <div class="tchip" title="libgmail.so · IDA — switch ⌘3 · agent active">
+    <span class="ft" style="color:var(--blue)">◈</span> libgmail.so <span class="eng ida">IDA</span> <span class="adot"></span>
+  </div>
+  <div class="tchip" title="wallet.apk · JADX — switch ⌘4 · device attached: pixel-7">
+    <span class="ft" style="color:var(--orange)">▣</span> wallet.apk <span class="eng jadx">JADX</span> <span class="ddev"></span>
+  </div>
+  <div class="tchip add" title="Open target…">+</div>
+</div>
+
+<!-- ================= TOP BAR ================= -->
+<div id="topbar">
+  <nav class="locbar" title="Current location — hierarchy, not history">
+    <span class="lseg tgt"><span class="eng jeb">JEB</span>gmail.apk</span><span class="lsep">›</span>
+    <span class="lseg" id="lseg-pkg">com.google.android.gm</span><span class="lsep">›</span>
+    <span class="lseg cur" id="lseg-cur">Explorer</span>
+  </nav>
+  <div class="navhist" title="Navigation history">
+    <button title="Back (Alt+←)">‹</button>
+    <button title="Forward (Alt+→)">›</button>
+  </div>
+  <div class="crumbs" title="Navigation history · Alt+← / Alt+→">
+    <span>MessageSyncHandler</span><span class="sep">→</span><span>decryptPayload</span><span class="sep">→</span><span><b>explorer</b></span><span class="sep">▾</span>
+  </div>
+  <div class="jumpbox" title="Jump anywhere">
+    <span style="color:var(--accent)">➜</span>
+    <span class="grow">Jump to class, method, string, offset…</span>
+    <kbd>G</kbd>
+  </div>
+  <div class="proj" title="Project">
+    <span class="dot"></span> gmail_9.41.apk <span class="chev">▾</span>
+  </div>
+  <button class="btn primary" title="Save project (⌘S)"><span class="dirtydot"></span> Save</button>
+  <button class="btn" title="More actions">⋯</button>
+</div>
+
+<!-- ================= MAIN ================= -->
+<div id="main">
+
+  <!-- activity rail -->
+  <div id="activity">
+    <button class="actbtn active" title="Explorer"><i class="icn">⛁</i></button>
+    <button class="actbtn" title="Search (⌘⇧F)"><i class="icn">⌕</i></button>
+    <button class="actbtn" title="Strings"><i class="icn">❝</i></button>
+    <button class="actbtn" title="Bookmarks &amp; Tags"><i class="icn">⚑</i><span class="badge">14</span></button>
+    <button class="actbtn" title="Runs — dynamic analysis"><i class="icn">▶</i></button>
+    <button class="actbtn" title="Agents"><i class="icn">🤖</i><span class="badge agent">2</span></button>
+    <div class="spacer"></div>
+    <button class="actbtn" title="Settings"><i class="icn">⚙</i></button>
+  </div>
+
+  <!-- explorer surface -->
+  <div id="surface">
+    <div id="toolbar">
+      <div class="filter" title="Live filter — matches class, method and field names; ancestors of matches stay visible and auto-expand">
+        <span style="color:var(--text-faint)">⌕</span>
+        <input id="filter" placeholder="filter tree…  (name or was-name)" spellcheck="false">
+        <kbd>/</kbd>
+      </div>
+      <span class="tgl" id="tgl-renamed" title="Show only nodes you renamed (carries a 'was:' badge) — the diff of your reversing work"><span class="sw"></span> Renamed only</span>
+      <span class="tgl" id="tgl-tagged" title="Show only nodes carrying at least one tag dot"><span class="sw"></span> Tagged only</span>
+      <span class="sep" style="width:1px;height:16px;background:var(--border)"></span>
+      <button class="btn" id="btn-expand" title="Expand all nodes (⇧→)">⊞ Expand</button>
+      <button class="btn" id="btn-collapse" title="Collapse all nodes (⇧←)">⊟ Collapse</button>
+      <span id="rescount" title="Total nodes vs. currently visible under filter/toggles"><b id="total">0</b> nodes · <b id="shown">0</b> shown</span>
+      <span class="info-hint" title="Names are session-local (sidecar .jeb-names), never patched into the DEX. 'was: x' badges preserve the original obfuscated symbol so JADX-side views and other analysts can still correlate.">ⓘ sidecar names</span>
+    </div>
+    <div id="treewrap"><div id="tree"></div></div>
+  </div>
+
+  <!-- detail card -->
+  <aside id="preview">
+    <div class="pv-head"><span>Symbol</span><span class="pv-kind" id="pv-kind">—</span></div>
+    <div class="pv-sig" id="pv-sig"><div class="pv-empty" style="padding:8px 0">select a node</div></div>
+    <div class="pv-meta" id="pv-flags"></div>
+    <div class="pv-sec" style="display:none" id="pv-tags-sec"><span>Tags</span></div>
+    <div class="pv-meta" id="pv-tags"></div>
+    <div class="pv-kv" id="pv-xcount" style="display:none"><span class="k">xrefs</span><span class="v" id="pv-xcount-v"></span></div>
+    <div class="pv-kv" id="pv-dex" style="display:none"><span class="k">dex offset</span><span class="v" id="pv-dex-v"></span></div>
+    <div class="pv-sec" style="display:none" id="pv-xsec"><span>Cross-references</span><span class="n" id="pv-xn"></span></div>
+    <div id="pv-xrefs"></div>
+    <div id="pv-actions" style="display:none">
+      <button class="btn primary" id="pv-open">Open ↵</button>
+      <button class="btn" id="pv-refs" title="Find all references (X)">Refs</button>
+    </div>
+  </aside>
+</div>
+
+<!-- ================= CONTEXT MENU ================= -->
+<div id="ctxmenu">
+  <div class="mi" data-act="rename"><span>✎</span><span class="grow">Rename…</span><kbd>F2</kbd></div>
+  <div class="mi" data-act="refs"><span>⌕</span><span class="grow">Find references</span><kbd>X</kbd></div>
+  <div class="mi" data-act="tag"><span>⚑</span><span class="grow">Tag…</span><kbd>T</kbd></div>
+  <div class="sep"></div>
+  <div class="mi" data-act="copysig"><span>⧉</span><span class="grow">Copy signature</span><kbd>⌘C</kbd></div>
+  <div class="mi" data-act="copyobf"><span>⧉</span><span class="grow">Copy original name</span></div>
+</div>
+
+<!-- ================= HINT BAR ================= -->
+<div id="hintbar">
+  <span class="hint"><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+  <span class="hint"><kbd>↵</kbd> open</span>
+  <span class="hint"><kbd>←</kbd><kbd>→</kbd> collapse / expand</span>
+  <span class="sep"></span>
+  <span class="hint"><kbd>F2</kbd> rename</span>
+  <span class="hint"><kbd>X</kbd> find refs</span>
+  <span class="hint"><kbd>/</kbd> filter</span>
+  <span class="hint"><kbd>esc</kbd> clear / close</span>
+  <span class="hint" style="margin-left:auto;color:var(--text-faint)">right-click for symbol actions</span>
+</div>
+
+<!-- ================= STATUS BAR ================= -->
+<div id="status">
+  <span class="st" title="Decompiled classes">◈ 18,204 classes</span>
+  <span class="st" title="Decompiler engine">jadx 1.5.1-dev · jeb-bridge</span>
+  <span class="st" title="Target heap — gmail.apk·JEB"><span class="heapbar"><i style="width:52%"></i></span> heap 3.2g</span>
+  <span class="st" title="Global ceiling — 4 targets, 9.1 of 24 GB"><span class="heapbar" style="width:64px"><i style="width:38%;background:var(--red)"></i></span> Σ 9.1g / 24g</span>
+  <span class="st" title="Indexing tree…"><span class="spinner"></span> indexing</span>
+  <span class="st" title="Unsaved changes"><span class="dirtydot"></span> unsaved</span>
+  <span class="agentchip" title="Agent activity">🤖 agent reviewing <b>&nbsp;gmail.apk :: sync.c</b></span>
+  <span class="follow" title="Follow live runtime events">Follow <span class="sw"></span></span>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---- tag palette ---- */
+  var TAGS = {
+    crypto:   { c:"var(--purple)", label:"crypto" },
+    entry:    { c:"var(--green)",  label:"entry point" },
+    hot:      { c:"var(--orange)", label:"hot path" },
+    reviewed: { c:"var(--blue)",   label:"reviewed" },
+    sus:      { c:"var(--red)",    label:"suspicious" }
+  };
+
+  /* ---- tree data ----
+     kind: pkg | class | iface | enum | abs | method | field
+     name: display name; was: original obfuscated symbol
+     sig: detail-card signature; flags; xr: xref count; tags: keys into TAGS */
+  function P(name, kids){ return {kind:"pkg", name:name, children:kids, sig:"package " + name, flags:["package"]}; }
+  function C(kind, name, was, xr, tags, flags, sig, kids){
+    return {kind:kind, name:name, was:was, xr:xr, tags:tags||[], flags:flags||[], sig:sig, children:kids||[]};
+  }
+  function M(name, was, xr, tags, flags, sig){ return C("method", name, was, xr, tags, flags, sig, []); }
+  function F(name, was, xr, tags, flags, sig){ return C("field", name, was, xr, tags, flags, sig, []); }
+
+  var ROOT = P("com.google.android.gm", [
+    P("sync", [
+      C("class","MessageSyncHandler","c",41,["hot","crypto"],["public","final"],
+        "public final class MessageSyncHandler extends d implements Runnable",[
+        M("onMessage","a",12,["hot"],["public","void"],"public void onMessage(byte[] payload, int seq)"),
+        M("decryptPayload","b",8,["crypto"],["private","static"],"private static byte[] decryptPayload(byte[] in, SecretKey key)  // AES/GCM/NoPadding"),
+        M("a",null,6,[],["private"],"private void a(String topic)  // handles invite.v2"),
+        F("syncKey","d",3,["crypto"],["private","static","final"],"private static final SecretKey syncKey"),
+        F("LOG_TAG","e",1,[],["private","static","final"],"private static final String LOG_TAG = \"MailSync\"")
+      ]),
+      C("class","MailSyncService",null,18,["entry"],["public"],
+        "public class MailSyncService extends Service",[
+        M("onStartCommand",null,9,["entry"],["public"],"public int onStartCommand(Intent i, int flags, int startId)"),
+        M("onBind",null,2,[],["public"],"public IBinder onBind(Intent i)"),
+        F("wakeLock","a",4,[],["private"],"private PowerManager.WakeLock wakeLock")
+      ]),
+      C("class","KeyRotator","e",9,["crypto"],["final"],
+        "final class KeyRotator",[
+        M("rotateKey","b",5,["crypto"],["static"],"static SecretKey rotateKey(Context ctx, long epoch)"),
+        M("b",null,2,[],["private","static"],"private static byte[] b(int len)  // SecureRandom")
+      ]),
+      C("class","d",null,22,[],["abstract"],
+        "abstract class d implements Runnable  // sync base worker",[
+        M("run",null,14,["hot"],["public","abstract"],"public abstract void run()"),
+        F("a",null,7,[],["protected"],"protected int a  // retry counter")
+      ]),
+      C("enum","SyncState","f",11,["reviewed"],["enum"],
+        "enum SyncState { IDLE, PULL, PUSH, BACKOFF }",[
+        F("IDLE",null,4,[],["enum","const"],"IDLE"),
+        F("PULL",null,5,[],["enum","const"],"PULL"),
+        F("PUSH",null,3,[],["enum","const"],"PUSH"),
+        F("BACKOFF",null,2,[],["enum","const"],"BACKOFF")
+      ])
+    ]),
+    P("provider", [
+      C("class","MailProvider","g",26,["entry"],["public"],
+        "public class MailProvider extends ContentProvider",[
+        M("onCreate","a",3,["entry"],["public"],"public boolean onCreate()"),
+        M("query",null,17,["hot"],["public"],"public Cursor query(Uri uri, String[] proj, String sel, String[] args, String ord)"),
+        M("b",null,5,[],["private"],"private SQLiteDatabase b()  // opens /data/data/com.google.android.gm/keystore"),
+        F("AUTHORITY","c",11,[],["public","static","final"],"public static final String AUTHORITY = \"com.google.android.gm.provider\"")
+      ]),
+      C("class","ConversationDao","h",13,["reviewed"],["final"],
+        "final class ConversationDao",[
+        M("loadThread","a",6,[],["public"],"public List<Conversation> loadThread(long threadId)"),
+        M("a",null,8,[],["static"],"static Cursor a(long messageId)"),
+        F("TABLE","b",3,[],["private","static","final"],"private static final String TABLE = \"conversations\"")
+      ]),
+      C("iface","AttachmentStore","i",7,[],["interface"],
+        "interface AttachmentStore",[
+        M("open",null,4,[],["public","abstract"],"InputStream open(long attachmentId)"),
+        M("a",null,2,[],["public","abstract"],"void a(long id, byte[] data)")
+      ])
+    ]),
+    P("ui", [
+      C("class","ConversationListActivity","h",15,["entry"],["public"],
+        "public class ConversationListActivity extends Activity",[
+        M("onCreate",null,5,["entry"],["protected"],"protected void onCreate(Bundle b)"),
+        M("onBind","a",6,[],["private"],"private void onBind(ViewHolder vh, int pos)  // conversation_view"),
+        F("adapter","b",3,[],["private"],"private j adapter")
+      ]),
+      C("class","j",null,9,[],["final"],
+        "final class j extends RecyclerView.Adapter",[
+        M("onBindViewHolder",null,7,[],["public"],"public void onBindViewHolder(ViewHolder vh, int pos)"),
+        M("getItemCount",null,2,[],["public"],"public int getItemCount()")
+      ]),
+      C("abs","BaseFragment","k",12,["reviewed"],["abstract"],
+        "abstract class BaseFragment extends Fragment",[
+        M("onViewCreated",null,6,[],["public"],"public void onViewCreated(View v, Bundle b)"),
+        M("a",null,3,[],["protected","abstract"],"protected abstract void a()  // bind model")
+      ])
+    ]),
+    P("crypto", [
+      C("class","InviteCipher","b",16,["crypto","sus"],["final"],
+        "public final class InviteCipher",[
+        M("seal","a",7,["crypto"],["public","static"],"public static byte[] seal(byte[] invite, PublicKey pk)  // invite.v2 envelope"),
+        M("open","b",5,["crypto"],["public","static"],"public static byte[] open(byte[] sealed, PrivateKey sk)"),
+        M("a",null,3,["sus"],["private","static"],"private static byte[] a(int len)  // hardcoded IV? verify"),
+        F("GCM_TAG_BITS","c",4,["crypto"],["private","static","final"],"private static final int GCM_TAG_BITS = 128")
+      ]),
+      C("class","g",null,10,["crypto"],["final"],
+        "final class g  // keystore bridge → libgmail.so",[
+        M("a",null,6,["crypto"],["static","native"],"static native byte[] a(byte[] in)  // JNI → libgmail.so"),
+        M("loadLibrary","<clinit>",2,["entry"],["static"],"static { System.loadLibrary(\"gmail\"); }")
+      ]),
+      C("enum","KeyAlg","h",6,["reviewed"],["enum"],
+        "enum KeyAlg { AES_GCM, CHACHA20, RSASSA_PSS }",[
+        F("AES_GCM",null,5,["crypto"],["enum","const"],"AES_GCM  // \"AES/GCM/NoPadding\""),
+        F("CHACHA20",null,1,[],["enum","const"],"CHACHA20"),
+        F("RSASSA_PSS",null,2,[],["enum","const"],"RSASSA_PSS")
+      ])
+    ]),
+    P("util", [
+      C("class","GeminiClient","d",13,["hot","sus"],["final"],
+        "public final class GeminiClient",[
+        M("classify","a",8,["hot","sus"],["public"],"public String classify(Conversation c)  // posts bodies to gemini-classify endpoint"),
+        M("a",null,3,[],["private"],"private HttpURLConnection a(URL u)"),
+        F("ENDPOINT","b",2,[],["private","static","final"],"private static final String ENDPOINT = \"https://…/gemini-classify\"")
+      ]),
+      C("class","e",null,7,[],["final"],
+        "final class e  // string utils",[
+        M("a",null,9,[],["static"],"static String a(byte[] b)  // UTF-8"),
+        M("b",null,4,[],["static"],"static byte[] b(String s)")
+      ]),
+      C("iface","Clock","f",4,["reviewed"],["interface"],
+        "interface Clock",[
+        M("now",null,4,[],["public","abstract"],"long now()")
+      ])
+    ])
+  ]);
+
+  /* ---- state ---- */
+  var renamedOnly = false;
+  var taggedOnly = false;
+  var sel = null;          // selected node object
+  var selRow = null;       // selected row element
+  var keyRow = null;       // keyboard-navigated row element
+
+  var tree = document.getElementById("tree");
+  var filterInput = document.getElementById("filter");
+
+  function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+  function displayName(n){ return n.name; }
+  function isRenamed(n){ return !!n.was; }
+  function isTagged(n){ return n.tags && n.tags.length > 0; }
+  function matches(n, q){
+    if (!q) return true;
+    if (n.name.toLowerCase().indexOf(q) !== -1) return true;
+    if (n.was && n.was.toLowerCase() === q) return true;
+    return false;
+  }
+
+  /* subtree passes current visibility rules? (node or any descendant visible) */
+  function subtreeVisible(n, q){
+    var selfOk = matches(n, q) && (!renamedOnly || isRenamed(n)) && (!taggedOnly || isTagged(n));
+    if (selfOk) return true;
+    return (n.children || []).some(function(k){ return subtreeVisible(k, q); });
+  }
+
+  var ICON = { pkg:"◇", "class":"C", iface:"I", "enum":"E", abs:"A", method:"m", field:"ƒ" };
+  var KINDLABEL = { pkg:"package", "class":"class", iface:"interface", "enum":"enum", abs:"abstract class", method:"method", field:"field" };
+
+  function highlight(name, q, isObfHit){
+    if (!q) return esc(name);
+    var i = name.toLowerCase().indexOf(q);
+    if (i === -1) return esc(name);
+    return esc(name.slice(0,i)) + '<mark' + (isObfHit ? ' class="obfm"' : '') + '>' +
+           esc(name.slice(i, i+q.length)) + '</mark>' + esc(name.slice(i+q.length));
+  }
+
+  function rowFor(n, depth, q){
+    var row = document.createElement("div");
+    row.className = "trow" + ((n.children && n.children.length) ? "" : " leaf");
+    row.style.paddingLeft = (8 + depth * 16) + "px";
+    row._node = n;
+    var hasKids = n.children && n.children.length > 0;
+    var obfName = !n.was && (n.kind !== "pkg") && /^[a-z]$|^<[a-z]+>$/.test(n.name);
+    var html =
+      '<span class="twist">' + (hasKids ? '▸' : '·') + '</span>' +
+      '<span class="tico ' + n.kind + '" title="' + KINDLABEL[n.kind] + '">' + ICON[n.kind] + '</span>' +
+      '<span class="tname' + ((n.kind === "method" || n.kind === "field" || n.kind === "pkg") ? ' mono' : '') + '">' +
+        (obfName ? '<span class="obf">' : '') +
+        highlight(n.name, q, !!(n.was && q && n.was.toLowerCase() === q && n.name.toLowerCase().indexOf(q) === -1)) +
+        (obfName ? '</span>' : '') +
+      '</span>';
+    if (n.was) html += '<span class="was" title="Original obfuscated symbol — kept so other engines/analysts can correlate">was: <b>' + esc(n.was) + '</b></span>';
+    (n.tags || []).forEach(function(t){
+      var tg = TAGS[t];
+      html += '<span class="tdot" style="background:' + tg.c + '" title="tag: ' + tg.label + '"></span>';
+    });
+    if (n.xr != null) html += '<span class="txr">×' + n.xr + '</span>';
+    row.innerHTML = html;
+    row.addEventListener("click", function(e){
+      e.stopPropagation();
+      if (hasKids && e.target.classList.contains("twist")){ toggleRow(row); return; }
+      select(n, row);
+      if (hasKids && selRow === row && row._wasSelected) toggleRow(row);
+    });
+    row.addEventListener("contextmenu", function(e){
+      e.preventDefault();
+      select(n, row);
+      openCtx(e.clientX, e.clientY, n);
+    });
+    return row;
+  }
+
+  function buildChildren(n, depth, q, container){
+    var box = document.createElement("div");
+    box.className = "children";
+    var anyShown = false;
+    (n.children || []).forEach(function(k){
+      if (!subtreeVisible(k, q)) return;
+      anyShown = true;
+      var kidSelf = matches(k, q) && (!renamedOnly || isRenamed(k)) && (!taggedOnly || isTagged(k));
+      var row = rowFor(k, depth, q);
+      box.appendChild(row);
+      var sub = buildChildren(k, depth + 1, q, box);
+      box.appendChild(sub.box);
+      if (kidSelf && !sub.anyShown && k.children && k.children.length) row.classList.add("tdim-kids");
+      /* when filtering, reveal paths to matches */
+      if (q && sub.anyShown){ row.querySelector(".twist").textContent = "▾"; sub.box.classList.add("open"); }
+    });
+    return { box: box, anyShown: anyShown };
+  }
+
+  function render(){
+    var q = filterInput.value.trim().toLowerCase();
+    tree.innerHTML = "";
+    var total = 0, shown = 0;
+    (function count(n){ total++; (n.children||[]).forEach(count); })(ROOT);
+    var row = rowFor(ROOT, 0, q);
+    tree.appendChild(row);
+    var sub = buildChildren(ROOT, 1, q, tree);
+    tree.appendChild(sub.box);
+    row.querySelector(".twist").textContent = "▾";
+    sub.box.classList.add("open");
+    /* count shown rows */
+    tree.querySelectorAll(".trow").forEach(function(r){ shown++; });
+    document.getElementById("total").textContent = total;
+    document.getElementById("shown").textContent = shown;
+    /* re-apply selection highlight if node still visible */
+    if (sel){
+      var rows = tree.querySelectorAll(".trow");
+      for (var i = 0; i < rows.length; i++){
+        if (rows[i]._node === sel){ rows[i].classList.add("sel"); selRow = rows[i]; break; }
+      }
+    }
+    keyRow = null;
+  }
+
+  function toggleRow(row){
+    var kids = row.nextElementSibling;
+    if (!kids || !kids.classList.contains("children")) return;
+    var open = kids.classList.toggle("open");
+    row.querySelector(".twist").textContent = open ? "▾" : "▸";
+  }
+  function setOpen(row, open){
+    var kids = row.nextElementSibling;
+    if (!kids || !kids.classList.contains("children")) return;
+    kids.classList.toggle("open", open);
+    row.querySelector(".twist").textContent = open ? "▾" : "▸";
+  }
+  function allRows(){ return Array.prototype.slice.call(tree.querySelectorAll(".trow")).filter(function(r){
+    /* visible = every ancestor .children is open */
+    var p = r.parentElement;
+    while (p && p !== tree){
+      if (p.classList.contains("children") && !p.classList.contains("open")) return false;
+      p = p.parentElement;
+    }
+    return true;
+  }); }
+
+  function setAll(open){
+    tree.querySelectorAll(".trow").forEach(function(r){
+      if (r.nextElementSibling && r.nextElementSibling.classList.contains("children")) setOpen(r, open);
+    });
+  }
+
+  /* ---- selection / detail card ---- */
+  function sigHtml(sig){
+    return esc(sig)
+      .replace(/\b(public|private|protected|static|final|abstract|native|class|interface|enum|extends|implements|package|void|int|long|byte)\b/g, '<span class="kw">$1</span>')
+      .replace(/\b([A-Z][A-Za-z0-9_]*)\b/g, '<span class="tn">$1</span>')
+      .replace(/(\/\/.*)$/g, '<span class="ob">$1</span>');
+  }
+
+  function select(n, row){
+    sel = n;
+    if (selRow) selRow._wasSelected = false;
+    tree.querySelectorAll(".trow.sel").forEach(function(r){ r.classList.remove("sel"); });
+    selRow = row;
+    if (row){ row.classList.add("sel"); row._wasSelected = true; }
+    document.getElementById("lseg-cur").textContent = n.name;
+    document.getElementById("pv-kind").textContent = KINDLABEL[n.kind] + (n.was ? " · was " + n.was : "");
+    document.getElementById("pv-sig").innerHTML = sigHtml(n.sig || n.name);
+    document.getElementById("pv-flags").innerHTML = (n.flags || []).map(function(f){
+      return '<span class="flagchip">' + esc(f) + '</span>';
+    }).join("");
+    var tagSec = document.getElementById("pv-tags-sec");
+    var tagBox = document.getElementById("pv-tags");
+    if (n.tags && n.tags.length){
+      tagSec.style.display = "";
+      tagBox.innerHTML = n.tags.map(function(t){
+        var tg = TAGS[t];
+        return '<span class="tagchip" style="color:' + tg.c + ';border-color:' + tg.c + '" title="Tag \u2018' + tg.label + '\u2019 — click Tags rail to manage"><i style="background:' + tg.c + '"></i>' + tg.label + '</span>';
+      }).join("");
+    } else { tagSec.style.display = "none"; tagBox.innerHTML = ""; }
+    var hasX = n.xr != null && n.kind !== "pkg";
+    document.getElementById("pv-xcount").style.display = hasX ? "" : "none";
+    document.getElementById("pv-dex").style.display = hasX ? "" : "none";
+    document.getElementById("pv-xsec").style.display = hasX ? "" : "none";
+    document.getElementById("pv-actions").style.display = "";
+    if (hasX){
+      document.getElementById("pv-xcount-v").textContent = n.xr + " refs";
+      document.getElementById("pv-dex-v").textContent = "0x" + (0x1a0000 + (n.name.length * 7919 + n.xr * 131) % 0x4ffff).toString(16);
+      document.getElementById("pv-xn").textContent = n.xr + " total · 4 shown";
+      var pool = ["MailSyncService.onStartCommand","MessageSyncHandler.onMessage","provider.MailProvider.query","sync.d.run","InviteCipher.seal","GeminiClient.classify"];
+      var xl = [];
+      for (var i = 0; i < 4; i++){
+        xl.push([pool[(n.name.length + i * 3) % pool.length], "L" + (9 + (n.xr * 7 + i * 23) % 70)]);
+      }
+      document.getElementById("pv-xrefs").innerHTML = xl.map(function(e){
+        return '<div class="pv-x"><span class="from">' + esc(e[0]) + '</span> → ' + esc(e[1]) +
+               '<div class="meta">call site · gmail.apk·JEB</div></div>';
+      }).join("");
+    } else {
+      document.getElementById("pv-xrefs").innerHTML = "";
+    }
+  }
+
+  /* ---- context menu ---- */
+  var ctx = document.getElementById("ctxmenu");
+  function openCtx(x, y, n){
+    ctx.style.display = "block";
+    var w = ctx.offsetWidth, h = ctx.offsetHeight;
+    ctx.style.left = Math.min(x, window.innerWidth - w - 8) + "px";
+    ctx.style.top = Math.min(y, window.innerHeight - h - 8) + "px";
+  }
+  function closeCtx(){ ctx.style.display = "none"; }
+  document.addEventListener("click", closeCtx);
+  document.addEventListener("scroll", closeCtx, true);
+  ctx.querySelectorAll(".mi").forEach(function(mi){
+    mi.addEventListener("click", function(){
+      var act = mi.getAttribute("data-act");
+      if (selRow){
+        selRow.style.transition = "background .12s";
+        selRow.style.background = "var(--accent-dim)";
+        setTimeout(function(){ if (selRow) selRow.style.background = ""; }, 200);
+      }
+      if (act === "copysig" && sel) filterInput.placeholder = "copied: " + sel.name;
+      closeCtx();
+    });
+  });
+
+  /* ---- toolbar wiring ---- */
+  filterInput.addEventListener("input", render);
+  document.getElementById("tgl-renamed").addEventListener("click", function(){
+    renamedOnly = !renamedOnly; this.classList.toggle("on", renamedOnly); render();
+  });
+  document.getElementById("tgl-tagged").addEventListener("click", function(){
+    taggedOnly = !taggedOnly; this.classList.toggle("on", taggedOnly); render();
+  });
+  document.getElementById("btn-expand").addEventListener("click", function(){ setAll(true); });
+  document.getElementById("btn-collapse").addEventListener("click", function(){ setAll(false); });
+
+  /* ---- keyboard navigation ---- */
+  document.addEventListener("keydown", function(e){
+    var inFilter = document.activeElement === filterInput;
+    if (e.key === "/" && !inFilter){ e.preventDefault(); filterInput.focus(); return; }
+    if (e.key === "Escape"){
+      closeCtx();
+      if (inFilter){ filterInput.value = ""; render(); filterInput.blur(); }
+      return;
+    }
+    if (inFilter) return;
+    var rows = allRows();
+    if (!rows.length) return;
+    var cur = keyRow || selRow;
+    var idx = rows.indexOf(cur);
+    if (e.key === "ArrowDown" || e.key === "ArrowUp"){
+      e.preventDefault();
+      idx = (e.key === "ArrowDown") ? Math.min(idx + 1, rows.length - 1) : Math.max(idx - 1, 0);
+      if (idx < 0) idx = 0;
+      if (keyRow) keyRow.classList.remove("keynav");
+      keyRow = rows[idx];
+      keyRow.classList.add("keynav");
+      keyRow.scrollIntoView({ block:"nearest" });
+      select(keyRow._node, keyRow);
+    } else if (e.key === "ArrowRight" && cur){
+      e.preventDefault(); setOpen(cur, true);
+    } else if (e.key === "ArrowLeft" && cur){
+      e.preventDefault();
+      var kids = cur.nextElementSibling;
+      if (kids && kids.classList.contains("children") && kids.classList.contains("open")) setOpen(cur, false);
+      else {
+        /* jump to parent row */
+        var box = cur.parentElement;
+        if (box.classList.contains("children")){
+          var prow = box.previousElementSibling;
+          if (prow && prow.classList.contains("trow")){
+            if (keyRow) keyRow.classList.remove("keynav");
+            keyRow = prow; keyRow.classList.add("keynav"); select(prow._node, prow);
+          }
+        }
+      }
+    } else if (e.key === "Enter" && cur){
+      e.preventDefault();
+      toggleRow(cur);
+      document.getElementById("pv-open").focus(); document.getElementById("pv-open").blur();
+    } else if ((e.key === "F2" || e.key === "x" || e.key === "X") && cur){
+      e.preventDefault();
+      var r = cur.getBoundingClientRect();
+      openCtx(r.left + 40, r.top + 22, cur._node);
+    } else if (e.key === "ArrowRight" && e.shiftKey){ setAll(true);
+    } else if (e.key === "ArrowLeft" && e.shiftKey){ setAll(false); }
+  });
+
+  /* ---- target strip + breadcrumb + follow (same as workbench) ---- */
+  document.querySelectorAll("#targets .tchip:not(.add)").forEach(function(chip){
+    chip.addEventListener("click", function(){
+      document.querySelectorAll("#targets .tchip").forEach(function(c){ c.classList.remove("active"); });
+      chip.classList.add("active");
+    });
+  });
+  document.querySelectorAll(".locbar .lseg").forEach(function(seg){
+    seg.addEventListener("click", function(){
+      seg.classList.add("flash");
+      setTimeout(function(){ seg.classList.remove("flash"); }, 250);
+    });
+  });
+  document.querySelector(".follow").addEventListener("click", function(){
+    var sw = this.querySelector(".sw");
+    var on = sw.style.background !== "var(--bg3)";
+    sw.style.background = on ? "var(--bg3)" : "var(--accent-dim)";
+  });
+  document.getElementById("pv-refs").addEventListener("click", function(){
+    if (selRow){
+      var r = selRow.getBoundingClientRect();
+      openCtx(r.left + 40, r.top + 22, sel);
+    }
+  });
+
+  /* ---- init ---- */
+  render();
+  /* pre-select MessageSyncHandler and open its package */
+  (function(){
+    var rows = tree.querySelectorAll(".trow");
+    for (var i = 0; i < rows.length; i++){
+      if (rows[i]._node.name === "MessageSyncHandler"){
+        var box = rows[i].parentElement;         /* sync children box — open it */
+        box.classList.add("open");
+        var prow = box.previousElementSibling;
+        if (prow && prow.classList.contains("trow")) prow.querySelector(".twist").textContent = "▾";
+        setOpen(rows[i], true);
+        select(rows[i]._node, rows[i]);
+        break;
+      }
+    }
+  })();
+})();
+</script>
+</body>
+</html>

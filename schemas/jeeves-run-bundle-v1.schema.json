@@ -1,0 +1,942 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "run_id",
+    "recipe",
+    "producer",
+    "target",
+    "device",
+    "session",
+    "conditions",
+    "hooks",
+    "coverage",
+    "capture",
+    "cleanup",
+    "research",
+    "privacy",
+    "files"
+  ],
+  "properties": {
+    "schema": {
+      "const": "jeeves-run-bundle-v1"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$(?![\\s\\S])"
+    },
+    "recipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "revision",
+        "sha256",
+        "parent",
+        "activity",
+        "variant",
+        "family",
+        "split",
+        "split_provenance"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$(?![\\s\\S])"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$(?![\\s\\S])"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "revision",
+                "sha256"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$(?![\\s\\S])"
+                },
+                "revision": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$(?![\\s\\S])"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "activity": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$(?![\\s\\S])"
+        },
+        "variant": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$(?![\\s\\S])"
+        },
+        "family": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$(?![\\s\\S])"
+        },
+        "split": {
+          "enum": [
+            "unassigned",
+            "training-candidate",
+            "development",
+            "evaluation",
+            "held-out"
+          ]
+        },
+        "split_provenance": {
+          "enum": [
+            "measured",
+            "student-declared",
+            "external-declared",
+            "fixture",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "build_revision",
+        "build_sha256",
+        "mode",
+        "engine"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 100,
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 100,
+          "minLength": 1
+        },
+        "build_revision": {
+          "type": "string",
+          "maxLength": 120,
+          "minLength": 1
+        },
+        "build_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$(?![\\s\\S])"
+        },
+        "mode": {
+          "enum": [
+            "local",
+            "external",
+            "fixture"
+          ]
+        },
+        "engine": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "version",
+                "jar_sha256"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "minLength": 1
+                },
+                "version": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                "jar_sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$(?![\\s\\S])"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package",
+        "version",
+        "artifact",
+        "identity_basis"
+      ],
+      "properties": {
+        "package": {
+          "type": "string",
+          "maxLength": 250,
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 100,
+          "minLength": 1
+        },
+        "artifact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "sha256",
+            "size"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "apk",
+                "fixture"
+              ]
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$(?![\\s\\S])"
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "identity_basis": {
+          "enum": [
+            "measured",
+            "student-declared",
+            "external-declared",
+            "fixture",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "platform",
+        "model",
+        "os_version",
+        "identity_basis"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$(?![\\s\\S])"
+        },
+        "platform": {
+          "enum": [
+            "android",
+            "fixture"
+          ]
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "os_version": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "identity_basis": {
+          "enum": [
+            "measured",
+            "student-declared",
+            "external-declared",
+            "fixture",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "controller_id",
+        "ownership",
+        "processes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$(?![\\s\\S])"
+        },
+        "controller_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$(?![\\s\\S])"
+        },
+        "ownership": {
+          "enum": [
+            "coordinated-local",
+            "external-declared",
+            "fixture"
+          ]
+        },
+        "processes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "pid",
+              "start_identity",
+              "identity_basis"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$(?![\\s\\S])"
+              },
+              "pid": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 2147483647
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "start_identity": {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              "identity_basis": {
+                "enum": [
+                  "measured",
+                  "student-declared",
+                  "external-declared",
+                  "fixture",
+                  "unknown"
+                ]
+              }
+            }
+          },
+          "maxItems": 64
+        }
+      }
+    },
+    "conditions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "value",
+          "provenance",
+          "source"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1
+          },
+          "value": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ],
+            "maxLength": 500
+          },
+          "provenance": {
+            "enum": [
+              "measured",
+              "student-declared",
+              "external-declared",
+              "fixture",
+              "unknown"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          }
+        }
+      },
+      "maxItems": 64
+    },
+    "hooks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "role",
+          "source_sha256",
+          "state",
+          "state_basis",
+          "origSigs",
+          "native_sites",
+          "error"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$(?![\\s\\S])"
+          },
+          "role": {
+            "enum": [
+              "connection",
+              "observation"
+            ]
+          },
+          "source_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$(?![\\s\\S])"
+          },
+          "state": {
+            "enum": [
+              "installed",
+              "failed",
+              "deferred"
+            ]
+          },
+          "state_basis": {
+            "enum": [
+              "measured",
+              "student-declared",
+              "external-declared",
+              "fixture",
+              "unknown"
+            ]
+          },
+          "origSigs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 5,
+              "maxLength": 2048,
+              "pattern": "^L[^;\\s]+;->[^\\s(]+\\([^\\s]*\\)[^\\s]+$(?![\\s\\S])"
+            },
+            "maxItems": 512
+          },
+          "native_sites": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "module",
+                "build_id",
+                "relative_offset",
+                "symbol"
+              ],
+              "properties": {
+                "module": {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                "build_id": {
+                  "type": "string",
+                  "maxLength": 160,
+                  "minLength": 1
+                },
+                "relative_offset": {
+                  "type": "string",
+                  "pattern": "^0x[0-9a-f]+$(?![\\s\\S])"
+                },
+                "symbol": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 1024,
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "maxItems": 512
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "maxItems": 128
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "installed_methods",
+        "observed_methods",
+        "whole_app"
+      ],
+      "properties": {
+        "scope": {
+          "const": "hooked-methods"
+        },
+        "installed_methods": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65536
+        },
+        "observed_methods": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65536
+        },
+        "whole_app": {
+          "const": false
+        }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "started_at",
+        "ended_at",
+        "completion",
+        "stop_reason",
+        "event_count",
+        "first_seq",
+        "last_seq",
+        "sequence_gaps",
+        "sequence_scope",
+        "ordering",
+        "loss"
+      ],
+      "properties": {
+        "started_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?Z$(?![\\s\\S])",
+          "maxLength": 35
+        },
+        "ended_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?Z$(?![\\s\\S])",
+          "maxLength": 35
+        },
+        "completion": {
+          "enum": [
+            "complete",
+            "partial",
+            "failed"
+          ]
+        },
+        "stop_reason": {
+          "enum": [
+            "manual",
+            "deadline",
+            "event-budget",
+            "error",
+            "owner-crash",
+            "import"
+          ]
+        },
+        "event_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "first_seq": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_seq": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sequence_gaps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sequence_scope": {
+          "const": "recorder-session"
+        },
+        "ordering": {
+          "const": "local-order-does-not-prove-causality"
+        },
+        "loss": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "known_dropped",
+            "unknown_loss",
+            "details"
+          ],
+          "properties": {
+            "known_dropped": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "unknown_loss": {
+              "type": "boolean"
+            },
+            "details": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1
+              },
+              "maxItems": 32
+            }
+          }
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "basis",
+        "resources"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "complete",
+            "failed",
+            "unknown",
+            "not-applicable"
+          ]
+        },
+        "basis": {
+          "enum": [
+            "measured",
+            "student-declared",
+            "external-declared",
+            "fixture",
+            "unknown"
+          ]
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "id",
+              "state",
+              "basis",
+              "detail"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "process",
+                  "frida-session",
+                  "adb-forward",
+                  "control-socket",
+                  "other"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              "state": {
+                "enum": [
+                  "released",
+                  "failed",
+                  "unknown"
+                ]
+              },
+              "basis": {
+                "enum": [
+                  "measured",
+                  "student-declared",
+                  "external-declared",
+                  "fixture",
+                  "unknown"
+                ]
+              },
+              "detail": {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1
+              }
+            }
+          },
+          "maxItems": 128
+        }
+      }
+    },
+    "research": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capture_location",
+        "contributions"
+      ],
+      "properties": {
+        "capture_location": {
+          "enum": [
+            "none",
+            "local-direct-provider",
+            "course-gateway",
+            "mixed"
+          ]
+        },
+        "contributions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "provider",
+              "model",
+              "capture_location",
+              "tool_names",
+              "file"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$(?![\\s\\S])"
+              },
+              "provider": {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              "model": {
+                "type": "string",
+                "maxLength": 150,
+                "minLength": 1
+              },
+              "capture_location": {
+                "enum": [
+                  "local-direct-provider",
+                  "course-gateway",
+                  "external-declared"
+                ]
+              },
+              "tool_names": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                "maxItems": 64
+              },
+              "file": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_][A-Za-z0-9._/-]{0,199}$(?![\\s\\S])"
+              }
+            }
+          },
+          "maxItems": 64
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection",
+        "sensitive_content_review",
+        "publication",
+        "training_admission"
+      ],
+      "properties": {
+        "projection": {
+          "enum": [
+            "selected",
+            "fixture"
+          ]
+        },
+        "sensitive_content_review": {
+          "enum": [
+            "not-reviewed",
+            "student-reviewed",
+            "fixture-reviewed"
+          ]
+        },
+        "publication": {
+          "const": "private"
+        },
+        "training_admission": {
+          "const": "not-requested"
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "role",
+          "size",
+          "sha256",
+          "event_count",
+          "first_seq",
+          "last_seq"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_][A-Za-z0-9._/-]{0,199}$(?![\\s\\S])"
+          },
+          "role": {
+            "enum": [
+              "events",
+              "hook-source",
+              "static-evidence",
+              "research"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 16777216
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$(?![\\s\\S])"
+          },
+          "event_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "first_seq": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_seq": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "maxItems": 256
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:jeeves:run-bundle:v1",
+  "title": "Jeeves canonical closed run-bundle v1",
+  "description": "manifest.json is the immutable root. Validate the event schema and the bundle validator's semantic/path/hash/size rules as well as this JSON Schema. This is evidence declared by its producer, not authenticated ownership, scientific truth, publication, or training admission. No APK/JDB/key/log belongs in this fixture or a software release."
+}

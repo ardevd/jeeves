@@ -1,0 +1,14 @@
+{
+  "name": "jeeves-workbench-web",
+  "private": true,
+  "type": "module",
+  "description": "Workbench frontend — TypeScript sources in src/, compiled to js/ (served from disk by the backend)",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

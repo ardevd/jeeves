@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<!--
+  Mockup S — Strings view (full-table surface)
+  Same shell as Mockup A2 (target strip, breadcrumb, activity rail, status bar);
+  the center surface is the maximized DEX strings table — no editor, no dock.
+  Self-contained: inline CSS + JS, no external dependencies, no network requests.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>64 65 78 0a 30 33 35 00 — workbench</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='12'%20fill='%230c0e10'/%3E%3Crect%20x='1.5'%20y='1.5'%20width='61'%20height='61'%20rx='10.5'%20fill='none'%20stroke='%2327322c'/%3E%3Ctext%20x='32'%20y='28'%20font-family='monospace'%20font-size='12'%20fill='%233fb950'%20text-anchor='middle'%20letter-spacing='1'%3E64%2065%2078%3C/text%3E%3Ctext%20x='32'%20y='46'%20font-family='monospace'%20font-size='12'%20fill='%233fb950'%20text-anchor='middle'%20letter-spacing='1'%20opacity='.75'%3E0a%2030%2035%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg0:#101214; --bg1:#15181b; --bg2:#1a1e22; --bg3:#20252a; --bg4:#262c32;
+  --border:#272c31; --border-soft:#20252a;
+  --text:#c9d1d9; --text-dim:#7d8590; --text-faint:#545d66;
+  --accent:#2dd4bf; --accent-dim:#134e4a; --accent-glow:rgba(45,212,191,.14);
+  --blue:#58a6ff; --purple:#d2a8ff; --orange:#ffa657; --yellow:#e3b341;
+  --red:#f47067; --green:#7ee787; --pink:#f778ba;
+  --agent:#b892f6; --agent-bg:rgba(184,146,246,.10);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:12.5px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:var(--sans);background:var(--bg0);color:var(--text);
+  overflow:hidden;display:flex;flex-direction:column;font-size:12.5px;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--accent-dim)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#2c333a;border-radius:5px;border:2px solid var(--bg1)}
+::-webkit-scrollbar-track{background:transparent}
+kbd{
+  font-family:var(--mono);font-size:10px;color:var(--text-dim);
+  background:var(--bg2);border:1px solid var(--border);border-bottom-width:2px;
+  border-radius:4px;padding:0 4px;line-height:15px;display:inline-block;white-space:nowrap;
+}
+.icn{font-family:var(--mono);font-style:normal;font-size:15px;line-height:1}
+.dirtydot{width:7px;height:7px;border-radius:50%;background:var(--orange);display:inline-block}
+
+/* ============ TARGET STRIP ============ */
+#targets{
+  height:32px;min-height:32px;background:#0c0e10;border-bottom:1px solid var(--border);
+  display:flex;align-items:stretch;padding:0 8px;gap:2px;overflow-x:auto;
+}
+.tchip{
+  display:flex;align-items:center;gap:7px;padding:0 12px;margin-top:5px;
+  font-family:var(--mono);font-size:11px;color:var(--text-dim);cursor:pointer;white-space:nowrap;
+  background:var(--bg1);border:1px solid var(--border-soft);border-bottom:none;border-radius:7px 7px 0 0;
+}
+.tchip:hover{color:var(--text)}
+.tchip.active{background:var(--bg0);color:var(--text);border-color:var(--border);box-shadow:inset 0 2px 0 var(--accent);position:relative}
+.tchip.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--bg0)}
+.tchip .ft{font-size:11px}
+.eng{font-size:8.5px;letter-spacing:.06em;border-radius:3px;padding:1px 5px;font-weight:700}
+.eng.jeb{background:rgba(45,212,191,.14);color:var(--accent);border:1px solid rgba(45,212,191,.3)}
+.eng.jadx{background:rgba(255,166,87,.12);color:var(--orange);border:1px solid rgba(255,166,87,.3)}
+.eng.ida{background:rgba(88,166,255,.12);color:var(--blue);border:1px solid rgba(88,166,255,.3)}
+.tchip .adot{width:6px;height:6px;border-radius:50%;background:var(--agent);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.tchip .ddev{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.tchip.add{border-style:dashed;color:var(--text-faint);background:transparent}
+.tchip.add:hover{color:var(--accent);border-color:var(--accent-dim)}
+
+/* ============ TOP BAR ============ */
+#topbar{
+  height:42px;min-height:42px;background:var(--bg1);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;padding:0 12px;
+}
+.locbar{
+  display:flex;align-items:center;gap:5px;min-width:0;flex:0 2 auto;overflow:hidden;
+  font-family:var(--mono);font-size:11.5px;
+}
+.lseg{
+  color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;
+  cursor:pointer;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:5px;flex:0 1 auto;
+}
+.lseg:hover{background:var(--bg3);color:var(--text)}
+.lseg.tgt{background:var(--accent-glow);color:var(--accent);border:1px solid rgba(45,212,191,.25);flex:none}
+.lseg.cur{color:var(--text);font-weight:600;flex:none}
+.lseg.flash{background:var(--accent-dim);color:#99f6e4}
+.lsep{color:var(--text-faint);font-size:10px;flex:none}
+.navhist{display:flex;align-items:center;gap:2px;margin-left:4px}
+.navhist button{
+  background:transparent;border:1px solid transparent;color:var(--text-dim);border-radius:5px;
+  width:24px;height:24px;cursor:pointer;font-size:13px;
+}
+.navhist button:hover{background:var(--bg3);color:var(--text)}
+.crumbs{
+  display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:11px;color:var(--text-dim);
+  padding:3px 8px;border-radius:5px;background:var(--bg2);border:1px solid var(--border-soft);
+}
+.crumbs b{color:var(--text);font-weight:600}
+.crumbs .sep{color:var(--text-faint)}
+.jumpbox{
+  flex:0 1 420px;margin:0 auto;display:flex;align-items:center;gap:8px;
+  background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;
+  color:var(--text-faint);font-family:var(--mono);font-size:11.5px;cursor:text;
+}
+.jumpbox:hover{border-color:#31383f}
+.jumpbox .grow{flex:1}
+.proj{
+  display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:6px;padding:4px 9px;font-size:11.5px;color:var(--text);cursor:pointer;
+}
+.proj .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.proj .chev{color:var(--text-faint);font-size:9px}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);
+  color:var(--text);border-radius:6px;padding:4px 10px;font-size:11.5px;cursor:pointer;font-family:var(--sans);
+}
+.btn:hover{background:var(--bg3)}
+.btn.primary{background:var(--accent-dim);border-color:#155e57;color:#99f6e4}
+.btn.primary:hover{background:#165e56}
+
+/* ============ ACTIVITY RAIL ============ */
+#activity{
+  width:48px;min-width:48px;background:var(--bg1);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;padding-top:6px;gap:2px;
+}
+.actbtn{
+  width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  color:var(--text-faint);cursor:pointer;position:relative;font-size:17px;border:none;background:transparent;
+}
+.actbtn:hover{color:var(--text);background:var(--bg3)}
+.actbtn.active{color:var(--accent);background:var(--accent-glow)}
+.actbtn.active::before{content:"";position:absolute;left:-4px;top:8px;bottom:8px;width:2px;background:var(--accent);border-radius:2px}
+.actbtn .badge{
+  position:absolute;top:3px;right:3px;min-width:14px;height:14px;border-radius:7px;background:var(--accent-dim);
+  color:#99f6e4;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0 3px;
+}
+.actbtn .badge.agent{background:var(--agent);color:#1b1030}
+#activity .spacer{flex:1}
+
+/* ============ STRINGS SURFACE ============ */
+#main{flex:1;display:flex;min-height:0}
+#surface{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg0)}
+#toolbar{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;
+  background:var(--bg1);border-bottom:1px solid var(--border);
+}
+.filter{
+  flex:0 1 300px;min-width:200px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;
+  display:flex;align-items:center;gap:6px;padding:4px 8px;
+}
+.filter:focus-within{border-color:var(--accent-dim)}
+.filter input{
+  background:transparent;border:none;outline:none;color:var(--text);font-family:var(--mono);
+  font-size:11.5px;width:100%;
+}
+.filter input::placeholder{color:var(--text-faint)}
+.chipbar{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.chipbar .clabel{font-size:10px;color:var(--text-faint);letter-spacing:.08em;text-transform:uppercase;margin-right:2px}
+.tchipf{
+  font-family:var(--mono);font-size:10px;border-radius:10px;padding:2px 8px;cursor:pointer;
+  border:1px solid var(--border);color:var(--text-faint);background:var(--bg2);user-select:none;
+}
+.tchipf:hover{color:var(--text)}
+.tchipf.on{color:var(--text);border-color:currentColor;background:rgba(255,255,255,.04)}
+.tgl{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);cursor:pointer;user-select:none;white-space:nowrap}
+.tgl .sw{width:22px;height:12px;border-radius:6px;background:var(--bg3);position:relative;flex:none;transition:background .15s}
+.tgl .sw::after{content:"";position:absolute;left:1.5px;top:1.5px;width:9px;height:9px;border-radius:50%;background:var(--text-faint);transition:all .15s}
+.tgl.on{color:var(--text)}
+.tgl.on .sw{background:var(--accent-dim)}
+.tgl.on .sw::after{left:11px;background:var(--accent)}
+#rescount{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--text-faint);white-space:nowrap}
+#rescount b{color:var(--text-dim);font-weight:600}
+
+#tablewrap{flex:1;overflow:auto;min-height:0}
+#strtable{width:100%;border-collapse:collapse;font-size:12px}
+#strtable th{
+  text-align:left;color:var(--text-faint);font-weight:600;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  padding:7px 12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg1);z-index:2;
+  white-space:nowrap;user-select:none;
+}
+#strtable th .arr{color:var(--accent);font-size:9px;margin-left:3px}
+#strtable th.num,#strtable td.num{text-align:right;font-family:var(--mono)}
+#strtable td{padding:4px 12px;border-bottom:1px solid var(--border-soft);white-space:nowrap}
+#strtable tbody tr{cursor:pointer}
+#strtable tbody tr:hover td{background:var(--bg2)}
+#strtable tbody tr.sel td{background:var(--accent-glow);box-shadow:inset 2px 0 0 var(--accent)}
+#strtable tbody tr.jumped td{background:rgba(88,166,255,.10)}
+#strtable tbody tr.jumped:hover td{background:rgba(88,166,255,.14)}
+#strtable tbody tr.jumped td:first-child{box-shadow:inset 2px 0 0 var(--blue)}
+#strtable tbody tr.flashrow td{background:var(--accent-dim)}
+td.v{max-width:520px;overflow:hidden;text-overflow:ellipsis}
+td.v .q{color:var(--text-faint)}
+td.v .sv{color:#a5d6ff;font-family:var(--mono);font-size:11.5px}
+td.v .unr{color:var(--red);font-size:9px;margin-left:7px;border:1px solid rgba(244,112,103,.35);border-radius:3px;padding:0 4px;font-family:var(--mono)}
+td.xr{color:var(--text-dim);font-size:11.5px}
+td.ref{font-family:var(--mono);font-size:11px;color:var(--text-dim);max-width:260px;overflow:hidden;text-overflow:ellipsis}
+td.ref .rc{color:var(--blue)}
+.jtag{
+  font-family:var(--mono);font-size:9px;color:var(--blue);border:1px solid rgba(88,166,255,.4);
+  border-radius:3px;padding:0 4px;margin-left:7px;
+}
+
+/* type chips (table + preview + toolbar share tints) */
+.tyc{
+  font-family:var(--mono);font-size:9.5px;border-radius:3px;padding:1px 6px;margin-right:4px;
+  border:1px solid;white-space:nowrap;
+}
+.tyc.URL{color:var(--blue);border-color:rgba(88,166,255,.35);background:rgba(88,166,255,.07)}
+.tyc.crypto{color:var(--purple);border-color:rgba(210,168,255,.35);background:rgba(210,168,255,.07)}
+.tyc.intent{color:var(--green);border-color:rgba(126,231,135,.35);background:rgba(126,231,135,.07)}
+.tyc.permission{color:var(--yellow);border-color:rgba(227,179,65,.35);background:rgba(227,179,65,.07)}
+.tyc.content-uri{color:var(--orange);border-color:rgba(255,166,87,.35);background:rgba(255,166,87,.07)}
+.tyc.file-path{color:var(--accent);border-color:rgba(45,212,191,.35);background:rgba(45,212,191,.07)}
+.tyc.base64\?{color:var(--pink);border-color:rgba(247,120,186,.35);background:rgba(247,120,186,.07)}
+.tyc.plain{color:var(--text-dim);border-color:var(--border);background:var(--bg2)}
+.tyc.obf{color:var(--red);border-color:rgba(244,112,103,.35);background:rgba(244,112,103,.07)}
+.tyc.unc{border-style:dashed}
+.tyc{cursor:help}
+.info-hint{
+  font-size:10.5px;color:var(--text-faint);cursor:help;white-space:nowrap;
+  border-bottom:1px dotted var(--text-faint);padding-bottom:1px;
+}
+.info-hint:hover{color:var(--text-dim)}
+
+/* ============ PREVIEW PANEL ============ */
+#preview{
+  width:320px;min-width:320px;background:var(--bg1);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;
+}
+.pv-head{
+  padding:10px 14px 6px;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--text-dim);
+  text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;
+}
+.pv-head .pv-idx{font-family:var(--mono);font-weight:400;letter-spacing:0;text-transform:none;color:var(--text-faint)}
+.pv-value{
+  margin:2px 14px 10px;padding:8px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;
+  font-family:var(--mono);font-size:11.5px;color:#a5d6ff;word-break:break-all;line-height:1.55;max-height:130px;overflow-y:auto;
+}
+.pv-chips{padding:0 14px 10px}
+.pv-sec{
+  padding:8px 14px 4px;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--text-dim);
+  text-transform:uppercase;border-top:1px solid var(--border-soft);display:flex;justify-content:space-between;
+}
+.pv-sec .n{font-family:var(--mono);font-weight:400;color:var(--text-faint)}
+.pv-x{padding:5px 14px;font-family:var(--mono);font-size:11px;cursor:pointer;border-left:2px solid transparent}
+.pv-x:hover{background:var(--bg2)}
+.pv-x .from{color:var(--blue)}
+.pv-x .meta{color:var(--text-faint);font-size:10px;margin-top:1px}
+#pv-jump{margin:12px 14px 14px;justify-content:center}
+.pv-empty{padding:24px 14px;color:var(--text-faint);font-size:11.5px;text-align:center}
+
+/* ============ STATUS BAR ============ */
+#status{
+  height:24px;min-height:24px;background:var(--bg1);border-top:1px solid var(--border);
+  display:flex;align-items:center;padding:0 10px;gap:14px;font-size:10.5px;color:var(--text-dim);
+  font-family:var(--mono);
+}
+.st{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.st .heapbar{width:52px;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.st .heapbar i{display:block;height:100%;background:var(--yellow)}
+.spinner{width:9px;height:9px;border:1.5px solid var(--accent-dim);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.agentchip{
+  display:flex;align-items:center;gap:6px;background:var(--agent-bg);border:1px solid rgba(184,146,246,.3);
+  color:var(--agent);border-radius:10px;padding:1px 9px;font-size:10px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.follow{display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:auto}
+.follow .sw{width:22px;height:12px;border-radius:6px;background:var(--accent-dim);position:relative}
+.follow .sw::after{content:"";position:absolute;right:1.5px;top:1.5px;width:9px;height:9px;border-radius:50%;background:var(--accent)}
+</style>
+</head>
+<body>
+
+<!-- ================= TARGET STRIP ================= -->
+<div id="targets">
+  <div class="tchip active" title="gmail.apk · JEB — switch ⌘1">
+    <span class="ft" style="color:var(--orange)">▣</span> gmail.apk <span class="eng jeb">JEB</span> <span class="dirtydot"></span>
+  </div>
+  <div class="tchip" title="gmail.apk · JADX — switch ⌘2 · read-only · sidecar names">
+    <span class="ft" style="color:var(--orange)">▣</span> gmail.apk <span class="eng jadx">JADX</span>
+  </div>
+  <div class="tchip" title="libgmail.so · IDA — switch ⌘3 · agent active">
+    <span class="ft" style="color:var(--blue)">◈</span> libgmail.so <span class="eng ida">IDA</span> <span class="adot"></span>
+  </div>
+  <div class="tchip" title="wallet.apk · JADX — switch ⌘4 · device attached: pixel-7">
+    <span class="ft" style="color:var(--orange)">▣</span> wallet.apk <span class="eng jadx">JADX</span> <span class="ddev"></span>
+  </div>
+  <div class="tchip add" title="Open target…">+</div>
+</div>
+
+<!-- ================= TOP BAR ================= -->
+<div id="topbar">
+  <nav class="locbar" title="Current location — hierarchy, not history">
+    <span class="lseg tgt"><span class="eng jeb">JEB</span>gmail.apk</span><span class="lsep">›</span>
+    <span class="lseg cur">DEX strings</span>
+  </nav>
+  <div class="navhist" title="Navigation history">
+    <button title="Back (Alt+←)">‹</button>
+    <button title="Forward (Alt+→)">›</button>
+  </div>
+  <div class="crumbs" title="Navigation history · Alt+← / Alt+→">
+    <span>sync.c</span><span class="sep">→</span><span>decryptPayload</span><span class="sep">→</span><span><b>strings</b></span><span class="sep">▾</span>
+  </div>
+  <div class="jumpbox" title="Jump anywhere">
+    <span style="color:var(--accent)">➜</span>
+    <span class="grow">Jump to class, method, string, offset…</span>
+    <kbd>G</kbd>
+  </div>
+  <div class="proj" title="Project">
+    <span class="dot"></span> gmail_9.41.apk <span class="chev">▾</span>
+  </div>
+  <button class="btn primary" title="Save project (⌘S)"><span class="dirtydot"></span> Save</button>
+  <button class="btn" title="More actions">⋯</button>
+</div>
+
+<!-- ================= MAIN ================= -->
+<div id="main">
+
+  <!-- activity rail -->
+  <div id="activity">
+    <button class="actbtn" title="Explorer"><i class="icn">⛁</i></button>
+    <button class="actbtn" title="Search (⌘⇧F)"><i class="icn">⌕</i></button>
+    <button class="actbtn active" title="Strings"><i class="icn">❝</i></button>
+    <button class="actbtn" title="Bookmarks &amp; Tags"><i class="icn">⚑</i><span class="badge">14</span></button>
+    <button class="actbtn" title="Runs — dynamic analysis"><i class="icn">▶</i></button>
+    <button class="actbtn" title="Agents"><i class="icn">🤖</i><span class="badge agent">2</span></button>
+    <div class="spacer"></div>
+    <button class="actbtn" title="Settings"><i class="icn">⚙</i></button>
+  </div>
+
+  <!-- strings surface -->
+  <div id="surface">
+    <div id="toolbar">
+      <div class="filter"><span style="color:var(--text-faint)">⌕</span><input id="filter" placeholder="filter strings…  (% regex)" spellcheck="false"></div>
+      <div class="chipbar" id="chipbar"><span class="clabel">type</span></div>
+      <span class="tgl" id="tgl-unreach"><span class="sw"></span> Unreachable only</span>
+      <span class="tgl" id="tgl-reach"><span class="sw"></span> reachable from selection</span>
+      <span id="rescount"><b>1,204</b> strings · <b id="shown">0</b> shown</span>
+      <span class="info-hint" title="Two-layer classifier — (1) lexical: format regexes, crypto-algorithm dictionary, base64/hex charset+entropy. (2) usage: xref analysis, e.g. arg 0 of Cipher.getInstance ⇒ crypto, arg of Uri.parse ⇒ URL. Regex-only guesses carry '?' and dashed chips.">ⓘ classification</span>
+      <button class="btn" title="Export filtered strings as JSON/CSV">⤓ Export</button>
+    </div>
+    <div id="tablewrap">
+      <table id="strtable">
+        <thead>
+          <tr>
+            <th>value <span class="arr">▾</span></th>
+            <th>type</th>
+            <th class="num">xrefs <span class="arr">▴</span></th>
+            <th>first referrer</th>
+          </tr>
+        </thead>
+        <tbody id="strbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- preview panel -->
+  <aside id="preview">
+    <div class="pv-head"><span>String</span><span class="pv-idx" id="pv-idx">—</span></div>
+    <div class="pv-value" id="pv-value"></div>
+    <div class="pv-chips" id="pv-chips"></div>
+    <div class="pv-sec"><span>Cross-references</span><span class="n" id="pv-count"></span></div>
+    <div id="pv-xrefs"></div>
+    <button class="btn primary" id="pv-jump">Jump to first use ↵</button>
+  </aside>
+</div>
+
+<!-- ================= STATUS BAR ================= -->
+<div id="status">
+  <span class="st" title="Decompiled classes">◈ 18,204 classes</span>
+  <span class="st" title="Decompiler engine">jadx 1.5.1-dev · jeb-bridge</span>
+  <span class="st" title="Target heap — gmail.apk·JEB"><span class="heapbar"><i style="width:52%"></i></span> heap 3.2g</span>
+  <span class="st" title="Global ceiling — 4 targets, 9.1 of 24 GB"><span class="heapbar" style="width:64px"><i style="width:38%;background:var(--red)"></i></span> Σ 9.1g / 24g</span>
+  <span class="st" title="Indexing strings…"><span class="spinner"></span> indexing</span>
+  <span class="st" title="Unsaved changes"><span class="dirtydot"></span> unsaved</span>
+  <span class="agentchip" title="Agent activity">🤖 agent reviewing <b>&nbsp;gmail.apk :: sync.c</b></span>
+  <span class="follow" title="Follow live runtime events">Follow <span class="sw"></span></span>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---- data ---- */
+  var TYPES = ["URL","crypto","intent","permission","content-uri","file-path","base64?","plain","obf"];
+  var ROWS = [
+    {v:"https://mail.google.com/sync/v2", t:["URL"], x:14, r:"sync.c.onMessage",
+     why:"url · lexical: ^https?:// · usage-confirmed: arg of Uri.parse (2 call sites)"},
+    {v:"AES/GCM/NoPadding", t:["crypto"], x:6, r:"sync.c.decryptPayload", jumped:true,
+     xl:[["sync.c.decryptPayload","L43"],["sync.e.rotateKey","L61"],["a.a.a.k.a","L9 · lowConf"]],
+     why:"crypto · usage-confirmed: arg 0 of Cipher.getInstance in c.decryptPayload (3 call sites)"},
+    {v:"invite.v2", t:["plain"], x:3, r:"sync.c.onMessage",
+     why:"plain · lexical: no pattern match · usage: topic compared via String.equals in c.onMessage"},
+    {v:"thread_id", t:["plain"], x:9, r:"provider.g.a",
+     why:"plain · usage: JSON key, arg of JSONObject.getString (4 sites)"},
+    {v:"android.permission.READ_CONTACTS", t:["permission"], x:2, r:"AndroidManifest",
+     why:"permission · lexical: manifest constant"},
+    {v:"libgmail.so", t:["file-path"], x:4, r:"a.a.a.k.<clinit>",
+     why:"file-path · lexical: .so suffix · usage-confirmed: arg of System.loadLibrary"},
+    {v:"-----BEGIN CERTIFICATE-----", t:["crypto"], x:1, r:"a.a.a.k.a", unreach:true,
+     why:"crypto · lexical: PEM header"},
+    {v:"SHA-256", t:["crypto"], x:5, r:"sync.e.b",
+     why:"crypto · lexical: crypto-algorithm dictionary · usage-confirmed: arg of MessageDigest.getInstance"},
+    {v:"content://com.google.android.gm.provider/", t:["content-uri"], x:11, r:"provider.g.onCreate",
+     why:"content-uri · lexical: ^content:// · usage-confirmed: arg of Uri.parse"},
+    {v:"gemini-classify", t:["intent"], x:2, r:"ai.b.a",
+     why:"intent · usage-confirmed: Intent action string in ai.b.a"},
+    {v:"a3F9k==", t:["base64?"], x:1, r:"b.send", unreach:true, unc:true,
+     why:"base64? · lexical only: charset+len+entropy 4.7 — unconfirmed"},
+    {v:"ࠀ؋ᾎ", t:["obf"], x:1, r:"b.a", unc:true,
+     why:"obf · lexical only: non-printable / high-entropy 5.9 — unconfirmed"},
+    {v:"x-gm-device-id", t:["plain"], x:3, r:"sync.d.a",
+     why:"plain · usage: HTTP header name in sync.d.a"},
+    {v:"https://oauth2.googleapis.com/token", t:["URL"], x:7, r:"gms.auth.a",
+     why:"url · lexical: ^https?:// · usage-confirmed: arg of Uri.parse"},
+    {v:"RSASSA-PSS", t:["crypto"], x:1, r:"a.a.a.k.b",
+     why:"crypto · lexical: crypto-algorithm dictionary"},
+    {v:"com.google.android.gm.intent.SYNC", t:["intent"], x:4, r:"MailSyncService.onStartCommand",
+     why:"intent · lexical: package-scoped action name · usage-confirmed: Intent action in onStartCommand"},
+    {v:"/data/data/com.google.android.gm/keystore", t:["file-path"], x:2, r:"provider.g.b",
+     why:"file-path · lexical: ^/data/data/ absolute path"},
+    {v:"sync_key", t:["plain"], x:3, r:"sync.c.<init>",
+     why:"plain · usage: SharedPreferences key in c.<init>"},
+    {v:"decrypt failed, seq=%d", t:["plain"], x:1, r:"sync.c.decryptPayload",
+     why:"plain · usage: format string, arg of Log.e"},
+    {v:"UTF-8", t:["plain"], x:22, r:"sync.c.decryptPayload",
+     why:"plain · lexical: charset name · usage: arg of String.<init>"},
+    {v:"android.intent.action.BOOT_COMPLETED", t:["intent"], x:1, r:"BootReceiver.onReceive",
+     why:"intent · lexical: manifest constant"},
+    {v:"https://mail.google.com/sync/v3/pull", t:["URL"], x:5, r:"sync.c.<clinit>",
+     why:"url · lexical: ^https?:// · usage-confirmed: arg of HttpURLConnection open"},
+    {v:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", t:["base64?"], x:2, r:"gms.auth.b", unc:true,
+     why:"base64? · lexical only: charset+len+entropy 5.1, JWT-shaped header — unconfirmed"},
+    {v:"MD5", t:["crypto"], x:1, r:"a.a.a.q.a",
+     why:"crypto · lexical: crypto-algorithm dictionary — weak hash, flagged"},
+    {v:"conversation_view", t:["plain"], x:6, r:"ui.h.onBind",
+     why:"plain · usage: layout/view id in ui.h.onBind"},
+    {v:"-----BEGIN PRIVATE KEY-----", t:["crypto"], x:1, r:"a.a.a.k.c", unreach:true,
+     why:"crypto · lexical: PEM header — sensitive material"},
+    {v:"gmail-ls", t:["plain"], x:2, r:"sync.d.b",
+     why:"plain · usage: account-type string in sync.d.b"}
+  ];
+  var XREF_POOL = [
+    "MailSyncService.onStartCommand","MessageSyncHandler.onMessage","provider.g.a",
+    "sync.d.a","BootReceiver.onReceive","a.a.a.k.<clinit>","gms.auth.a","sync.e.rotateKey"
+  ];
+
+  /* ---- state ---- */
+  var activeTypes = { "crypto":true, "URL":true };
+  var unreachOnly = false;
+  var selIdx = -1;
+
+  var tbody = document.getElementById("strbody");
+  var shown = document.getElementById("shown");
+
+  function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+  function chipsFor(r){
+    return r.t.map(function(t){
+      return '<span class="tyc ' + t + (r.unc ? ' unc' : '') + '" title="' + esc(r.why || t) + '">' + t + '</span>';
+    }).join("");
+  }
+
+  function visible(r){
+    var anyType = Object.keys(activeTypes).length > 0;
+    if (anyType && !r.t.some(function(t){ return activeTypes[t]; })) return false;
+    if (unreachOnly && !r.unreach) return false;
+    return true;
+  }
+
+  function render(filter){
+    var q = (filter || "").toLowerCase();
+    tbody.innerHTML = "";
+    var n = 0;
+    ROWS.forEach(function(r, i){
+      if (!visible(r)) return;
+      if (q && r.v.toLowerCase().indexOf(q) === -1) return;
+      n++;
+      var tr = document.createElement("tr");
+      tr.setAttribute("data-i", i);
+      if (i === selIdx) tr.classList.add("sel");
+      if (r.jumped) tr.classList.add("jumped");
+      tr.innerHTML =
+        '<td class="v"><span class="q">"</span><span class="sv">' + esc(r.v) + '</span><span class="q">"</span>' +
+          (r.unreach ? '<span class="unr">unreach</span>' : '') +
+          (r.jumped ? '<span class="jtag">⇢ jumped</span>' : '') + '</td>' +
+        '<td>' + chipsFor(r) + '</td>' +
+        '<td class="num xr">' + r.x + '</td>' +
+        '<td class="ref"><span class="rc">' + esc(r.r) + '</span></td>';
+      tr.addEventListener("click", function(){ select(i); });
+      tr.addEventListener("dblclick", function(){ flash(tr); });
+      tbody.appendChild(tr);
+    });
+    shown.textContent = n;
+  }
+
+  function flash(tr){
+    tr.classList.add("flashrow");
+    setTimeout(function(){ tr.classList.remove("flashrow"); }, 220);
+  }
+
+  function select(i){
+    selIdx = i;
+    var r = ROWS[i];
+    tbody.querySelectorAll("tr").forEach(function(tr){
+      tr.classList.toggle("sel", +tr.getAttribute("data-i") === i);
+    });
+    document.getElementById("pv-idx").textContent = "dex_strings[" + (1000 + i) + "]";
+    document.getElementById("pv-value").textContent = r.v;
+    document.getElementById("pv-chips").innerHTML = chipsFor(r);
+    document.getElementById("pv-count").textContent = r.x + " total · 4 shown";
+    var xl = r.xl;
+    if (!xl){
+      xl = [[r.r, "L" + (8 + (i % 30))]];
+      var added = 0;
+      for (var k = 0; k < XREF_POOL.length && added < 3; k++){
+        if (XREF_POOL[k] !== r.r){
+          xl.push([XREF_POOL[k], "L" + (12 + ((i * 7 + k * 13) % 80))]);
+          added++;
+        }
+      }
+    }
+    document.getElementById("pv-xrefs").innerHTML = xl.map(function(e){
+      return '<div class="pv-x"><span class="from">' + esc(e[0]) + '</span> → ' + esc(e[1]) +
+             '<div class="meta">call site · gmail.apk·JEB</div></div>';
+    }).join("");
+  }
+
+  /* ---- type filter chips ---- */
+  var chipbar = document.getElementById("chipbar");
+  TYPES.forEach(function(t){
+    var c = document.createElement("span");
+    c.className = "tchipf" + (activeTypes[t] ? " on" : "");
+    c.textContent = t;
+    c.style.color = activeTypes[t] ? "var(--text)" : "";
+    c.addEventListener("click", function(){
+      if (activeTypes[t]) delete activeTypes[t]; else activeTypes[t] = true;
+      c.classList.toggle("on");
+      render(document.getElementById("filter").value);
+    });
+    chipbar.appendChild(c);
+  });
+
+  /* ---- filter input ---- */
+  document.getElementById("filter").addEventListener("input", function(){
+    render(this.value);
+  });
+
+  /* ---- toggles ---- */
+  document.getElementById("tgl-unreach").addEventListener("click", function(){
+    unreachOnly = !unreachOnly;
+    this.classList.toggle("on", unreachOnly);
+    render(document.getElementById("filter").value);
+  });
+  document.getElementById("tgl-reach").addEventListener("click", function(){
+    this.classList.toggle("on");
+  });
+
+  /* ---- Enter flashes selected row ---- */
+  document.addEventListener("keydown", function(e){
+    if (e.key === "Enter" && selIdx >= 0 && document.activeElement.id !== "filter"){
+      var tr = tbody.querySelector('tr[data-i="' + selIdx + '"]');
+      if (tr) flash(tr);
+    }
+  });
+
+  /* ---- target strip + breadcrumb + follow (same as workbench) ---- */
+  document.querySelectorAll("#targets .tchip:not(.add)").forEach(function(chip){
+    chip.addEventListener("click", function(){
+      document.querySelectorAll("#targets .tchip").forEach(function(c){ c.classList.remove("active"); });
+      chip.classList.add("active");
+    });
+  });
+  document.querySelectorAll(".locbar .lseg").forEach(function(seg){
+    seg.addEventListener("click", function(){
+      seg.classList.add("flash");
+      setTimeout(function(){ seg.classList.remove("flash"); }, 250);
+    });
+  });
+  document.querySelector(".follow").addEventListener("click", function(){
+    var sw = this.querySelector(".sw");
+    var on = sw.style.background !== "var(--bg3)";
+    sw.style.background = on ? "var(--bg3)" : "var(--accent-dim)";
+  });
+
+  /* ---- init: jumped-to row selected ---- */
+  render("");
+  select(1);
+})();
+</script>
+</body>
+</html>
