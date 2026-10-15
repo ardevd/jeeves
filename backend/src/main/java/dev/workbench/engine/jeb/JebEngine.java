@@ -6,6 +6,7 @@ import com.pnfsoftware.jeb.core.RuntimeProjectUtil;
 import com.pnfsoftware.jeb.core.output.text.IObjectLocation;
 import com.pnfsoftware.jeb.core.actions.ActionContext;
 import com.pnfsoftware.jeb.core.actions.ActionRenameData;
+import com.pnfsoftware.jeb.core.actions.ActionOverridesData;
 import com.pnfsoftware.jeb.core.actions.Actions;
 import com.pnfsoftware.jeb.core.output.text.ITextDocumentPart;
 import com.pnfsoftware.jeb.core.properties.IPropertyManager;
@@ -159,6 +160,9 @@ public final class JebEngine implements Engine, SearchIndex.Host {
         this.path = path;
         this.artifact = artifact;
         this.jdb2 = jdb2;
+        if (jdb2 != null && dev.workbench.engine.CheckpointedFileSave.marker(jdb2.toPath()).toFile().exists())
+            throw OpException.io("An interrupted database save has a recovery receipt. Check the previous process/lock and restore its verified checkpoint before opening: "
+                    + dev.workbench.engine.CheckpointedFileSave.marker(jdb2.toPath()), "target=" + id);
         this.engines = JebCore.engines();
         // the persisted gz corpus lives in the artifact sidecar (Workspace.sidecarFor
         // convention: <artifact>.workbench/); jdb2-opened targets anchor on the jdb2
@@ -195,6 +199,8 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                 int total = dirtyReplay.size();
                 int n = applyDirtyReplay();
                 recovered = n;
+                if (replayFailed > 0)
+                    throw new IllegalStateException("Recovery could not apply " + replayFailed + " history edit(s); the database was not saved. Preserve the checkpoint and history, correct the failed entries shown in the log, then reopen.");
                 if (freshAnalysis && replayPending) firstSaveAfterReplay();   // the database reaches the disk only now, with the history in it
                 replayPending = false;
                 if (closing || "closed".equals(state)) return;   // a close landed while the replay ran: it owns the end state
@@ -551,7 +557,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                 synchronized (OPEN_LOCK) {
                     requireRegistered("the first save");
                     for (IDexUnit dex : dexUnits) dex.notifyGenericChange();   // flush rename/comment metadata
-                    wrote = engines.saveProject(project.getKey(), jdb2.getAbsolutePath(), null, null);
+                    wrote = persistProjectWithCheckpoint();
                     if (wrote) {
                         recordKey(jdb2, project.getKey());
                         String h = sha1HexFile(jdb2);
@@ -786,7 +792,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                        save used to report ready with no jdb2 on disk — twin
                        protection off for that engine for its whole life */
                     requireRegistered("the first save");
-                    boolean wrote = engines.saveProject(project.getKey(), jdb2.getAbsolutePath(), null, null);
+                    boolean wrote = persistProjectWithCheckpoint();
                     if (!wrote)
                         throw new IllegalStateException("initial saveProject refused for " + jdb2
                                 + " — the analysis is not persisted; close and retry");
@@ -918,7 +924,13 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                                binding — the entry's newName is the joined argument names, never a name for the
                                METHOD (fix-review 2026-10-08 C1: replayed as a rename it renamed the method) */
                             List<Map<String, Object>> fwd = new ArrayList<>();
-                            if (e.get("changes") instanceof List<?> cl) for (Object o : cl) if (o instanceof Map<?, ?> ch) {
+                            if (e.get("parameterMutations") instanceof List<?> mutations) {
+                                for (Object mutation : mutations) if (mutation instanceof Map<?,?> row) {
+                                    Map<String,Object> copy = new LinkedHashMap<>();
+                                    for (Map.Entry<?,?> field : row.entrySet()) copy.put(String.valueOf(field.getKey()), field.getValue());
+                                    fwd.add(copy);
+                                }
+                            } else if (e.get("changes") instanceof List<?> cl) for (Object o : cl) if (o instanceof Map<?, ?> ch) {
                                 Map<String, Object> c = new LinkedHashMap<>();
                                 c.put("index", ch.get("index"));
                                 if (Boolean.TRUE.equals(ch.get("cleared"))) c.put("clear", true); else c.put("name", ch.get("newName"));
@@ -4529,6 +4541,45 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                 "symbol=" + addr + " name=" + wanted);
     }
 
+    /** JEB setName propagates through virtual definitions/overrides, including sibling
+     * implementations. Ask its published override action and traverse both directions;
+     * checking only the explicitly requested method permits a related-method overwrite. */
+    @Override
+    public List<Map<String, Object>> renameTargets(String symbol) throws OpException {
+        requireReady();
+        synchronized (this) {
+            Resolved selected = lookup(symbol);
+            if (selected.kind() != Kind.METHOD) return List.of(resolve(symbol));
+            IDexMethod first = findAnyMethod(selected.addr());
+            if (first == null) throw OpException.notFound("method not found: " + symbol, "target=" + id);
+            Map<String, IDexMethod> family = new LinkedHashMap<>();
+            java.util.ArrayDeque<IDexMethod> pending = new java.util.ArrayDeque<>();
+            family.put(first.getSignature(false), first); pending.add(first);
+            while (!pending.isEmpty()) {
+                IDexMethod method = pending.removeFirst();
+                IDexUnit dex = method.getDex();
+                ActionContext context = new ActionContext(dex, Actions.QUERY_OVERRIDES, method.getItemId(), method.getAddress());
+                ActionOverridesData data = new ActionOverridesData();
+                if (!dex.prepareExecution(context, data))
+                    throw OpException.busy("JEB could not determine the complete method rename family; no rename was applied", "symbol=" + method.getSignature(false));
+                var related = new ArrayList<com.pnfsoftware.jeb.core.units.code.ICodeItem>();
+                related.addAll(data.getParents()); related.addAll(data.getChildren());
+                for (var item : related) {
+                    if (!(item instanceof IDexMethod relative)) continue;
+                    if (family.putIfAbsent(relative.getSignature(false), relative) == null) pending.add(relative);
+                }
+            }
+            List<Map<String,Object>> out = new ArrayList<>();
+            for (IDexMethod method : family.values()) {
+                Map<String,Object> row = new LinkedHashMap<>();
+                row.put("origSig", method.getSignature(false)); row.put("addr", method.getAddress());
+                row.put("name", method.getName(true)); row.put("kind", "method");
+                out.add(row);
+            }
+            return out;
+        }
+    }
+
     @Override
     public Map<String, Object> rename(String symbol, String name, String actor) throws OpException {
         requireReady();
@@ -4542,6 +4593,13 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                 throw OpException.syntax("a constructor cannot be renamed (<init> / <clinit> are the class's own) — name the class instead",
                         "symbol=" + symbol);   // JEB refused it as "taken", which sent an agent looking for another name (Kimi test, 2026-09-20)
             java.util.Set<String> refClasses = referrerClasses(addr);   // captured BEFORE the rename shifts addrs
+            if (r.kind() == Kind.METHOD) {
+                for (Map<String,Object> relative : renameTargets(symbol)) {
+                    String relatedAddr = String.valueOf(relative.get("addr"));
+                    refClasses.add(classAddrOf(relatedAddr));
+                    refClasses.addAll(referrerClasses(relatedAddr));
+                }
+            }
             String old = null, newAddr = null;
             boolean done = false;
             for (IDexUnit dex : dexUnits) {
@@ -5204,6 +5262,28 @@ public final class JebEngine implements Engine, SearchIndex.Host {
         return new MethodUnit(r, cls, ju);
     }
 
+    private LocalRef selectedLocal(MethodUnit mu, String local) throws OpException {
+        List<LocalRef> refs = localRefs(mu.ju(), mu.cls(), mu.r().addr());
+        for (LocalRef ref : refs) if (local.equals(ref.shown())) return ref;
+        for (LocalRef ref : refs) if (local.equals(ref.ident())) return ref;
+        throw OpException.notFound("no local named '" + local + "' in " + mu.r().addr()
+                + " — use the name shown by the decompiler", "target=" + id);
+    }
+
+    @Override
+    public Map<String, Object> resolveLocal(String methodSymbol, String local) throws OpException {
+        requireReady();
+        if (local == null || local.isBlank()) throw OpException.syntax("local names the variable to resolve", "symbol=" + methodSymbol);
+        synchronized (this) {
+            MethodUnit mu = methodUnit(methodSymbol);
+            LocalRef ref = selectedLocal(mu, local);
+            IDexMethod method = findAnyMethod(mu.r().addr());
+            String originalMethod = method == null ? mu.r().addr() : method.getSignature(false);
+            return Map.of("name", ref.shown(), "originalMethod", originalMethod,
+                    "originalSymbol", originalMethod + "#local:" + Long.toUnsignedString(ref.itemId()));
+        }
+    }
+
     /** Rename a local variable or parameter of a method — JEB's RENAME action on the identifier's
      *  text item in the class's Java source unit (what the JEB client does from its Java view; the
      *  new name follows the identifier's definition, so every use in the method changes, and it
@@ -5218,14 +5298,8 @@ public final class JebEngine implements Engine, SearchIndex.Host {
         synchronized (this) {
             if (discarded) throw OpException.busy("this target is being closed with its edits discarded — rename refused", "target=" + id);
             MethodUnit mu = methodUnit(methodSymbol);
-            long itemId = -1;
-            /* the name AS RENDERED first (after a rename the AST identifier still answers its original
-               name while the text shows the current one — the undo path renames back), then the
-               identifier's own name */
-            for (LocalRef ref : localRefs(mu.ju(), mu.cls(), mu.r().addr()))
-                if (local.equals(ref.shown()) || local.equals(ref.ident())) { itemId = ref.itemId(); break; }
-            if (itemId < 0)
-                throw OpException.notFound("no local named '" + local + "' in " + mu.r().addr() + " — the name as the decompiled text shows it", "target=" + id);
+            LocalRef selected = selectedLocal(mu, local);
+            long itemId = selected.itemId();
             if (!renameIdentifier(mu.ju(), itemId, newName))
                 throw OpException.busy("rename refused by JEB: '" + local + "' → '" + newName + "' did not apply — the name is already taken in this method (or reserved)", "symbol=" + methodSymbol);
             dirty = true;
@@ -5237,7 +5311,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             out.put("newAddr", mu.r().addr());
             out.put("kind", "local");
             out.put("local", local);
-            out.put("oldName", local);
+            out.put("oldName", selected.shown());
             out.put("newName", newName);
             out.put("applied", true);
             out.put("actor", actor == null ? "human" : actor);
@@ -5446,11 +5520,16 @@ public final class JebEngine implements Engine, SearchIndex.Host {
 
     // ------------------------------------------------------------ persistence / close
 
+    /** Preserve JEB's native persistence path and lock. Saving to a temporary filename changes
+     * the SDK's lock ownership, so a verified checkpoint protects its in-place writer instead. */
+    private boolean persistProjectWithCheckpoint() throws Exception {
+        return dev.workbench.engine.CheckpointedFileSave.write(jdb2.toPath(), destination ->
+                engines.saveProject(project.getKey(), destination.toString(), null, null));
+    }
+
     /** Persist the project (renames + comments) to the .jdb2 — native persistence. */
-    /* a save in flight, for saveStatus(): JEB rewrites the jdb2 IN PLACE (truncate, then grow —
-       observed 2026-09-13 on the fixture: 6 MB → 17 MB over 0.5 s), so the file's current size
-       against its size before the write is a real progress figure. Volatile: saveStatus() must
-       answer while save() holds this engine's monitor and OPEN_LOCK. */
+    /* JEB rewrites its native path. A verified fsynced checkpoint protects the previous save;
+       progress still reads the current file while this engine's monitor is held. */
     private volatile long saveStartedAt;
     private volatile long saveExpectBytes;
     /* the outcome of the most recent save ({ok, at, ms, bytes, error?}) — an asynchronous save
@@ -5505,7 +5584,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                 try { requireRegistered("save"); }
                 catch (IllegalStateException e) { throw OpException.busy(e.getMessage(), "target=" + id); }
                 for (IDexUnit dex : dexUnits) dex.notifyGenericChange();   // flush rename/comment metadata
-                boolean ok = engines.saveProject(project.getKey(), jdb2.getAbsolutePath(), null, null);
+                boolean ok = persistProjectWithCheckpoint();
                 /* saved:false with ok:true made a torn registry indistinguishable
                    from a successful save — edits silently lost forever while the
                    GUI flashed success (review F1, observed live: mtime unchanged
@@ -5564,15 +5643,17 @@ public final class JebEngine implements Engine, SearchIndex.Host {
            search.reindex — start() refuses instead of resetting cancel=false
            over this call and building against the engine being torn down */
         searchIndex.kill();
+        RuntimeException closeFailure = null;
         try {
             if (ready && (dirty || decompDirty) && !discarded && !replayPending && jdb2 != null) {   // !replayPending: a half-replayed project is never written (see the field); !discarded: a DISCARD close never writes, even if a racing edit re-set dirty in the gap (review c7395d2 A1)
+                long started = System.currentTimeMillis();
                 try {
                     boolean saved;
                     synchronized (OPEN_LOCK) {   // same context-mutation serialization as doOpen
                         for (IDexUnit dex : dexUnits) dex.notifyGenericChange();
                         /* saveProject goes by KEY: when the key names another project (isRegistered),
                            "saving this target" would write that other project into this file */
-                        saved = isRegistered(project) && engines.saveProject(project.getKey(), jdb2.getAbsolutePath(), null, null);
+                        saved = isRegistered(project) && persistProjectWithCheckpoint();
                         if (saved) {
                             recordKey(jdb2, project.getKey());
                             String h = sha1HexFile(jdb2);
@@ -5583,17 +5664,15 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                         dirty = false;
                         clearNewDecomp();
                         searchIndex.recordJdb2Mtime(jdb2.lastModified());  // foreign-edit witness
+                        recordSave(true, started, null);
                     } else {
-                        /* a failed close-save means the jdb2 didn't get the edits —
-                           but they are NOT lost: the sidecar history replays them
-                           on the next open (applyDirtyReplay covers rename+comment,
-                           the only dirty-setters). Say that, not doom (review: the
-                           old line was accurate but alarmist for the same reason) */
-                        System.err.println("workbench: close-save REFUSED for " + name
-                                + " — " + jdb2.getAbsolutePath() + " not updated;"
-                                + " edits replay from history on the next open");
+                        closeFailure = new IllegalStateException("close-save refused for " + name + "; database unchanged; accepted edits remain in history");
+                        recordSave(false, started, closeFailure.getMessage());
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception failure) {
+                    closeFailure = new IllegalStateException("close-save failed for " + name + "; accepted edits remain in history", failure);
+                    recordSave(false, started, failure.toString());
+                }
             }
             /* snapshot the reference and unload under ONE lock hold — between a
                null-check outside and a getKey() inside, abortIfClosing can null
@@ -5616,6 +5695,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             codeStrings = null;
             subtypeIndex = null;
         }
+        if (closeFailure != null) throw closeFailure;
     }
 
     // ------------------------------------------------------------ forward call graph (lean, rename-safe)

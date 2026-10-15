@@ -54,6 +54,12 @@ public final class Ops {
             }
             return out;
         }));
+        // Read-only round barrier: HTTP disconnects do not imply completed engine work.
+        r.register(new Op("ops.active", "", false, Cost.cheap, req -> {
+            dev.workbench.registry.Dispatcher dispatcher = ws.agents().dispatcher();
+            if (dispatcher == null) throw OpException.busy("the dispatcher is not up yet", "ops.active");
+            return Map.of("observedAt", java.time.Instant.now().toString(), "calls", dispatcher.activeCalls());
+        }));
         // meta: the tool facade (dev.workbench.llm.ToolFacade) — the 24 tools an LLM sees,
         // each with a strict schema, the ops it routes to and whether the mission loop may call it
         r.register(new Op("ops.tools", "", false, Cost.cheap,
@@ -412,55 +418,67 @@ public final class Ops {
                symbol the review policy or the human-name protection speaks about; History records
                it (kind local) so it undoes and redoes like any rename. */
             if (req.str("local") != null && !req.str("local").isBlank()) {
-                /* an agent naming a FORMAL ARGUMENT: never over the analyst's mapping (that argument is theirs),
-                   and a name equal to a retained MethodParameters entry is recorded as such — the annotation
-                   is metadata, not a verified name (fix-review 2026-10-08 M5) */
-                Object retained = null;
-                Map<String, Object> argHit = null;
-                if (!"human".equals(EventBus.actorKind(req.actor()))) {
-                    try {
-                        Map<String, Object> raw = engine(ws, req).methodParameters(symbol, false);   // the cheap read: annotation + debug info
-                        List<?> an = raw.get("annotation") instanceof Map<?, ?> am && am.get("names") instanceof List<?> nl ? nl : List.of();
-                        if (an.contains(name)) retained = an.indexOf(name);
-                        List<Object> maps = ws.parameterMappings(ws.resolveTargetIdOrActive(tp), String.valueOf(raw.get("method")), String.valueOf(raw.get("original_method")));
-                        if (!maps.isEmpty()) {
-                            Map<String, Object> full = engine(ws, req).methodParameters(symbol, true);
-                            if (full.get("parameters") instanceof List<?> pl) for (Object o : pl) if (o instanceof Map<?, ?> pm && req.str("local").equals(pm.get("name"))) {
-                                for (Object mo : maps) if (mo instanceof Map<?, ?> mm && mm.get("changes") instanceof List<?> cl) for (Object co : cl)
-                                    if (co instanceof Map<?, ?> cm && String.valueOf(cm.get("index")).equals(String.valueOf(pm.get("index"))))
-                                        throw OpException.scope("argument " + pm.get("index") + " of " + raw.get("method") + " carries the analyst's mapping '" + pm.get("name") + "' (History " + mm.get("id") + ") — not an agent's to rename", "actor=" + req.actor());
-                                @SuppressWarnings("unchecked") Map<String, Object> hit = (Map<String, Object>) pm;
-                                argHit = hit;
+                String tid = ws.resolveTargetIdOrActive(tp);
+                return ws.withTargetWrite(tid, () -> {
+                    /* an agent naming a FORMAL ARGUMENT: never over the analyst's mapping (that argument is theirs),
+                       and a name equal to a retained MethodParameters entry is recorded as such — the annotation
+                       is metadata, not a verified name (fix-review 2026-10-08 M5) */
+                    Object retained = null;
+                    Map<String, Object> argHit = null;
+                    if (!"human".equals(EventBus.actorKind(req.actor()))) {
+                        try {
+                            Map<String, Object> raw = ws.engineFor(tid).methodParameters(symbol, false);   // the cheap read: annotation + debug info
+                            List<?> an = raw.get("annotation") instanceof Map<?, ?> am && am.get("names") instanceof List<?> nl ? nl : List.of();
+                            if (an.contains(name)) retained = an.indexOf(name);
+                            List<Object> maps = ws.parameterMappings(ws.resolveTargetIdOrActive(tp), String.valueOf(raw.get("method")), String.valueOf(raw.get("original_method")));
+                            if (!maps.isEmpty()) {
+                                Map<String, Object> full = ws.engineFor(tid).methodParameters(symbol, true);
+                                if (full.get("parameters") instanceof List<?> pl) for (Object o : pl) if (o instanceof Map<?, ?> pm && req.str("local").equals(pm.get("name"))) {
+                                    for (Object mo : maps) if (mo instanceof Map<?, ?> mm && mm.get("changes") instanceof List<?> cl) for (Object co : cl)
+                                        if (co instanceof Map<?, ?> cm && String.valueOf(cm.get("index")).equals(String.valueOf(pm.get("index"))))
+                                            throw OpException.scope("argument " + pm.get("index") + " of " + raw.get("method") + " carries the analyst's mapping '" + pm.get("name") + "' (History " + mm.get("id") + ") — not an agent's to rename", "actor=" + req.actor());
+                                    @SuppressWarnings("unchecked") Map<String, Object> hit = (Map<String, Object>) pm;
+                                    argHit = hit;
+                                }
                             }
-                        }
-                    } catch (OpException ex) { if ("E_SCOPE".equals(ex.code)) throw ex; }   // metadata this engine cannot read: the rename proceeds as before
-                }
-                Map<String, Object> res = engine(ws, req).renameLocal(symbol, req.str("local"), name, req.actor());
-                Map<String, Object> h = new LinkedHashMap<>();
-                h.put("op", "rename");
-                h.put("kind", "local");
-                h.put("actor", req.actor());
-                h.put("addr", res.get("addr"));
-                h.put("newAddr", res.get("addr"));
-                h.put("oldName", res.get("oldName"));
-                h.put("newName", res.get("newName"));
-                h.put("owner", historyOwner(res));
-                if (argHit != null) h.put("argument", argHit.get("index"));
-                if (retained != null) {
-                    h.put("matchesRetainedName", true); h.put("retainedEntry", retained);
-                    h.put("note", "equals entry " + retained + " of the method's retained MethodParameters — metadata, an unverified mapping");
-                    res.put("matchesRetainedName", true);
-                }
-                if (req.params().get("confidence") != null) h.put("confidence", req.params().get("confidence"));
-                ws.recordHistory(tp, h);
-                res.put("historyId", h.get("id"));
-                return res;
+                        } catch (OpException ex) { if ("E_SCOPE".equals(ex.code)) throw ex; }   // metadata this engine cannot read: the rename proceeds as before
+                    }
+                    Map<String, Object> localBefore = ws.engineFor(tid).resolveLocal(symbol, req.str("local"));
+                    String localIdentity = String.valueOf(localBefore.get("originalSymbol"));
+                    ws.renameCoordinator().check(tid, localIdentity, String.valueOf(localBefore.get("name")), req.actor(), req.str("expectedName"));
+                    Map<String, Object> res = ws.engineFor(tid).renameLocal(symbol, req.str("local"), name, req.actor());
+                    ws.renameCoordinator().renamed(tid, localIdentity, name, req.actor(), null);
+                    Map<String, Object> h = new LinkedHashMap<>();
+                    h.put("op", "rename");
+                    h.put("kind", "local");
+                    h.put("originalSymbol", localIdentity);
+                    h.put("originalMethod", localBefore.get("originalMethod"));
+                    h.put("actor", req.actor());
+                    h.put("addr", res.get("addr"));
+                    h.put("newAddr", res.get("addr"));
+                    h.put("oldName", res.get("oldName"));
+                    h.put("newName", res.get("newName"));
+                    h.put("owner", historyOwner(res));
+                    if (argHit != null) h.put("argument", argHit.get("index"));
+                    if (retained != null) {
+                        h.put("matchesRetainedName", true); h.put("retainedEntry", retained);
+                        h.put("note", "equals entry " + retained + " of the method's retained MethodParameters — metadata, an unverified mapping");
+                        res.put("matchesRetainedName", true);
+                    }
+                    if (req.params().get("confidence") != null) h.put("confidence", req.params().get("confidence"));
+                    try { ws.recordHistory(tid, h); }
+                    finally { ws.renameCoordinator().renamed(tid, localIdentity, name, req.actor(),
+                            h.get("id") == null ? null : String.valueOf(h.get("id"))); }
+                    res.put("historyId", h.get("id"));
+                    return res;
+                });
             }
             if ("agent".equals(EventBus.actorKind(req.actor()))) {                 // agents propose, humans dispose
                 Map<String, Object> body = new LinkedHashMap<>();
                 body.put("target", tp);
                 body.put("symbol", symbol);
                 body.put("newName", name);
+                if (req.str("expectedName") != null) body.put("expectedName", req.str("expectedName"));
                 try {
                     Map<String, Object> sym = engine(ws, req).resolve(symbol);
                     body.put("oldName", sym.get("name"));
@@ -472,44 +490,34 @@ public final class Ops {
                 if (req.params().get("confidence") != null) body.put("confidence", req.params().get("confidence"));
                 return ws.agents().propose("rename", body, req.actor());
             }
-            Map<String, Object> res = engine(ws, req).rename(symbol, name, req.actor());
-            if (Boolean.TRUE.equals(res.get("applied"))) {
-                Map<String, Object> h = new LinkedHashMap<>();
-                h.put("op", "rename");
-                h.put("actor", req.actor());
-                h.put("kind", res.get("kind"));
-                h.put("addr", res.get("addr"));
-                h.put("newAddr", res.get("newAddr"));
-                h.put("oldName", res.get("oldName"));
-                h.put("newName", res.get("newName"));
-                h.put("owner", historyOwner(res));
-                ws.recordHistory(tp, h);
-                res.put("historyId", h.get("id"));
-            }
-            return res;
+            return ws.renameSymbol(tp, symbol, name, req.actor(),
+                    req.params().get("confidence"), req.str("expectedName"));
         }));
         /* rename.revert {symbol}: back to the symbol's ORIGINAL dex name — the one restoration the
            Java-identifier rule must not block (an obfuscated "1cq" is a fine original and a refused
            new name). Validated against the dex, recorded in History like any rename (undo puts the
            analyst's name back). Humans only, like a rename. */
         r.register(new Op("rename.revert", "rename", true, Cost.cheap, req -> {
-            String tp = req.str("target");
-            analystOnly.check(req, "rename.revert", "an agent proposes a name through rename");
-            Map<String, Object> res = engine(ws, req).restoreOriginalName(req.require("symbol"), null, req.actor());
-            if (Boolean.TRUE.equals(res.get("applied"))) {
-                Map<String, Object> h = new LinkedHashMap<>();
-                h.put("op", "rename"); h.put("actor", req.actor()); h.put("kind", res.get("kind"));
-                h.put("addr", res.get("addr")); h.put("newAddr", res.get("newAddr"));
-                h.put("oldName", res.get("oldName")); h.put("newName", res.get("newName"));
-                /* the owner is the class as it is NOW: a reverted class answers to its original name, not to
-                   the analyst's addr the request named (the HISTORY row's click goes there) */
-                Map<String, Object> ownerSrc = new LinkedHashMap<>(res);
-                if ("class".equals(res.get("kind")) && res.get("newAddr") != null) { ownerSrc.put("addr", res.get("newAddr")); ownerSrc.remove("symbol"); }
-                h.put("owner", historyOwner(ownerSrc)); h.put("revert", true);
-                ws.recordHistory(tp, h);
-                res.put("historyId", h.get("id"));
-            }
-            return res;
+            String tp = ws.resolveTargetIdOrActive(req.str("target"));
+            return ws.withTargetWrite(tp, () -> {
+                analystOnly.check(req, "rename.revert", "an agent proposes a name through rename");
+                Map<String, Object> res = ws.engineFor(tp).restoreOriginalName(req.require("symbol"), null, req.actor());
+                if (Boolean.TRUE.equals(res.get("applied"))) {
+                    Map<String, Object> h = new LinkedHashMap<>();
+                    h.put("op", "rename"); h.put("actor", req.actor()); h.put("kind", res.get("kind"));
+                    h.put("addr", res.get("addr")); h.put("newAddr", res.get("newAddr"));
+                    h.put("oldName", res.get("oldName")); h.put("newName", res.get("newName"));
+                    /* the owner is the class as it is NOW: a reverted class answers to its original name, not to
+                       the analyst's addr the request named (the HISTORY row's click goes there) */
+                    Map<String, Object> ownerSrc = new LinkedHashMap<>(res);
+                    if ("class".equals(res.get("kind")) && res.get("newAddr") != null) { ownerSrc.put("addr", res.get("newAddr")); ownerSrc.remove("symbol"); }
+                    h.put("owner", historyOwner(ownerSrc)); h.put("revert", true);
+                    try { ws.recordHistory(tp, h); }
+                    finally { ws.rebuildRenameClaims(tp); }
+                    res.put("historyId", h.get("id"));
+                }
+                return res;
+            });
         }));
         /* code.params {symbol}: the retained parameter metadata of a METHOD — the dex's MethodParameters
            annotation verbatim and the debug_info names as separate sources, the current prototype and
@@ -559,20 +567,23 @@ public final class Ops {
                 if (req.params().get("confidence") != null) body.put("confidence", req.params().get("confidence"));
                 return ws.agents().propose("comment", body, req.actor());
             }
-            Map<String, Object> res = engine(ws, req).comment(symbol, text, req.actor());
-            if (Boolean.TRUE.equals(res.get("applied"))) {
-                Map<String, Object> h = new LinkedHashMap<>();
-                h.put("op", "comment");
-                h.put("actor", req.actor());
-                h.put("addr", res.get("addr"));
-                h.put("newAddr", res.get("addr"));
-                h.put("oldText", res.get("oldText"));
-                h.put("newText", text);
-                h.put("owner", historyOwner(res));
-                ws.recordHistory(tp, h);
-                res.put("historyId", h.get("id"));
-            }
-            return res;
+            String tid = ws.resolveTargetIdOrActive(tp);
+            return ws.withTargetWrite(tid, () -> {
+                Map<String, Object> res = ws.engineFor(tid).comment(symbol, text, req.actor());
+                if (Boolean.TRUE.equals(res.get("applied"))) {
+                    Map<String, Object> h = new LinkedHashMap<>();
+                    h.put("op", "comment");
+                    h.put("actor", req.actor());
+                    h.put("addr", res.get("addr"));
+                    h.put("newAddr", res.get("addr"));
+                    h.put("oldText", res.get("oldText"));
+                    h.put("newText", text);
+                    h.put("owner", historyOwner(res));
+                    ws.recordHistory(tid, h);
+                    res.put("historyId", h.get("id"));
+                }
+                return res;
+            });
         }));
         /* locals.auto {symbol: method, all?}: name the method's generated locals after their declared
            types (DownloadHelper v5 → downloadHelper, a second one downloadHelper_2); each rename is a
@@ -1575,6 +1586,7 @@ public final class Ops {
                         failed++;
                         row.put("status", "failed");
                         row.put("error", e.getMessage());
+                        row.put("errorDetails", e.toMap());
                     }
                     results.add(row);
                 }

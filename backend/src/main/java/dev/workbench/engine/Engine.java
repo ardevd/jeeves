@@ -194,8 +194,21 @@ public interface Engine {
     /** Cancel a background task by ticket (op.cancel). Returns true if something was cancelled. */
     default boolean cancelTask(String ticket) { return false; }
 
+    /** Symbols whose names change together. The selected symbol comes first; each row has
+     * stable origSig, current addr/name, and kind. Engines with virtual-method propagation
+     * must return the complete family so callers can check ownership before any mutation. */
+    default List<Map<String, Object>> renameTargets(String symbol) throws OpException {
+        return List.of(resolve(symbol));
+    }
+
     /** Write op — optional (cap `rename`). */
     Map<String, Object> rename(String symbol, String name, String actor) throws OpException;
+
+    /** Resolve a local's current display name and stable identity before a guarded write.
+     * Returns {name, originalSymbol, originalMethod}; identity must survive a display rename. */
+    default Map<String, Object> resolveLocal(String methodSymbol, String local) throws OpException {
+        throw OpException.unsupported("this engine cannot identify locals for a guarded rename", "symbol=" + methodSymbol);
+    }
 
     /** Rename a local variable or parameter (named by its current name) inside a method. Returns
      *  {addr (the method), kind: local, oldName, newName, applied}. Default: unsupported. */

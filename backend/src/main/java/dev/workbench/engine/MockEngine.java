@@ -262,7 +262,27 @@ public final class MockEngine implements Engine {
             default -> t.put("payhandler", node("PayHandler", "class",
                     "fqcn", "com.wallet.pay.PayHandler", "origName", "d"));
         }
-        return t;
+        // Original identities stay valid after a display rename, just as they do in JEB.
+        Map<String, Object> shown = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : t.entrySet()) {
+            @SuppressWarnings("unchecked") Map<String, Object> original = (Map<String, Object>) entry.getValue();
+            Map<String, Object> row = new LinkedHashMap<>(original);
+            String identity = String.valueOf(row.getOrDefault("fqcn", row.getOrDefault("addr",
+                    row.get("owner") == null ? row.get("name") : row.get("owner") + "." + row.get("name"))));
+            row.put("origSig", identity);
+            row.put("addr", identity);
+            row.put("originalDisplayName", original.get("name"));
+            String changed = renames.get(identity);
+            if (changed != null) {
+                row.put("name", changed);
+                row.put("renamed", true);
+                shown.put(normKey(changed), row);
+                if (row.get("owner") != null) shown.put(normKey(row.get("owner") + "." + changed), row);
+            }
+            shown.put(entry.getKey(), row);
+            shown.put(normKey(identity), row);
+        }
+        return shown;
     }
 
     private String normKey(String symbol) {
@@ -299,7 +319,7 @@ public final class MockEngine implements Engine {
         Map<String, Object> h = (Map<String, Object>) hit;
         Map<String, Object> out = new LinkedHashMap<>(h);
         out.put("target", target.id());
-        String comment = comments.get(String.valueOf(out.getOrDefault("fqcn", out.get("name"))));
+        String comment = comments.get(String.valueOf(out.get("origSig")));
         if (comment != null) out.put("comment", comment);
         return out;
     }
@@ -827,20 +847,18 @@ public final class MockEngine implements Engine {
         if (name == null || !name.matches("[A-Za-z_$][A-Za-z0-9_$]*"))
             throw OpException.syntax("bad Java identifier: " + name, "symbol=" + symbol);
         Map<String, Object> sym = resolve(symbol);
-        String key = String.valueOf(sym.getOrDefault("fqcn", sym.get("name")));
+        String key = String.valueOf(sym.get("origSig"));
         String oldName = String.valueOf(sym.get("name"));
         renames.put(key, name);
-        // Agents propose, humans dispose (WORKBENCH_SPEC law 3) — mock records the distinction.
-        boolean human = "human".equals(actor);
+        // Policy is enforced above the engine. Once called, this mutation has actually happened.
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("symbol", sym);
         out.put("oldName", oldName);
         out.put("newName", name);
         out.put("addr", key);
         out.put("newAddr", key);              // mock renames don't shift addresses
-        out.put("applied", human);
-        out.put("proposal", !human);
-        if (!human) out.put("status", "pending");
+        out.put("kind", sym.get("kind"));
+        out.put("applied", true);
         return out;
     }
 
@@ -863,7 +881,7 @@ public final class MockEngine implements Engine {
     @Override
     public Map<String, Object> restoreOriginalName(String symbol, String expectedOriginal, String actor) throws OpException {
         Map<String, Object> sym = resolve(symbol);
-        String key = String.valueOf(sym.getOrDefault("fqcn", sym.get("name")));
+        String key = String.valueOf(sym.get("origSig"));
         String orig = String.valueOf(sym.getOrDefault("origName", sym.get("name")));
         if (expectedOriginal != null && !expectedOriginal.equals(orig) && !expectedOriginal.equals(sym.get("name")))
             throw OpException.syntax("the recorded original name '" + expectedOriginal + "' is not this symbol's (" + orig + ")", "symbol=" + symbol);
@@ -873,7 +891,7 @@ public final class MockEngine implements Engine {
         out.put("addr", key); out.put("newAddr", key);
         out.put("kind", sym.get("kind"));
         out.put("oldName", cur == null ? sym.get("name") : cur);
-        out.put("newName", sym.get("name"));
+        out.put("newName", sym.get("originalDisplayName"));
         out.put("applied", cur != null);
         out.put("restored", true);
         if (cur == null) out.put("note", "already the original name — nothing changed");
@@ -884,7 +902,7 @@ public final class MockEngine implements Engine {
     public Map<String, Object> comment(String symbol, String text, String actor) throws OpException {
         requireCap("comment", "comment");
         Map<String, Object> sym = resolve(symbol);
-        String key = String.valueOf(sym.getOrDefault("fqcn", sym.get("name")));
+        String key = String.valueOf(sym.get("origSig"));
         String oldText = comments.getOrDefault(key, "");
         comments.put(key, text == null ? "" : text);
         boolean human = "human".equals(actor);

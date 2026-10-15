@@ -236,6 +236,7 @@ public final class ToolFacade {
         annotateItem.put("properties", props(
                 "symbol", str("method, class or field (must resolve) — a field addr is Lpkg/C;->f:Ljava/lang/String;", "\"Lm76/ak;->a()V\""),
                 "name", str("new Java identifier, descriptive of the purpose (optional)", "\"handleLifecycleEvent\""),
+                "expectedName", str("optional current name you read: refuse without changing anything if it has changed", "\"a\""),
                 "local", str("rename a LOCAL variable (or a formal argument the analyst has not mapped) instead: its current name inside the method that symbol names; name is the new one (optional)", "\"v1_5\""),
                 "comment", str("what the code does, in one or two lines (optional)", "\"dispatches lifecycle events to the observers\""),
                 "tags", arr("tags to add (optional), each family:tag with the one-line note the human reads beside it",
@@ -255,7 +256,9 @@ public final class ToolFacade {
                         + " name (rename it), comment, tags; with local, name renames that local variable or parameter of the method. Every write applies at once and appears in every later result; the human"
                         + " can revert it. Give a confidence and one line of evidence per item; rename again when you learn more."
                         + " Returns {applied, pending, failed, results[]}; a failed write carries its reason (a taken name, a symbol"
-                        + " a human named, outside your write-scope).",
+                        + " a human named, outside your write-scope). Another agent's unsaved name is protected: RENAME_CONFLICT"
+                        + " names its currentName and currentActor; use that name and continue reading. expectedName refuses a stale"
+                        + " rename even after a save. Failed writes keep error text and structured errorDetails.",
                 "{\"items\": [{\"symbol\": \"Lm76/ak;->a()V\", \"name\": \"handleLifecycleEvent\", \"comment\": \"forwards the state enum to Lifecycle.handleEvent\", \"tags\": [{\"name\": \"entry:lifecycle\", \"note\": \"the Activity's onResume is its only caller\"}], \"confidence\": 0.8}]}",
                 props("items", annotateItems),
                 "items");
@@ -1090,6 +1093,7 @@ public final class ToolFacade {
                 Map<String, Object> p = new LinkedHashMap<>();
                 p.put("symbol", symbol);
                 p.put("name", it.get("name"));
+                if (it.get("expectedName") != null) p.put("expectedName", it.get("expectedName"));
                 if (it.get("local") != null && !String.valueOf(it.get("local")).isBlank()) p.put("local", it.get("local"));   // a local of the method `symbol` names
                 if (it.get("rationale") != null) p.put("rationale", it.get("rationale"));
                 if (it.get("confidence") != null) p.put("confidence", it.get("confidence"));
@@ -1156,6 +1160,7 @@ public final class ToolFacade {
                     outcome.put("status", status);
                     if (rm.get("id") != null) outcome.put("id", rm.get("id"));
                     if (rm.get("error") != null) outcome.put("error", rm.get("error"));
+                    if (rm.get("errorDetails") != null) outcome.put("errorDetails", rm.get("errorDetails"));
                     if ("applied".equals(status)) applied++; else if ("pending".equals(status)) pending++; else failed++;
                 }
                 Map<String, Object> row = rows.get(indexes.get(b).get(k));

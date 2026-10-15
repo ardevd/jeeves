@@ -114,6 +114,78 @@ tasks.register('parityTest', JavaExec) {
     mustRunAfter 'test'
 }
 
+// Deterministic concurrent writers through the public facade, without JEB or model calls.
+tasks.register('concurrentRenameTest', JavaExec) {
+    group = 'verification'
+    description = 'Concurrent rename ownership, typed MCP errors, and save transaction ordering'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.rename.ConcurrentRenameTest'
+    workingDir = repoRoot
+    environment 'WORKBENCH_MOCK', '1'
+    environment 'WORKBENCH_REVIEW_MODE', 'auto'
+}
+
+tasks.register('opsActiveTest', JavaExec) {
+    group = 'verification'
+    description = 'In-flight operation reporting survives client disconnects and clears every outcome'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.registry.ActiveCallsTest'
+    workingDir = repoRoot
+    environment 'WORKBENCH_MOCK', '1'
+    dependsOn 'compileTestJava'
+}
+
+// Deterministic index-host fixture, no live JEB instance or model calls.
+tasks.register('searchIndexPersistenceIT', JavaExec) {
+    group = 'verification'
+    description = 'Pending search-index work survives cancellation and failed corpus writes'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.engine.jeb.SearchIndexPersistenceIT'
+    workingDir = repoRoot
+    dependsOn 'compileTestJava'
+    doFirst {
+        if (!hasEngine) throw new GradleException('Compile this adapter test with an activated JEB_HOME')
+    }
+}
+
+// Native rename fixtures: no HTTP server or model, fresh homes and databases on each run.
+[
+    nativeHistoryRecoveryIT: ['dev.workbench.it.NativeHistoryRecoveryIT', 'params/params-fixture.dex'],
+    nativeSaveIT: ['dev.workbench.it.NativeSaveIT', 'params/params-fixture.dex'],
+    nativeRecoveryIT: ['dev.workbench.it.NativeRecoveryIT', 'params/params-fixture.dex'],
+    concurrentRenameIT: ['dev.workbench.it.ConcurrentRenameIT', 'params/params-fixture.dex'],
+    renameFamilyIT: ['dev.workbench.it.RenameFamilyIT', 'rename-family/rename-family.dex'],
+].each { taskName, fixture ->
+    tasks.register(taskName, JavaExec) {
+        group = 'verification'
+        description = 'Native JEB rename ownership and save/reopen checks on an authored fixture'
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = fixture[0]
+        workingDir = repoRoot
+        dependsOn 'compileTestJava'
+        environment 'WORKBENCH_MOCK', '0'
+        environment 'WORKBENCH_COURSE', '0'
+        environment 'WORKBENCH_REVIEW_MODE', 'auto'
+        if (hasEngine) {
+            classpath += engineJars
+            jvmArgs jebJvmArgs.findAll { !it.startsWith('-Djava.io.tmpdir=') }
+            jvmArgs "-Xbootclasspath/a:${engineDir}/bin/app/salt"
+        }
+        doFirst {
+            if (!hasEngine) throw new GradleException('This native fixture needs an activated JEB_HOME')
+            def parent = new File(buildDir, 'tmp/' + taskName)
+            parent.mkdirs()
+            def run = java.nio.file.Files.createTempDirectory(parent.toPath(), 'run-').toFile()
+            new File(run, 'java-home').mkdirs()
+            new File(run, 'tmp').mkdirs()
+            systemProperty 'user.home', new File(run, 'java-home').absolutePath
+            systemProperty 'java.io.tmpdir', new File(run, 'tmp').absolutePath
+            environment 'WORKBENCH_HOME', new File(run, 'home').absolutePath
+            args file('src/test/fixtures/' + fixture[1]).absolutePath, run.absolutePath
+        }
+    }
+}
+
 // M1 integration test: server + real APK via target.open (see src/test/java/dev/workbench/it/M1IT.java)
 tasks.register('m1IT', JavaExec) {
     group = 'verification'
@@ -481,4 +553,22 @@ tasks.register('messageLabIT', JavaExec) {
     environment 'WORKBENCH_PORT', '7824'
     environment 'WORKBENCH_MOCK', '1'
     if (hasEngine) { classpath += engineJars; jvmArgs jebJvmArgs }
+}
+
+// Local filesystem/journal invariants; no SDK, network, server or model required.
+[
+    persistenceTest: 'dev.workbench.persistence.PersistenceTest',
+    historyJournalTest: 'dev.workbench.persistence.HistoryJournalTest',
+    workspacePersistenceTest: 'dev.workbench.persistence.WorkspacePersistenceTest',
+].each { taskName, entryPoint ->
+    tasks.register(taskName, JavaExec) {
+        group = 'verification'
+        description = 'Filesystem save recovery and durable history journal checks'
+        environment 'WORKBENCH_MOCK', '1'
+        environment 'WORKBENCH_COURSE', '0'
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = entryPoint
+        workingDir = repoRoot
+        dependsOn 'compileTestJava'
+    }
 }

@@ -291,6 +291,69 @@ get the same server, restricted by `--allowedTools` to the nine loop tools.
 The browser's own plumbing (layouts, prefs, hover, file browser …) and the
 retired cruft (bookmarks, device pull, map export …) are not tools.
 
+### Several assistants naming the same target
+
+Give each assistant its own `WORKBENCH_ACTOR`, such as `llm:worker-1` and
+`llm:worker-2`, and pin `WORKBENCH_TARGET`. The shared default `llm:mcp`
+identifies one actor; it cannot distinguish separate assistants.
+
+Jeeves remembers the owner of each unsaved rename. Another assistant cannot
+replace that name: its `annotate` item fails with `RENAME_CONFLICT`, showing the
+current name, actor and history entry. The first assistant can refine its own
+name. The operator can correct it. Human class, method and field names and
+analyst-mapped formal arguments remain protected by their existing policies.
+Unsaved agent ownership applies to classes, methods, fields and identified locals.
+A class rename does not change a member's identity for this check. JEB also
+renames virtual methods together with their definitions and overrides. Jeeves
+checks and records that whole group, so choosing a sibling implementation or
+an interface method cannot bypass the first assistant's ownership.
+
+The check, rename and history record share one transaction with database saves.
+A failed save keeps the ownership claims. A successful native save with durable
+history releases them, so a later round may refine the saved names. An optional
+`expectedName` also rejects a stale read after the save:
+
+```json
+{"target":"t1","items":[{"symbol":"Lexample/Message;","name":"MessageEnvelope","expectedName":"Message"}]}
+```
+
+`annotate` still returns each item's outcome. A failed rename keeps the readable
+`error` string and adds `errorDetails` with `code`, `currentName`, `currentActor`
+when there is an unsaved owner, `originalSymbol`, `unsaved`, and `historyId` when
+available. Read the assigned name and continue the analysis; repeating the same
+conflicting rename will not overwrite it. A batch may partly succeed, so inspect
+`applied`, `failed` and every item before deciding what to retry.
+
+Automatic local naming (`locals.auto`) checks all affected locals before its bulk
+write. It records stable identities and claims every applied name before writing
+history, so a failed journal write cannot leave later bulk items unprotected.
+Type-bound locals also follow ownership rules: a conflicting automatic follow is
+skipped and its typed error is recorded in the parent history entry's `followed`
+list. An applied follow whose journal write fails reports that failure.
+
+Before saving a parallel round, stop its clients from issuing further work and
+read `ops.active` over HTTP. It returns `{observedAt, calls}`; each call names its
+`id`, `op`, `actor`, `startedAt`, and supplied `target`/`symbol`. A routed call may
+appear beside its nested operation. A disconnected or timed-out client remains
+listed until its backend dispatch actually finishes. The query excludes itself,
+keeps no full request bodies, and imposes no reporting cap. Wait until the round's
+actors disappear, then check any explicitly started background tasks separately
+(`save_status`, target loading, indexing, or missions). This is observation of
+current dispatches, not a lock that prevents new work from starting.
+
+The model-free regression checks can run independently of an analysis project:
+
+```sh
+gradle -p backend classes concurrentRenameTest opsActiveTest
+python3 -B mcp/test_concurrent_rename.py
+JEB_HOME=/path/to/activated-jeb gradle -p backend concurrentRenameIT renameFamilyIT searchIndexPersistenceIT
+```
+
+The Python test starts five real MCP bridge processes and its own temporary mock
+server, then stops them. The native tests use authored DEX fixtures and fresh
+homes under `backend/build/tmp`; they check conflicts and saved names after
+reopening. They do not open an existing analysis database or call a model.
+
 ## 5. The UI
 
 ### Views (Ctrl+digit)
@@ -579,3 +642,9 @@ verdicts arrive as proposals). `map.export` renders md/json posters.
 - `gradle m1IT … m8IT m10aIT` — per-milestone integration suites.
 - Repo layout: `backend/` (Java, Gradle), `web/` (ES-module UI),
   `mcp/` (MCP server), `design/` (specs — the contract).
+
+## Database save durability
+
+See [Saving edits and recovering interrupted writes](docs/persistence.md) for the asynchronous save completion rule, verified native checkpoints, recovery after interruption, durable undo/redo across restart, and independent backup/reopen checks. A failed recovery cannot overwrite the native checkpoint with partial state. A closed target alone is not a save-success receipt.
+
+See [Search-index interruption recovery](docs/search-index-recovery.md) for the derived search corpus, pending-work ordering, and failure-injection checks.

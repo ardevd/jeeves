@@ -56,8 +56,48 @@ palette/MCP is a build error; the UI can do nothing an LLM can't.
   map id). Out-of-scope mutations fail `E_SCOPE` and emit a BLOCKED event
   to the activity stream. Scope shrink is agent-allowed; expansion
   requires human confirm.
-- Error model: `E_UNSUPPORTED · E_SCOPE · E_NOTFOUND · E_BUSY · E_SYNTAX`
+- Error model: `E_UNSUPPORTED · E_SCOPE · E_NOTFOUND · E_BUSY · E_SYNTAX · E_IO · RENAME_CONFLICT`
   with human-readable `message` and machine `detail`.
+
+### Concurrent rename ownership
+
+Under the auto review policy, renames apply immediately and are undoable;
+manual policy keeps proposals pending. At apply time, class/method/field and
+identified-local renames share a per-target transaction gate with recovery
+history and native save. The unsaved-name cache is keyed by original DEX
+identity, with local identity also including JEB's identifier item id. A virtual
+method rename preflights every definition and override that JEB changes with it,
+using the published override-query closure. One history entry records their
+stable identities in `renameTargets`; claims and human-name protection cover the
+whole group. Selecting a different member cannot evade ownership. If JEB cannot
+provide the rename family, the operation fails before any name changes.
+Two different actors cannot overwrite each other's unsaved name: the second
+write returns `RENAME_CONFLICT`, with no engine mutation or applied history
+entry. The owning actor may refine it; human names remain protected, and
+human corrections remain possible. Each assistant must supply a distinct
+`WORKBENCH_ACTOR`; `llm:mcp` is one actor, not a session identifier.
+
+`rename` accepts optional `expectedName`; the `annotate` item carries it through.
+A mismatch is `RENAME_CONFLICT` even after a successful save has released the
+unsaved ownership. The error contains `currentName`, `originalSymbol`, `unsaved`,
+`currentActor` and `historyId` when a claim exists, plus `expectedName` for a
+compare-and-set mismatch. Batch results preserve the readable `error` and add
+`errorDetails` containing the full typed error; the facade forwards both.
+`annotate` remains a per-item result envelope and may partly succeed.
+
+Ownership clears only after both the recovery history and native database save
+succeed. Undo/redo rebuilds active unsaved claims, and original signatures keep
+member claims valid when the owner class's display name changes. A persistence
+failure must be surfaced separately from whether the in-memory edit applied;
+keep the target open and repair storage before proceeding.
+
+Automatic local naming (`locals.auto`) preflights all affected stable local
+identities under the same target gate. Every engine-applied bulk item is claimed
+before journaling starts, and all applied items enter recovery history even if a
+journal write fails. Type-bound automatic follow-ups check ownership too; a
+refused follow appears in the parent entry's `followed` list with `errorDetails`.
+Applied follow-ups carry stable original method/local identity and surface a
+history-write failure. No conflict path silently replaces another actor's local.
 
 ## 4. Op registry
 
@@ -69,6 +109,7 @@ palette/MCP is a build error; the UI can do nothing an LLM can't.
 | `target.list / target.open / target.close / target.switch / target.remove` | ✓ | the target strip; `target.open {path, engine?, opts}` — the artifact is copied into the content-keyed store (`<home>/targets/<slug>-<hash8>/`, jdb2 inside) and projects own MEMBERSHIP of it; `target.remove` drops membership (the store entry survives) |
 | `target.info [target]` | | stats: classes, engine, heap, dirty, caps Carries `identity` — the same executable · database · revision · runtime block as the packet's snapshot; `runtime` is the BOOT build (build-info.properties read once when the process started: build_sha, build_dirty, built_at, built_at_basis, process_started_at, build_file_changed_since_start — true when the classes directory was rebuilt under the running process; engine). `workspace.state` carries the same `runtime` block, so the cheap read-only answer to "which build and engine are live" is `workspace.state` (`.runtime`) and the capability set is `ops.list` (the registered ops) / `ops.tools` (the facade) — a client never infers runtime support from a source checkout. |
 | `target.recent [--limit]` | | the target store's entries by last use (the launcher's RECENT TARGETS zone, WORKBENCH_SPEC §2.4 zone 1): key, name, storePath, the projects holding it, present (still in the store), open (the live id when open now), lastUsedIso; newest first, 9 by default (audit decision 18) |
+| `ops.active` | | Read-only in-flight dispatch snapshot: `{observedAt, calls:[{id, op, actor, startedAt, target?, symbol?, tool?}]}`. Excludes this query, has no reporting cap, never records the full parameters/query/token. A disconnected HTTP/MCP client does not clear the call; `finally` removes it after success, classified failure, or thrown Error. Nested dispatches appear separately. Stop producers before using an empty actor set as a round barrier; already-returned background work has its own status APIs. |
 | `tool.call {tool, args, client?}` | | the facade's router (the MCP bridge's tools/call) — `ToolFacade.call(…, external=true)`. |
 | `code.site {symbol, at?, context?, lines?, java?}` — facade `code {view: site}` | | (P1 §C, 2026-10-09) ONE call site's bounded context. The symbol may carry the offset (an xref row's `from`: `Lcls;->m()V+634h`) or `at` names it (`+634h` / `634h` / `0x634`, hex). Answers `call-site-v1`: `caller` {addr, origSig, name, owner}; `site` {offset, ref (`<origSig>+Xh`), instruction, size, kind: call | branch | return | other, callee {ref, addr, origSig, name, internal} for a call}; `dex` {rows ±context instructions with the site marked `at`, before/after, omitted}; `block` {id, instructions, range, successors, exceptional, entry, predecessors [{id, edge: regular | exceptional, last, lastOffset, controls: switch | guard | fallthrough}], note} — the containing CFG block and the branch instructions of its IMMEDIATE predecessors: SYNTACTIC context, never dominance, feasibility or data flow; `java` {line, from, to, totalLines, text with `>>` on the mapped line, mappedBy} — JEB's own address→coordinates mapping on the class document (`java:false` skips the decompile), or `unavailable`; `extent`; `more` — the exact continuation (a `window` for code.decompile, code.smali for the listing, `code {view: packet, entry}` for the branch selection). An offset outside the body → E_NOTFOUND naming the span. |
 | `symbol.locate {anchors: [{kind: string \| table \| api \| class \| name \| prototype, value}], limit?}` — facade `search {anchors}` | | (P1 §I) a location across builds by SEVERAL fallible anchors. string/table → the methods referencing a matching string (strings {filter} → string.xrefs, first 50 strings); api → the callers (xref.to); class → classes by name (symbol.search kind=class) and marks candidates inside them; name → methods by name; prototype → marks candidates whose parameter list equals the value (never searches). Answers `anchor-locate-v1`: `anchors` [{i, kind, value, status: located \| not_located \| marker \| error, counts, searched}], `candidates` ranked by anchors matched [{addr, kind: method \| class, origSig, name, owner, matched: [i…], unmatched: [i…], score}], `status`: `located` (one candidate matched every anchor by these queries) \| `ambiguous` (several) \| `partial` (the best matched some) \| `not_located` (none — never "absent"), `total`, `truncated`, `note`. Anchor presence is not structural correspondence, not a connected static path and not a runtime observation: the caller records those separately, with each anchor's `searched` scope. |
@@ -111,7 +152,7 @@ palette/MCP is a build error; the UI can do nothing an LLM can't.
 ### 4.6 Edit ops (proposals for agents)
 | Op | M | Purpose |
 |---|---|---|
-| `rename <symbol> <name>` | ✓ | class/method/field/local + namespace moves; a NEW name is a Java identifier that is not a keyword |
+| `rename <symbol> <name> [expectedName]` | ✓ | class/method/field/local + namespace moves; a NEW name is a Java identifier that is not a keyword |
 | `rename.revert <symbol>` | ✓ | back to the symbol's ORIGINAL dex name (validated against the dex — "1cq" is a fine original and a refused new name); recorded in History; humans only. history.undo of a rename whose old name the identifier rule refuses goes through the same restoration |
 | `code.params <method>` | | (a READ, listed beside the ops it previews for) the retained parameter metadata: the dex's `Ldalvik/annotation/MethodParameters;` names/accessFlags verbatim in encoded order (nulls, duplicates kept; each array's length checked against the prototype separately; `argumentMapping: unverified` always), the debug_info names as a second source (`status: empty` for a table of null slots), the prototype, the method's `locals`, the arguments as the decompiler names them and why (analyst · debug_info · annotation applied by the engine by position · generic · unknown), `decompiler.annotationNamedArguments {status none|some|all, count, of, indices}` — which arguments JEB currently names from the list by position (a partial mapping leaves the rest positional; `appliesAnnotationByPosition` is the compatibility boolean for ALL, `appliesAnnotationToAny` for any), the analyst's `mappings` from History. The RAW block (no decompiler names — `appliesAnnotationByPosition: null`, "not computed in this view") is carried as `methodParameters` on a method's `code.decompile`, `code.smali`, `evidence.packet` (+ `mappings`); `code.decompile` of a class carries `methodParametersIndex`. The MCP `code` tool: view `params`. One class render on a cold method (cached until a name moves) |
 | `param.rename <method> <index> <name> [annotationIndex]` / `param.rename.bulk <method> mapping:[{index, name, annotationIndex?}] [preview]` | ✓ | the ANALYST's explicit mapping of retained names onto formal arguments by position (cross-position allowed), through the engine's own parameter binding (every use follows; types and order never change). Validated whole (identifier, keyword, duplicates, collisions with arguments AND the method's locals, an existing analyst name said), a row that already carries the analyst's own name is a no-op (not applied, not recorded — the preview equals the commit) while a row equal to JEB's positional pick ADOPTS it as the analyst's mapping (applied, recorded `adopted`, undo gives the name back to the engine — the user is never gated), applied whole or not at all (swaps included), ONE History entry (kind `parameters`) with provenance: `changes[].from` (annotation entry k — checked against the dex, a claimed index whose entry is another name is dropped — or `analyst`), `source`, `original_method` (the mapping follows the method through renames) — undo puts back what each argument had (an earlier analyst name, or the engine's own); null/empty entries are no-ops; `expectCurrent:[{index,name}]` refuses a stale preview (E_BUSY). The preview is a read anyone may ask for; the apply is the analyst's own: a browser session — an agent is refused; `history.undo`/`redo` of a `parameters` or `revert` entry likewise. Not an MCP tool: the mapping is the UI's gesture. An agent may name an argument through `rename {local}` unless the analyst mapped it; a name equal to a retained entry is recorded `matchesRetainedName` |
@@ -285,3 +326,9 @@ background fetches are not navigation, which is why the browser pings explicitly
 - **Cost hints**: ops declare `cost: cheap|scan|heavy`; `heavy` ops
   (whole-DEX scans) run off the session lock and are cancellable via
   `op.cancel <ticket>`.
+
+## Save completion and durability
+
+A target save is serialized with its edit transaction. Async completion requires `saving:false`, `last.at >= startedAt`, and `last.ok:true`; failures before the native write also produce a fresh failed outcome. Rename ownership clears only after history and native state are persisted. Undo/redo events have durable revisions and replay in execution order across a restart; discard includes pending reversals of saved entries. Failed replay prevents saving a partially recovered project. Close waits for active target edits and refuses a failed history flush before detaching; a native synchronous close-save failure reports `closed:true, saved:false`. See [persistence contract](../docs/persistence.md) for checkpoint, recovery, and verification semantics.
+
+The search corpus is derived state. Its pending recovery entry clears only after replacement text and the header persist; see [search-index recovery](../docs/search-index-recovery.md).

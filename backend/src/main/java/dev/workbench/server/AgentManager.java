@@ -1061,8 +1061,8 @@ public final class AgentManager {
             if (ws.targetNameOf(tid) != null) body.put("targetName", ws.targetNameOf(tid));
         }
         body.put("project", project);
-        /* a name a HUMAN assigned is not an agent's to change (it may refine its own, or another
-           agent's); refused at filing time in either review mode */
+        /* A human name is protected at filing time in either review mode. The atomic apply path
+           checks this again and refuses another agent's unsaved name under the target write gate. */
         if ("rename".equals(kind) && tid != null) {
             String humanEntry = ws.humanNamedBy(tid, String.valueOf(body.get("symbol")));
             if (humanEntry != null)
@@ -1449,39 +1449,31 @@ public final class AgentManager {
                 ? proposalTarget(p) : null;
         switch (kind) {
             case "rename" -> {
-                Map<String, Object> res = ws.engineFor(target).rename(
-                        String.valueOf(p.get("symbol")), String.valueOf(p.get("newName")), human);
-                Map<String, Object> h = new LinkedHashMap<>();
-                h.put("op", "rename");
-                h.put("actor", human);
-                if (p.get("confidence") != null) h.put("confidence", p.get("confidence"));
-                h.put("kind", res.get("kind"));
-                h.put("addr", res.get("addr"));
-                h.put("newAddr", res.get("newAddr"));
-                h.put("oldName", res.get("oldName"));
-                h.put("newName", res.get("newName"));
-                h.put("owner", p.getOrDefault("owner", ""));
-                ws.recordHistory(target, h);
-                /* the EDITS pane reverts one applied row through its history entry and edits a
-                   rename at the address the symbol moved to */
-                storeOf(p).stamp(String.valueOf(p.get("id")), "historyId", h.get("id"));
+                Map<String, Object> res = ws.renameSymbol(target, String.valueOf(p.get("symbol")),
+                        String.valueOf(p.get("newName")), human, p.get("confidence"),
+                        p.get("expectedName") == null ? null : String.valueOf(p.get("expectedName")));
+                /* The edits pane refers to the same history entry as the guarded mutation. */
+                if (res.get("historyId") != null) storeOf(p).stamp(String.valueOf(p.get("id")), "historyId", res.get("historyId"));
                 if (res.get("newAddr") != null) storeOf(p).stamp(String.valueOf(p.get("id")), "newAddr", res.get("newAddr"));
             }
             case "comment" -> {
-                Map<String, Object> res = ws.engineFor(target).comment(
-                        String.valueOf(p.get("symbol")),
-                        p.get("newText") == null ? "" : String.valueOf(p.get("newText")), human);
-                Map<String, Object> h = new LinkedHashMap<>();
-                h.put("op", "comment");
-                h.put("actor", human);
-                if (p.get("confidence") != null) h.put("confidence", p.get("confidence"));
-                h.put("addr", res.get("addr"));
-                h.put("newAddr", res.get("addr"));
-                h.put("oldText", res.get("oldText"));
-                h.put("newText", p.get("newText"));
-                h.put("owner", p.getOrDefault("owner", ""));
-                ws.recordHistory(target, h);
-                storeOf(p).stamp(String.valueOf(p.get("id")), "historyId", h.get("id"));
+                ws.withTargetWrite(target, () -> {
+                    Map<String, Object> res = ws.engineFor(target).comment(
+                            String.valueOf(p.get("symbol")),
+                            p.get("newText") == null ? "" : String.valueOf(p.get("newText")), human);
+                    Map<String, Object> h = new LinkedHashMap<>();
+                    h.put("op", "comment");
+                    h.put("actor", human);
+                    if (p.get("confidence") != null) h.put("confidence", p.get("confidence"));
+                    h.put("addr", res.get("addr"));
+                    h.put("newAddr", res.get("addr"));
+                    h.put("oldText", res.get("oldText"));
+                    h.put("newText", p.get("newText"));
+                    h.put("owner", p.getOrDefault("owner", ""));
+                    ws.recordHistory(target, h);
+                    storeOf(p).stamp(String.valueOf(p.get("id")), "historyId", h.get("id"));
+                    return null;
+                });
             }
             case "tag" -> {
                 /* match the proposer's OWN pending row at the proposal's LINE

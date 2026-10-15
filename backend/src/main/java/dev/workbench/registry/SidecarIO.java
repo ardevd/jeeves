@@ -9,8 +9,8 @@ import java.time.Instant;
     sidecar in the tree writes atomic tmp+ATOMIC_MOVE and fails LOUD — a silent
     failure looks identical to "nothing to save", and a torn read silently
     becomes an empty state that the next write then makes permanent.
-    (fsync-before-rename for crash durability is a separate open item — APFS
-    does not auto-flush on rename-over; see app-review-opus-2026-09-06 F4.) */
+    File contents are forced before replacement, and the containing directory is
+    forced afterward. Failure is reported even when the replacement already happened. */
 public final class SidecarIO {
 
     private SidecarIO() {}
@@ -43,8 +43,10 @@ public final class SidecarIO {
             tmp = Files.createTempFile(dst.getParentFile().toPath(),
                     dst.getName(), ".tmp").toFile();
             Files.writeString(tmp.toPath(), content);
+            forceFile(tmp.toPath());
             Files.move(tmp.toPath(), dst.toPath(),
                     StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            forceDirectory(dst.toPath().toAbsolutePath().getParent());
             return true;
         } catch (Exception e) {
             writeFailures.incrementAndGet();
@@ -52,6 +54,20 @@ public final class SidecarIO {
             return false;
         } finally {
             if (tmp != null) tmp.delete();
+        }
+    }
+
+    /** Flush completed file contents before publishing a durable replacement. */
+    public static void forceFile(java.nio.file.Path path) throws java.io.IOException {
+        try (var channel = java.nio.channels.FileChannel.open(path, java.nio.file.StandardOpenOption.WRITE)) {
+            channel.force(true);
+        }
+    }
+
+    /** Flush the directory entry too; atomic visibility alone does not guarantee durability. */
+    public static void forceDirectory(java.nio.file.Path path) throws java.io.IOException {
+        try (var channel = java.nio.channels.FileChannel.open(path, java.nio.file.StandardOpenOption.READ)) {
+            channel.force(true);
         }
     }
 

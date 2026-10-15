@@ -96,6 +96,15 @@ final class SearchIndex {
     private final Queue<String> reindexQueue = new ConcurrentLinkedQueue<>();
     /** Addrs whose gz was deleted by an edit but not yet re-indexed (crash window). */
     private final Set<String> pending = new LinkedHashSet<>();
+    /** A pending class leaves the recovery queue only after both its text and header persist. */
+    private final Set<String> readyForHeader = new LinkedHashSet<>();
+    private final Map<String,Long> invalidations = new LinkedHashMap<>();
+    private long invalidationSequence;
+    /** Cancellation never interrupts a filesystem commit halfway through. No engine or index
+     * monitor is acquired under this gate, so close() remains free of a lock-order cycle. */
+    private final Object interruptGate = new Object();
+    private final Set<Thread> committing = new HashSet<>();
+    private final Set<Thread> interruptAfterCommit = new HashSet<>();
     /** The corpus's authoritative addr → fqcn map (header content): the build
      *  snapshot at build start, updated by every invalidate(), adopted from the
      *  header on warm load. Header writes always come from THIS, so a mid-build
@@ -156,21 +165,29 @@ final class SearchIndex {
         return new File(dir, "classes/" + encodeAddr(addr) + ".gz");   // addr is path-shaped
     }
 
-    private void writeGz(String addr, String text) {
-        if (dir == null || text == null) return;
+    private boolean writeGz(String addr, String text) {
+        if (text == null) return false;
+        if (dir == null) return true;
+        java.nio.file.Path temporary = null;
         try {
             File f = gzFile(addr);
-            f.getParentFile().mkdirs();
-            try (OutputStream os = new GZIPOutputStream(Files.newOutputStream(f.toPath()))) {
+            Files.createDirectories(f.toPath().getParent());
+            temporary = Files.createTempFile(f.toPath().getParent(), ".corpus-", ".gz");
+            try (OutputStream os = new GZIPOutputStream(Files.newOutputStream(temporary))) {
                 os.write(text.getBytes(StandardCharsets.UTF_8));
             }
+            dev.workbench.registry.SidecarIO.forceFile(temporary);
+            Files.move(temporary, f.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            dev.workbench.registry.SidecarIO.forceDirectory(f.toPath().getParent());
+            return true;
         } catch (IOException e) {
-            /* loud + counted (fix-1-r7 F8): a class body silently failing to
-               persist left the header claiming it — the next warm load read
-               null and the class was silently absent from search */
             dev.workbench.registry.SidecarIO.writeFailures.incrementAndGet();
-            System.err.println("workbench: corpus gz write failed for " + addr
-                    + " in " + dir + ": " + e);
+            error = "corpus write failed for " + addr + ": " + e;
+            System.err.println("workbench: " + error + " in " + dir);
+            return false;
+        } finally {
+            if (temporary != null) try { Files.deleteIfExists(temporary); } catch (IOException ignored) {}
         }
     }
 
@@ -188,18 +205,20 @@ final class SearchIndex {
         if (dir != null && addr != null) gzFile(addr).delete();
     }
 
-    private synchronized void savePending() {
-        if (dir == null) return;
+    private synchronized boolean savePending() {
+        if (dir == null) return true;
         File f = new File(dir, "pending.json");
         if (pendingDegraded) {
             /* never overwrite un-parked evidence: a failed park keeps the flag
                and SKIPS the write (fix-1-r4 #5) */
             if (!dev.workbench.registry.SidecarIO.parkHealthyBeforeOverwrite(f, "pending"))
-                return;
+                return false;
             pendingDegraded = false;
         }
-        dev.workbench.registry.SidecarIO.writeAtomic(f,
+        boolean saved = dev.workbench.registry.SidecarIO.writeAtomic(f,
                 Json.write(new ArrayList<>(pending)), "pending");
+        if (!saved) error = "Pending index work could not be persisted; keep the target open and repair storage.";
+        return saved;
     }
 
     private List<String> loadPending() {
@@ -360,6 +379,7 @@ final class SearchIndex {
             warm = false;                                     // hydrate on first search
             for (String a : pend) {
                 pending.add(a);
+                invalidations.put(a, ++invalidationSequence);
                 reindexQueue.offer(a);
             }
             ensureDrainer();
@@ -373,20 +393,14 @@ final class SearchIndex {
         }
     }
 
-    private void writeHeader() {
-        if (dir == null) return;
+    private synchronized boolean writeHeader() {
+        if (dir == null) { pending.removeAll(readyForHeader); readyForHeader.clear(); return true; }
         Map<String, Object> snapshot;
         synchronized (this) {
             snapshot = new LinkedHashMap<>(live);         // CME guard: copy under the monitor
-            /* pending-excluded claim (findings 2+4 r38): pending classes
-               had their gz deleted at invalidate and were NOT re-written
-               when this header commits — prune them; pending.json
-               re-queues them next open and the drain re-adds them to
-               live (finding 2 r39's heal path). NOT fully gz-honest
-               (finding 6 r38): null-text classes are still claimed
-               without gz (pre-existing), and invalidate() deletes the
-               gz before taking the monitor — both residual windows stay */
-            for (String p : pending) snapshot.remove(p);
+            // Unfinished classes remain excluded. Completed replacements may join this
+            // header, but their durable pending entries clear only after the header lands.
+            for (String p : pending) if (!readyForHeader.contains(p)) snapshot.remove(p);
         }
         Map<String, Object> h = new LinkedHashMap<>();
         h.put("version", engineVersion);
@@ -401,8 +415,11 @@ final class SearchIndex {
            stamping it unconditionally inverted fail-safe to fail-unsafe — the
            next open would adopt the PREVIOUS header as current after a failed
            commit, exactly the warm-adopt trap the r38 comment above documents) */
-        if (dev.workbench.registry.SidecarIO.writeAtomic(new File(dir, "header.json"), Json.write(h), "index header"))
-            recordJdb2Mtime(host.jdb2Mtime());            // baseline for foreign-edit detection
+        if (!dev.workbench.registry.SidecarIO.writeAtomic(new File(dir, "header.json"), Json.write(h), "index header")) return false;
+        if (!recordJdb2Mtime(host.jdb2Mtime())) return false;
+        pending.removeAll(readyForHeader);
+        readyForHeader.clear();
+        return savePending();
     }
 
     /** The jdb2 mtime as last written by US (build completion / save / close-save)
@@ -504,7 +521,7 @@ final class SearchIndex {
         boolean oldAlive = false;
         if (thread != null && thread.isAlive()) {
             cancel = true;
-            thread.interrupt();
+            interruptWorker();
             try { thread.join(2_000); } catch (InterruptedException ignored) {}
             oldAlive = thread.isAlive();
         }
@@ -517,6 +534,8 @@ final class SearchIndex {
         entries.clear();
         reindexQueue.clear();
         pending.clear();
+        readyForHeader.clear();
+        invalidations.clear();
         live = new LinkedHashMap<>();
         persisted = false;
         adoptedFromDisk = false;
@@ -536,7 +555,9 @@ final class SearchIndex {
         finishedAt = 0;
         state = "building";
         final boolean mayWipe = !oldAlive;   // wipe only when the old builder is confirmed dead
-        thread = new Thread(() -> build(gen, mayWipe), "search-index");
+        thread = new Thread(() -> {
+            try { build(gen, mayWipe); } finally { workerFinished(gen); }
+        }, "search-index");
         thread.setDaemon(true);
         thread.setPriority(Thread.MIN_PRIORITY);
         thread.start();
@@ -557,23 +578,24 @@ final class SearchIndex {
      * engine lock OUTSIDE this class's monitor (lock order: engine → index).
      */
     void invalidate(String staleAddr, String freshAddr) {
-        if (staleAddr != null) {
-            entries.removeIf(e -> e.addr().equals(staleAddr));
-            deleteGz(staleAddr);
-        }
-        if (freshAddr != null && !freshAddr.equals(staleAddr)) {
-            entries.removeIf(e -> e.addr().equals(freshAddr));   // dedupe a re-added entry
-            deleteGz(freshAddr);
-        }
-        if (freshAddr == null) return;
-        String label = host.classLabel(freshAddr);             // engine lock, outside index monitor
+        String label = freshAddr == null ? null : host.classLabel(freshAddr); // engine lock first
         synchronized (this) {
-            if (staleAddr != null) live.remove(staleAddr);
-            live.put(freshAddr, label);
-            pending.add(freshAddr);
+            if (staleAddr != null) {
+                entries.removeIf(e -> e.addr().equals(staleAddr));
+                deleteGz(staleAddr); live.remove(staleAddr);
+                pending.remove(staleAddr); readyForHeader.remove(staleAddr);
+                invalidations.put(staleAddr, ++invalidationSequence);
+                reindexQueue.removeIf(staleAddr::equals);
+            }
+            if (freshAddr != null) {
+                entries.removeIf(e -> e.addr().equals(freshAddr));
+                deleteGz(freshAddr); live.put(freshAddr, label);
+                pending.add(freshAddr); readyForHeader.remove(freshAddr);
+                invalidations.put(freshAddr, ++invalidationSequence);
+                reindexQueue.offer(freshAddr);
+            }
             savePending();
         }
-        reindexQueue.offer(freshAddr);
         ensureDrainer();
     }
 
@@ -587,16 +609,18 @@ final class SearchIndex {
         java.util.Set<String> set = new java.util.LinkedHashSet<>(addrs);
         set.remove(null);
         if (set.isEmpty()) return;
-        entries.removeIf(e -> set.contains(e.addr()));
-        for (String a : set) deleteGz(a);
-        Map<String, String> labels = new LinkedHashMap<>();
-        for (String a : set) labels.put(a, host.classLabel(a));   // engine lock, outside index monitor
+        Map<String,String> labels = new LinkedHashMap<>();
+        for (String a : set) labels.put(a, host.classLabel(a)); // engine lock first
         synchronized (this) {
-            for (String a : set) { live.remove(a); live.put(a, labels.get(a)); }
-            pending.addAll(set);
+            entries.removeIf(e -> set.contains(e.addr()));
+            for (String a : set) {
+                deleteGz(a); live.put(a, labels.get(a));
+                pending.add(a); readyForHeader.remove(a);
+                invalidations.put(a, ++invalidationSequence);
+            }
+            reindexQueue.addAll(set);
             savePending();
         }
-        reindexQueue.addAll(set);
         ensureDrainer();
     }
 
@@ -604,95 +628,105 @@ final class SearchIndex {
      *  drains the queue itself at the end of its pass (see build()). The
      *  generation gate stops a superseded drainer from committing stale text. */
     private synchronized void ensureDrainer() {
-        if (dead) return;   // kill() owns the end state (review finding 1 r36)
+        if (dead || cancel) return;
         if (thread != null && thread.isAlive()) return;          // builder will drain
         if (reindexQueue.isEmpty()) return;
         final int gen = generation;
-        thread = new Thread(() -> drainQueue(gen, false), "search-index-reindex");   // standalone: header write is its purpose
+        thread = new Thread(() -> {
+            try { drainQueue(gen, false); } finally { workerFinished(gen); }
+        }, "search-index-reindex");
         thread.setDaemon(true);
         thread.setPriority(Thread.MIN_PRIORITY);
         thread.start();
     }
 
-    /** Re-index queued classes one at a time (MIN priority, off the caller's
-     *  thread; the engine lock is taken only inside host.decompileText).
-     *  Pending entries clear on ANY drain attempt — a dead addr (e.g. a
-     *  pre-rename handle replayed on open) must not leak in pending.json.
-     *  {@code midBuild} = called from a builder mid-loop: NEVER write a
-     *  header then (finding 2 r38 — see the gate below). */
+    /** Re-index queued classes. Failed, interrupted, or superseded attempts retain the
+     * durable pending entry; a successful gzip alone is not a committed header claim. */
     private void drainQueue(int gen, boolean midBuild) {
         boolean didWork = false;
-        String addr;
         for (;;) {
-            while ((addr = reindexQueue.poll()) != null) {
-                if (cancel || dead || Thread.currentThread().isInterrupted() || gen != generation) return;
-                final String classAddr = addr;
-                String text = null;
-                try {
-                    text = host.decompileText(classAddr);            // engine-locked burst
-                } catch (Throwable ignored) {                        // skip undecompilable
-                } finally {
-                    synchronized (this) {
-                        pending.remove(classAddr);
-                        savePending();
-                    }
-                }
-                if (text == null) continue;
-                String label = host.classLabel(classAddr);
-                entries.removeIf(e -> e.addr().equals(classAddr));   // drop any older copy
-                entries.add(new Entry(classAddr, label, text.split("\n", -1)));
-                writeGz(classAddr, text);
-                /* finding 2 r39: rejoin the header CLAIM — the writeHeader
-                   pending-exclusion pruned this class and nothing added it
-                   back to `live`, so it was written to disk and never
-                   claimed again (a permanently shrunken corpus on the F4
-                   path — reproduced as Case G2) */
-                synchronized (this) { live.put(classAddr, label); }
-                didWork = true;
-            }
-            if (cancel || dead || gen != generation) return;
-            /* finding 2 r38: the gate used to re-read the mutable state string
-               OUTSIDE the guard — cancel() flipped "building"→"cancelled" in
-               the gap and a MID-BUILD drainer wrote a header claiming every
-               class in `live` with a fraction of the gz on disk; warm-adopted
-               as COMPLETE next open (witness intact, pending empty — nothing
-               healed it): search silently covering 12.5% of the target.
-               The state string is never read now; the caller says whether a
-               build is mid-loop, and the kill tests run INSIDE the monitor. */
+            String classAddr;
+            long revision;
             synchronized (this) {
-                if (cancel || dead || gen != generation) return;
-                if (didWork && pending.isEmpty() && !midBuild) {
+                classAddr = reindexQueue.poll();
+                revision = invalidations.getOrDefault(classAddr, 0L);
+            }
+            if (classAddr == null) break;
+            if (cancel || dead || Thread.currentThread().isInterrupted() || gen != generation) return;
+            String text;
+            try { text = host.decompileText(classAddr); }
+            catch (Throwable failure) { text = null; }
+            if (text == null) continue;
+            if (cancel || dead || Thread.currentThread().isInterrupted() || gen != generation) return;
+            String label = host.classLabel(classAddr); // never hold the index while requesting engine
+            synchronized (this) {
+                if (revision != invalidations.getOrDefault(classAddr, 0L)) continue;
+                if (!beginCommit(gen, false)) return;
+                try {
+                    if (!writeGz(classAddr, text)) continue;
+                    entries.removeIf(e -> e.addr().equals(classAddr));
+                    entries.add(new Entry(classAddr, label, text.split("\n", -1)));
+                    live.put(classAddr, label);
+                    readyForHeader.add(classAddr);
+                    didWork = true;
+                } finally { endCommit(); }
+            }
+        }
+        synchronized (this) {
+            if (didWork && !midBuild && beginCommit(gen, false)) {
+                try {
                     finishedAt = System.currentTimeMillis();
                     builtAtMs = finishedAt;
-                    writeHeader();
-                }
+                    persisted = writeHeader();
+                } finally { endCommit(); }
             }
-            // lost-wakeup guard: ensureDrainer() returns early while this thread is
-            // alive, so an invalidate() landing during the header write strands its
-            // class unless we re-check AFTER writing (re-review 3, the blocker)
-            if (reindexQueue.isEmpty()) return;
+        }
+    }
+
+    /** Hand off under ensureDrainer's monitor, including a full builder's final pass. */
+    private synchronized void workerFinished(int gen) {
+        if (thread != Thread.currentThread()) return;
+        thread = null;
+        if (gen == generation) ensureDrainer();
+    }
+
+    private boolean beginCommit(int gen, boolean completingBuild) {
+        synchronized (interruptGate) {
+            if (gen != generation || (!completingBuild && (cancel || dead || Thread.currentThread().isInterrupted()))) return false;
+            Thread current = Thread.currentThread();
+            if (Thread.interrupted()) interruptAfterCommit.add(current);
+            committing.add(current);
+            return true;
+        }
+    }
+
+    private void endCommit() {
+        synchronized (interruptGate) {
+            Thread current = Thread.currentThread();
+            committing.remove(current);
+            if (interruptAfterCommit.remove(current)) current.interrupt();
+        }
+    }
+
+    private void interruptWorker() {
+        synchronized (interruptGate) {
+            Thread worker = thread;
+            if (worker == null) return;
+            if (committing.contains(worker)) interruptAfterCommit.add(worker);
+            else worker.interrupt();
         }
     }
 
     void cancel() {
         cancel = true;
-        Thread t = thread;
-        if (t != null) t.interrupt();
+        interruptWorker();
         if ("building".equals(state)) state = "cancelled";
     }
 
-    /** Set by the engine's close/error paths: the index dies and STAYS dead.
-     *  Volatile writes ONLY, no index monitor — the round-37 synchronized
-     *  kill() closed a three-party lock cycle (close() holds ENGINE → wants
-     *  INDEX; start() holds INDEX joining a builder for a GUARANTEED 2s; the
-     *  builder wants ENGINE) and stalled every engine-locked op, N× on
-     *  closeAll's Workspace monitor (finding 3 r37). No monitor is needed
-     *  because no correctness rests on `cancel` surviving an overwrite: dead
-     *  is tested by start()/ensureDrainer() at spawn and by every
-     *  builder/drainer loop top, and the COMMIT follows its own protocol —
-     *  gen-tested, monitor-held, pending-excluded claim (round-39; finding 6
-     *  r38 — the previous wording claimed `cancel` stays true and that every
-     *  consumer tests dead at commit time; neither was true). */
+    /** Permanent shutdown. No index monitor or filesystem I/O is acquired here:
+     * close may already own the engine monitor. A short interrupt-control gate
+     * defers interruption of an active filesystem commit; pending work otherwise
+     * remains recorded for the next open. */
     private volatile boolean dead;
     void kill() {
         dead = true;
@@ -760,13 +794,14 @@ final class SearchIndex {
                 markCancelled(gen);
                 return;                                   // superseded/killed: touch nothing further
             }
+            long revision;
+            synchronized (this) { revision = invalidations.getOrDefault(c[0], 0L); }
             String text;
             long d0 = System.nanoTime();
             try {
                 text = host.decompileText(c[0]);              // engine-locked burst
             } catch (Throwable t) {
-                built++;                                      // skip undecompilable classes
-                continue;
+                text = null;
             }
             long dms = (System.nanoTime() - d0) / 1_000_000;
             // cheap classes: evict the decompiled products right after indexing
@@ -795,9 +830,20 @@ final class SearchIndex {
                             + " heapUsedMb=" + (Runtime.getRuntime().totalMemory()
                                     - Runtime.getRuntime().freeMemory()) / 1_048_576);
             }
-            if (text != null) {
-                entries.add(new Entry(c[0], c[1], text.split("\n", -1)));
-                writeGz(c[0], text);
+            synchronized (this) {
+                if (revision != invalidations.getOrDefault(c[0], 0L)) continue;
+                if (!beginCommit(gen, true)) return;
+                try {
+                    if (text != null && writeGz(c[0], text)) {
+                        entries.removeIf(e -> e.addr().equals(c[0]));
+                        entries.add(new Entry(c[0], c[1], text.split("\n", -1)));
+                        if (pending.contains(c[0])) readyForHeader.add(c[0]);
+                    } else {
+                        pending.add(c[0]); readyForHeader.remove(c[0]);
+                        invalidations.put(c[0], ++invalidationSequence);
+                        savePending();
+                    }
+                } finally { endCommit(); }
             }
             built++;
             // mid-build drain: at GMS scale the class loop runs for HOURS, so
@@ -830,12 +876,14 @@ final class SearchIndex {
         drainQueue(gen, true);                                    // mid-build renames; header-less by contract
         synchronized (this) {
             if (gen != generation) return;                        // superseded inside the drain (Case J)
-            finishedAt = System.currentTimeMillis();
-            state = "built";
-            persisted = dir != null;
-            builtAtMs = finishedAt;
-            corpusBuiltAtMs = finishedAt;
-            writeHeader();
+            if (!beginCommit(gen, true)) return;
+            try {
+                finishedAt = System.currentTimeMillis();
+                state = "built";
+                builtAtMs = finishedAt;
+                corpusBuiltAtMs = finishedAt;
+                persisted = writeHeader() && dir != null;
+            } finally { endCommit(); }
         }
     }
 
@@ -852,12 +900,14 @@ final class SearchIndex {
         m.put("sourceIdentity", sourceIdentity);
         m.put("builderRuntime", builderRuntime);
         m.put("engineVersion", engineVersion);
-        m.put("partialCoverage", !"built".equals(state) || !reindexQueue.isEmpty());
+        int pendingCount;
+        synchronized (this) { pendingCount = pending.size(); }
+        m.put("partialCoverage", !"built".equals(state) || pendingCount > 0);
         m.put("warmRejectReason", warmRejectReason);
         m.put("mode", System.getenv().getOrDefault("WORKBENCH_INDEX_MODE", "automatic"));
         m.put("built", built);
         m.put("total", total);
-        m.put("pendingReindex", reindexQueue.size());
+        m.put("pendingReindex", pendingCount);
         m.put("persisted", persisted);
         m.put("warm", warm);                                  // corpus resident in memory
         m.put("adoptedFromDisk", adoptedFromDisk);            // warm-load adoption (the proof)

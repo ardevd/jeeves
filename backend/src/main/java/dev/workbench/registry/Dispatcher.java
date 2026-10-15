@@ -12,6 +12,33 @@ public final class Dispatcher {
     private final Registry registry;
     private ScopeChecker scopeChecker;
     private AfterOp afterOp;
+    private final java.util.concurrent.atomic.AtomicLong nextCallId = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.ConcurrentMap<Long, Map<String,Object>> active = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** In-flight dispatches, including operations whose HTTP/MCP client has disconnected.
+     * Only identity fields are retained: never query text, annotations, or credentials. */
+    public java.util.List<Map<String,Object>> activeCalls() {
+        return active.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                .map(entry -> (Map<String,Object>)new LinkedHashMap<>(entry.getValue())).toList();
+    }
+
+    private long beginCall(String op, Map<String,Object> params, String actor) {
+        if ("ops.active".equals(op)) return 0;
+        long id = nextCallId.incrementAndGet();
+        Map<String,Object> call = new LinkedHashMap<>();
+        call.put("id", id); call.put("op", op); call.put("actor", actor);
+        call.put("startedAt", java.time.Instant.now().toString());
+        Map<?,?> identity = params;
+        if ("tool.call".equals(op) && params.get("args") instanceof Map<?,?> args) {
+            identity = args;
+            if (params.get("tool") instanceof String tool) call.put("tool", tool);
+        }
+        if (identity.get("target") instanceof String target) call.put("target", target);
+        Object symbol = identity.get("symbol") == null ? identity.get("class") : identity.get("symbol");
+        if (symbol instanceof String text) call.put("symbol", text);
+        active.put(id, call);
+        return id;
+    }
 
     /** Server-side write-scope enforcement (MCP_SPEC §3): called before every
      *  mutating op; throws OpException E_SCOPE on violation. */
@@ -54,9 +81,17 @@ public final class Dispatcher {
     public static final ThreadLocal<Map<String, Object>> RESOLUTION = new ThreadLocal<>();
     /** Ops that are pure plumbing of the browser or of the bridge — never audited themselves (the
      *  routed op is). */
-    private static final java.util.Set<String> AUDIT_SKIP = java.util.Set.of("tool.call", "ops.tools", "ops.list", "caps", "system.logs", "log.client", "audit");
+    private static final java.util.Set<String> AUDIT_SKIP = java.util.Set.of("tool.call", "ops.tools", "ops.list", "ops.active", "caps", "system.logs", "log.client", "audit");
 
     public Map<String, Object> dispatch(String opName, Map<String, Object> params, String actor) {
+        if (params == null) params = new LinkedHashMap<>();
+        if (actor == null || actor.isBlank()) actor = "human";
+        long id = beginCall(opName, params, actor);
+        try { return dispatchTracked(opName, params, actor); }
+        finally { if (id != 0) active.remove(id); }
+    }
+
+    private Map<String, Object> dispatchTracked(String opName, Map<String, Object> params, String actor) {
         long t0 = System.nanoTime();
         Map<String, Object> resp = new LinkedHashMap<>();
         Map<String, Object> meta = new LinkedHashMap<>();

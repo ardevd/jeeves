@@ -93,6 +93,156 @@ public final class Workspace {
         }
     }
 
+    private final RenameCoordinator renameCoordinator = new RenameCoordinator();
+    private final java.util.Set<String> renameClaimsLoaded = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final Map<String, Map<String, Object>> saveOutcomes = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String,Integer> pendingSaves = new HashMap<>(); // guarded by saveOutcomes
+
+    public RenameCoordinator renameCoordinator() { return renameCoordinator; }
+
+    /** Gate order is target transaction, then Workspace, then engine; never wait for a
+     * transaction while holding the Workspace monitor. Saves share this gate with edits. */
+    public <T> T withTargetWrite(String targetParam, RenameCoordinator.Work<T> work) throws OpException {
+        String tid;
+        synchronized (this) { tid = resolveTargetIdOrActive(targetParam); }
+        return renameCoordinator.transact(tid, () -> {
+            engineFor(tid); // reject a target closed while this transaction waited
+            if (renameClaimsLoaded.add(tid)) {
+                try { rebuildRenameClaims(tid); }
+                catch (OpException ex) { renameClaimsLoaded.remove(tid); throw ex; }
+            }
+            requireHistoryPersisted(tid); // comments, locals and other writes must also flush prior failures first
+            return work.run();
+        });
+    }
+
+    /** Rebuild ownership from the recovery log, keyed by original DEX identity. */
+    public void rebuildRenameClaims(String tid) throws OpException {
+        List<Map<String, Object>> entries;
+        java.time.Instant savedAt;
+        synchronized (this) {
+            TargetMeta tm = targets.get(tid);
+            File db = tm == null ? null : jdb2FileOf(tm.path());
+            savedAt = databaseTime(db);
+            entries = historyFor(tid).stream().map(LinkedHashMap<String, Object>::new).map(x -> (Map<String,Object>)x).toList();
+        }
+        List<RenameCoordinator.Claim> claims = new ArrayList<>();
+        Engine engine = engineFor(tid);
+        List<Map<String,Object>> ordered = new ArrayList<>(entries);
+        ordered.sort(java.util.Comparator.comparing(HistoryJournal::lastChange));
+        for (Map<String, Object> entry : ordered) {
+            if (!"rename".equals(entry.get("op")) || Boolean.TRUE.equals(entry.get("undone"))
+                    || "parameters".equals(entry.get("kind"))
+                    || ("local".equals(entry.get("kind")) && entry.get("originalSymbol") == null)) continue;
+            if (!HistoryJournal.lastChange(entry).isAfter(savedAt)) continue;
+            String original = entry.get("originalSymbol") == null ? null : String.valueOf(entry.get("originalSymbol"));
+            if (original == null) {
+                try {
+                    Map<String,Object> sym = engine.resolve(String.valueOf(entry.get("newAddr")));
+                    original = stableSymbol(sym, String.valueOf(entry.get("addr")));
+                } catch (OpException ignored) { continue; }
+            }
+            List<String> originals = renameOriginals(entry);
+            if (originals.isEmpty()) originals = List.of(original);
+            for (String affected : originals) {
+                // Out-of-order undo can leave a later history row active while its name is no
+                // longer current. Never reconstruct ownership for that stale assignment.
+                try {
+                    Map<String,Object> current = "local".equals(entry.get("kind"))
+                            ? engine.resolveLocal(String.valueOf(entry.getOrDefault("originalMethod", entry.get("addr"))), String.valueOf(entry.get("newName")))
+                            : engine.resolve(affected);
+                    if (!String.valueOf(entry.get("newName")).equals(String.valueOf(current.get("name")))) continue;
+                } catch (OpException unavailable) { continue; }
+                claims.add(new RenameCoordinator.Claim(affected, String.valueOf(entry.get("newName")),
+                        String.valueOf(entry.get("actor")), String.valueOf(entry.get("id"))));
+            }
+        }
+        renameCoordinator.replace(tid, claims);
+    }
+
+    private static String stableSymbol(Map<String,Object> symbol, String fallback) {
+        return String.valueOf(symbol.getOrDefault("origSig", symbol.getOrDefault("addr", symbol.getOrDefault("fqcn", fallback))));
+    }
+
+    /** Stable identities written by one rename, including JEB's implicit method overrides. */
+    private static List<String> renameOriginals(Map<String,Object> entry) {
+        List<String> originals = new ArrayList<>();
+        if (entry.get("renameTargets") instanceof List<?> rows) {
+            for (Object value : rows) {
+                if (value instanceof Map<?,?> row && row.get("originalSymbol") instanceof String original)
+                    originals.add(original);
+            }
+        }
+        if (originals.isEmpty() && entry.get("originalSymbol") instanceof String original) originals.add(original);
+        return originals;
+    }
+
+    /** One atomic ownership check, engine mutation, and durable recovery record. */
+    public Map<String,Object> renameSymbol(String targetParam, String symbol, String name, String actor,
+                                           Object confidence, String expectedName) throws OpException {
+        String tid;
+        synchronized (this) { tid = resolveTargetIdOrActive(targetParam); }
+        return withTargetWrite(tid, () -> {
+            requireHistoryPersisted(tid);
+            Engine engine = engineFor(tid);
+            List<Map<String,Object>> affected = engine.renameTargets(symbol);
+            Map<String,Object> before = affected.get(0);
+            String original = stableSymbol(before, symbol);
+            List<Map<String,Object>> renamed = new ArrayList<>();
+            for (Map<String,Object> member : affected) {
+                String memberOriginal = stableSymbol(member, symbol);
+                String current = String.valueOf(member.getOrDefault("name", member.getOrDefault("fqcn", symbol)));
+                renameCoordinator.check(tid, memberOriginal, current, actor,
+                        memberOriginal.equals(original) ? expectedName : null);
+                if ("agent".equals(EventBus.actorKind(actor)) && humanNamedBy(tid, memberOriginal) != null) {
+                    OpException conflict = OpException.scope("The symbol is named '" + current + "' by the analyst; your rename was not applied", "symbol=" + memberOriginal);
+                    conflict.extra.put("currentName", current);
+                    conflict.extra.put("originalSymbol", memberOriginal);
+                    throw conflict;
+                }
+                Map<String,Object> row = new LinkedHashMap<>();
+                row.put("originalSymbol", memberOriginal); row.put("oldName", current); row.put("newName", name);
+                renamed.add(row);
+            }
+            Map<String,Object> result = engine.rename(symbol, name, actor);
+            if (Boolean.TRUE.equals(result.get("applied"))) {
+                String assigned = String.valueOf(result.getOrDefault("newName", name));
+                for (Map<String,Object> member : renamed)
+                    renameCoordinator.renamed(tid, String.valueOf(member.get("originalSymbol")), assigned, actor, null);
+                Map<String,Object> entry = new LinkedHashMap<>();
+                entry.put("op", "rename"); entry.put("actor", actor);
+                for (String key : List.of("kind", "addr", "newAddr", "oldName", "newName")) entry.put(key, result.get(key));
+                if (entry.get("kind") == null) entry.put("kind", before.get("kind"));
+                if (entry.get("addr") == null) entry.put("addr", before.getOrDefault("addr", original));
+                if (entry.get("newAddr") == null) entry.put("newAddr", original);
+                entry.put("originalSymbol", original);
+                entry.put("renameTargets", renamed);
+                entry.put("owner", ownerOfAddr(String.valueOf(result.getOrDefault("addr", symbol))));
+                if (confidence != null) entry.put("confidence", confidence);
+                try { recordHistory(tid, entry); }
+                finally {
+                    for (Map<String,Object> member : renamed)
+                        renameCoordinator.renamed(tid, String.valueOf(member.get("originalSymbol")), assigned, actor,
+                                entry.get("id") == null ? null : String.valueOf(entry.get("id")));
+                }
+                result.put("historyId", entry.get("id"));
+                result.put("originalSymbol", original);
+                result.put("durableHistory", true);
+            }
+            return result;
+        });
+    }
+
+    private synchronized void requireHistoryPersisted(String tid) throws OpException {
+        // Mock scene targets intentionally have no filesystem. Every real opened target has a store key.
+        if (historyFile(tid) == null && !storeKeyByTid.containsKey(tid)) return;
+        if (!persistHistory(tid)) {
+            OpException error = OpException.io("The edit history could not be written durably; the database has not been saved. Keep this target open and retry after correcting storage.", "target=" + tid);
+            error.extra.put("durable", false);
+            throw error;
+        }
+    }
+
     // ------------------------------------------------------------ projects
 
     public synchronized List<Object> projectList() {
@@ -411,7 +561,10 @@ public final class Workspace {
         Integer n = historySeq.get(tid);
         if (n != null) return n;
         int max = 0;
-        for (Map<String, Object> e : historyFor(tid)) max = Math.max(max, historyNum(e));
+        for (Map<String,Object> e : historyFor(tid)) {
+            max = Math.max(max, historyNum(e));
+            for (Map<String,Object> event : HistoryJournal.reversals(e)) max = Math.max(max, historyNum(event));
+        }
         return max;
     }
 
@@ -419,7 +572,12 @@ public final class Workspace {
     public synchronized List<Map<String, Object>> historySince(String tid, int afterRevision) {
         List<Map<String, Object>> out = new ArrayList<>();
         if (tid == null) return out;
-        for (Map<String, Object> e : historyFor(tid)) if (historyNum(e) > afterRevision) out.add(new LinkedHashMap<>(e));
+        for (Map<String,Object> e : historyFor(tid)) {
+            if (historyNum(e) > afterRevision) out.add(new LinkedHashMap<>(e));
+            for (Map<String,Object> event : HistoryJournal.reversals(e))
+                if (historyNum(event) > afterRevision) out.add(new LinkedHashMap<>(event));
+        }
+        out.sort(java.util.Comparator.comparingInt(Workspace::historyNum));
         return out;
     }
 
@@ -2500,38 +2658,19 @@ public final class Workspace {
         }
     }
 
-    /** Unsaved edits for the dirty replay (crash-window recovery): applied
-     *  (non-undone) history entries whose ts is newer than the jdb2's last
-     *  save — the jdb2 never saw them. With no jdb2 there is nothing to recover: a clean analysis.
-     *  The one exception is a RE-KEY (backend/jdb2-rekey.sh set the database aside and left
-     *  <file>.jdb2.replay): then it is every applied entry — the artifact is analysed again and
-     *  its history re-applied, and the engine writes the new database only after that
-     *  (JebEngine.firstSaveAfterReplay). The marker, not the mere absence of a .jdb2: a sidecar
-     *  carried over from another build of the same path must not be replayed onto this one. */
+    /** Native save times retain filesystem precision; millisecond truncation could drop an
+     * edit accepted later in the same millisecond. Checkpoint rollback preserves this time. */
+    private static java.time.Instant databaseTime(File database) {
+        if (database == null || !database.isFile()) return java.time.Instant.MIN;
+        try { return Files.getLastModifiedTime(database.toPath()).toInstant(); }
+        catch (IOException ex) { return java.time.Instant.ofEpochMilli(database.lastModified()); }
+    }
+
+    /** Replay actual mutations newer than the DB: original writes and durable undo/redo events.
+     * A missing database only replays when an explicit rekey marker requests reconstruction. */
     private List<Map<String, Object>> dirtyReplayFor(String tid, File jdb2) {
-        if (jdb2 == null) return List.of();
-        if (!jdb2.isFile() && !dev.workbench.engine.Engines.replayMarker(jdb2).isFile()) return List.of();
-        long mtime = jdb2.isFile() ? jdb2.lastModified() : Long.MIN_VALUE;
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Map<String, Object> e : historyFor(tid)) {
-            if (Boolean.TRUE.equals(e.get("undone"))) continue;
-            long ts = 0;
-            try { ts = java.time.Instant.parse(String.valueOf(e.get("ts"))).toEpochMilli(); }
-            catch (Exception ignored) {}
-            if (ts <= mtime) continue;
-            Map<String, Object> r = new LinkedHashMap<>();
-            r.put("op", e.get("op"));
-            r.put("addr", e.get("addr"));
-            if (e.get("kind") != null) r.put("kind", e.get("kind"));   // "local": addr is the METHOD, oldName → newName one of its locals
-            if (e.get("oldName") != null) r.put("oldName", e.get("oldName"));
-            r.put("newAddr", e.get("newAddr"));   // the post-rename addr — targetChanges folds rename chains onto one symbol with it
-            r.put("newName", e.get("newName"));
-            r.put("newText", e.get("newText"));
-            if (e.get("changes") != null) r.put("changes", e.get("changes"));   // a parameters entry replays its per-index changes — never its joined newName as a method name
-            if (e.get("revert") != null) r.put("revert", e.get("revert"));     // a restoration replays through the validated restore, not the identifier rule
-            out.add(r);
-        }
-        return out;
+        if (jdb2 == null || (!jdb2.isFile() && !Engines.replayMarker(jdb2).isFile())) return List.of();
+        return HistoryJournal.replay(historyFor(tid), databaseTime(jdb2));
     }
 
     /* ---------------------------------------------------------- view.json
@@ -2626,30 +2765,15 @@ public final class Workspace {
         return out;
     }
 
-    /** DISCARD on close: the unsaved entries must NOT replay on the next open. Mark them
-     *  undone (the replay's skip flag) and discarded (the audit trail's why), persist. */
-    /** @return true when the discard is durably recorded (nothing to discard, or the marks
-     *  were persisted). FALSE means the persist failed — the caller MUST NOT proceed with a
-     *  silent discard, or the unmarked edits replay on the next open (review c7395d2 A2). */
+    /** Discard only actions newer than the saved DB, including reversals of older entries.
+     * Failed journal replacement leaves the original in-memory history and target open. */
     private synchronized boolean discardUnsavedHistory(String tid, File jdb2) {
-        if (jdb2 == null || !jdb2.isFile()) return true;   // no jdb2 = nothing saved to diverge from
-        long mtime = jdb2.lastModified();
-        List<Map<String, Object>> marked = new ArrayList<>();
-        for (Map<String, Object> e : historyFor(tid)) {
-            if (Boolean.TRUE.equals(e.get("undone"))) continue;
-            long ts = 0;
-            try { ts = java.time.Instant.parse(String.valueOf(e.get("ts"))).toEpochMilli(); }
-            catch (Exception ignored) {}
-            if (ts <= mtime) continue;
-            e.put("undone", true);
-            e.put("discarded", true);
-            marked.add(e);
-        }
-        if (marked.isEmpty()) return true;
+        if (jdb2 == null || !jdb2.isFile()) return true;
+        List<Map<String,Object>> previous = historyFor(tid);
+        List<Map<String,Object>> discarded = HistoryJournal.discardAfter(previous, databaseTime(jdb2));
+        history.put(tid, discarded);
         if (persistHistory(tid)) return true;
-        /* the write did not land — roll back ONLY the marks made in this call (not entries a
-           prior discard already dropped) so state is consistent; the caller aborts the close */
-        for (Map<String, Object> e : marked) { e.put("undone", false); e.remove("discarded"); }
+        history.put(tid, previous);
         return false;
     }
 
@@ -2664,13 +2788,10 @@ public final class Workspace {
      *  unparseable/missing ts maps to 0 (= always replayed, conservative). */
     private Map<String, Long> indexReplayMap(String tid) {
         Map<String, Long> out = new LinkedHashMap<>();
-        for (Map<String, Object> e : historyFor(tid)) {
-            if (Boolean.TRUE.equals(e.get("undone"))) continue;
-            long ts = 0;
-            try { ts = java.time.Instant.parse(String.valueOf(e.get("ts"))).toEpochMilli(); }
-            catch (Exception ignored) {}
-            if (e.get("addr") != null) out.put(String.valueOf(e.get("addr")), ts);
-            if (e.get("newAddr") != null) out.put(String.valueOf(e.get("newAddr")), ts);
+        for (Map<String,Object> e : HistoryJournal.replay(historyFor(tid), java.time.Instant.MIN)) {
+            long ts = HistoryJournal.time(e.get("ts")).toEpochMilli();
+            if (e.get("addr") != null) out.merge(String.valueOf(e.get("addr")), ts, Math::max);
+            if (e.get("newAddr") != null) out.merge(String.valueOf(e.get("newAddr")), ts, Math::max);
         }
         return out;
     }
@@ -2692,6 +2813,12 @@ public final class Workspace {
     /** The synchronous half of a close: the maps drop, the active cursor moves, the jdb2 is
      *  reserved. Under the Workspace monitor, milliseconds. */
     private Detached detachTarget(String idOrName, Boolean save) throws OpException {
+        String tid;
+        synchronized (this) { tid = resolveTargetId(idOrName); }
+        return withTargetWrite(tid, () -> detachTargetLocked(tid, save));
+    }
+
+    private Detached detachTargetLocked(String idOrName, Boolean save) throws OpException {
         Engine e;
         String path = null;
         String tid;
@@ -2741,14 +2868,19 @@ public final class Workspace {
      *  target's analysis, and a dirty target writes its jdb2 here. The Workspace monitor must NOT
      *  be held across it: every op resolves engines through that monitor (review R4 measured
      *  target.info on an unrelated ready target at 1.58s during a close). */
-    private void finishClose(Detached d, Boolean save) {
+    private void finishClose(Detached d, Boolean save) throws OpException {
         try {
             if (d.engine() != null) {
                 /* DISCARD: clear the engine's dirty flag so close() unloads WITHOUT writing
                    the jdb2 (the history was already marked+persisted under the monitor above) */
-                if (Boolean.FALSE.equals(save)) try { d.engine().discardUnsaved(); } catch (Throwable ignored) {}
-                try { d.engine().close(); } catch (Throwable ignored) {}   // JEB: saves when dirty (unless discarded above), releases .jdb2 lock
+                if (Boolean.FALSE.equals(save)) d.engine().discardUnsaved();
+                d.engine().close(); // failures reach synchronous callers and the async error log
             }
+        } catch (RuntimeException failure) {
+            OpException error = OpException.io("Target closed with a save failure: " + failure.getMessage()
+                    + ". Keep its database, checkpoint and history files; reopen with history to recover accepted edits.", "target=" + d.tid());
+            error.extra.put("closed", true); error.extra.put("saved", false);
+            throw error;
         } finally {
             if (d.path() != null)
                 synchronized (this) { releaseClosing(d.path()); }
@@ -2786,47 +2918,95 @@ public final class Workspace {
         notifyAll();
     }
 
-    /** Persist the given (or active) target's session (⌘S — MCP_SPEC §3). */
+    /** Persist history and native state under the same transaction as symbol edits. */
     public Map<String, Object> saveTarget(String idOrName) throws OpException {
-        Engine e = engineFor(idOrName);   // synchronized lookup…
-        return e.save();                  // …but the OPEN_LOCK save runs off the Workspace monitor (R4)
+        String tid;
+        synchronized (this) { tid = resolveTargetIdOrActive(idOrName); }
+        long startedAt = System.currentTimeMillis();
+        reserveSave(tid, startedAt);
+        return saveTargetNow(tid, startedAt);
     }
 
-    /** target.save {async: true}: the write runs on its own thread and the call answers at once —
-     *  an MCP client's tool call times out at about two minutes while a 2 GB jdb2 takes longer,
-     *  which made a completed save read as a failure (Kimi researcher, 2026-09-21). The caller polls
-     *  target.saveStatus: `saving` while it writes, then `last {ok, at, ms, bytes, error?}` with
-     *  last.at ≥ the startedAt returned here. */
+    private void reserveSave(String tid, long startedAt) {
+        synchronized (saveOutcomes) {
+            int pending = pendingSaves.merge(tid, 1, Integer::sum);
+            if (pending == 1) saveOutcomes.put(tid, Map.of("saving", true, "startedAt", startedAt));
+        }
+    }
+
+    private void completeSave(String tid, Map<String,Object> last) {
+        synchronized (saveOutcomes) {
+            int pending = pendingSaves.getOrDefault(tid, 1) - 1;
+            if (pending <= 0) {
+                pendingSaves.remove(tid);
+                saveOutcomes.put(tid, Map.of("saving", false, "last", last));
+            } else {
+                pendingSaves.put(tid, pending);
+                Object startedAt = saveOutcomes.get(tid).get("startedAt");
+                saveOutcomes.put(tid, Map.of("saving", true, "startedAt", startedAt, "last", last));
+            }
+        }
+    }
+
+    private Map<String,Object> saveTargetNow(String tid, long startedAt) throws OpException {
+        // Keep publication in native-write order too: an older completion must not overwrite
+        // a newer save's failure after releasing the target gate.
+        return renameCoordinator.transact(tid, () -> {
+            try {
+                Map<String,Object> result = withTargetWrite(tid, () -> {
+                    requireHistoryPersisted(tid);
+                    Map<String,Object> saved = new LinkedHashMap<>(engineFor(tid).save());
+                    if (!Boolean.TRUE.equals(saved.get("saved")))
+                        throw OpException.io("Native save did not confirm a written database", "target=" + tid);
+                    renameCoordinator.saved(tid);
+                    saved.put("historyRevision", historyRevision(tid));
+                    saved.put("durableHistory", true);
+                    return saved;
+                });
+                Map<String,Object> last = new LinkedHashMap<>();
+                last.put("ok", true); last.put("at", System.currentTimeMillis());
+                last.put("ms", System.currentTimeMillis() - startedAt);
+                last.put("bytes", result.getOrDefault("bytes", 0));
+                last.put("historyRevision", result.get("historyRevision"));
+                completeSave(tid, last);
+                return result;
+            } catch (Throwable error) {
+                Map<String,Object> last = new LinkedHashMap<>();
+                last.put("ok", false); last.put("at", System.currentTimeMillis());
+                last.put("ms", System.currentTimeMillis() - startedAt); last.put("error", String.valueOf(error));
+                completeSave(tid, last);
+                if (error instanceof OpException op) throw op;
+                if (error instanceof Error fatal) throw fatal;
+                throw OpException.io("Save failed: " + error, "target=" + tid);
+            }
+        });
+    }
+
+    /** Reserve an asynchronous save before starting its thread; polling includes journal failures. */
     public Map<String, Object> saveTargetAsync(String idOrName) throws OpException {
-        String tid = resolveTargetIdOrActive(idOrName);
-        Engine e = engineFor(tid);
-        Map<String, Object> st = e.saveStatus();
-        Map<String, Object> out = new LinkedHashMap<>();
+        String tid;
+        synchronized (this) { tid = resolveTargetIdOrActive(idOrName); }
+        engineFor(tid);
+        Map<String,Object> out = new LinkedHashMap<>();
         out.put("target", tid);
         out.put("pollTool", Map.of("tool", "target", "args", Map.of("action", "save_status", "target", tid)));
         out.put("pollOp", Map.of("op", "target.saveStatus", "params", Map.of("target", tid)));
-        out.put("poll", "Call pollTool through tool.call (MCP: target with its args); pollOp is the legacy op route. "
-                + "Wait for saving:false AND last.at >= startedAt, then last.ok:true means success; last.ok:false means failure. "
-                + "Missing or older last is not completion, and saving:false alone is not success.");
-        if (Boolean.TRUE.equals(st.get("saving"))) {
-            out.put("started", false);
-            out.put("alreadySaving", true);
-            out.putAll(st);
-            return out;
-        }
-        long startedAt = System.currentTimeMillis();
-        Thread t = new Thread(() -> {
-            try { e.save(); }
-            catch (Throwable ex) {
-                Map<String, Object> ctx = new LinkedHashMap<>();
-                ctx.put("target", tid);
-                Log.error("target.save (async)", ex, ctx);
+        out.put("poll", "Wait for saving:false AND last.at >= startedAt, then require last.ok:true. Missing or older last is not completion; last.ok:false includes the failure.");
+        long startedAt;
+        synchronized (saveOutcomes) {
+            Map<String,Object> status = saveStatus(tid);
+            if (Boolean.TRUE.equals(status.get("saving"))) {
+                out.put("started", false); out.put("alreadySaving", true); out.putAll(status); return out;
             }
+            startedAt = System.currentTimeMillis();
+            reserveSave(tid, startedAt);
+        }
+        Thread thread = new Thread(() -> {
+            try { saveTargetNow(tid, startedAt); }
+            catch (Throwable error) { Log.error("target.save (async)", error, Map.of("target", tid)); }
         }, "save-" + tid);
-        t.setDaemon(true);
-        t.start();
-        out.put("started", true);
-        out.put("startedAt", startedAt);
+        thread.setDaemon(true); thread.start();
+        out.put("started", true); out.put("startedAt", startedAt);
         return out;
     }
 
@@ -2865,7 +3045,12 @@ public final class Workspace {
 
     /** target.saveStatus: the save in flight (the GUI polls it for the saving box's bar). */
     public Map<String, Object> saveStatus(String idOrName) throws OpException {
-        return engineFor(idOrName).saveStatus();
+        String tid;
+        synchronized (this) { tid = resolveTargetIdOrActive(idOrName); }
+        Map<String,Object> result = new LinkedHashMap<>(engineFor(tid).saveStatus());
+        Map<String,Object> own = saveOutcomes.get(tid);
+        if (own != null) result.putAll(own);
+        return result;
     }
 
     /** op.cancel: cancel a background task by ticket (search-index:<target>). When a
@@ -2886,10 +3071,14 @@ public final class Workspace {
         return out;
     }
 
-    /** Close every session (server shutdown). */
-    public synchronized void closeAll() {
-        for (Engine e : engines.values()) {
-            try { e.close(); } catch (Throwable ignored) {}
+    /** Close every session (server shutdown). Journal failure keeps its target open, and
+     * failed shutdown saves are logged explicitly. Use target.save before stopping the host. */
+    public void closeAll() {
+        List<String> ids;
+        synchronized (this) { ids = new ArrayList<>(engines.keySet()); }
+        for (String tid : ids) {
+            try { withTargetWrite(tid, () -> { engineFor(tid).close(); return null; }); }
+            catch (Throwable failure) { Log.error("target.close (shutdown)", failure, Map.of("target", tid)); }
         }
     }
 
@@ -4021,8 +4210,20 @@ public final class Workspace {
         entry.put("ts", java.time.Instant.now().toString());
         entry.put("target", tid);
         entry.put("undone", false);
+        entry.put("journalVersion", 2);
+        // Canonical identity keeps comments and argument maps replayable after owner renames.
+        if (entry.get("originalSymbol") == null && !"local".equals(entry.get("kind"))) {
+            try { entry.put("originalSymbol", stableSymbol(engineFor(tid).resolve(String.valueOf(entry.get("addr"))), String.valueOf(entry.get("addr")))); }
+            catch (OpException ignored) {} // legacy/unsupported engines retain their address-based record
+        }
         historyFor(tid).add(entry);
-        persistHistory(tid);
+        try { requireHistoryPersisted(tid); }
+        catch (OpException failure) {
+            failure.extra.put("applied", true);
+            failure.extra.put("historyId", entry.get("id"));
+            failure.extra.put("recovery", "The edit remains in memory. Keep the target open and retry target.save after correcting storage.");
+            throw failure;
+        }
         java.util.function.BiConsumer<String, Map<String, Object>> hl = historyListener;
         if (hl != null) try { hl.accept(tid, new LinkedHashMap<>(entry)); } catch (Throwable t) { Log.warn("history listener", String.valueOf(t), null); }
         if ("rename".equals(entry.get("op"))) {
@@ -4119,14 +4320,24 @@ public final class Workspace {
      *  accepted mapping is the analyst's choice, not a compiler-verified correspondence, and the
      *  entry says so. */
     @SuppressWarnings("unchecked")
-    public synchronized Map<String, Object> renameParameters(String targetParam, String methodSymbol, List<Map<String, Object>> changes, String source, String actor) throws OpException {
+    public Map<String, Object> renameParameters(String targetParam, String methodSymbol, List<Map<String, Object>> changes, String source, String actor) throws OpException {
         return renameParameters(targetParam, methodSymbol, changes, source, actor, null);
     }
 
     /** expectCurrent (nullable): what the analyst SAW when choosing — [{index, name}]; an argument whose
      *  current name differs (another edit landed since the preview) refuses the whole mapping, so a stale
      *  selection never renames a different argument. */
-    public synchronized Map<String, Object> renameParameters(String targetParam, String methodSymbol, List<Map<String, Object>> changes, String source, String actor, List<Map<String, Object>> expectCurrent) throws OpException {
+    public Map<String,Object> renameParameters(String targetParam, String methodSymbol, List<Map<String, Object>> changes, String source, String actor, List<Map<String, Object>> expectCurrent) throws OpException {
+        String tid;
+        synchronized (this) { tid = resolveTargetIdOrActive(targetParam); }
+        return withTargetWrite(tid, () -> {
+            requireHistoryPersisted(tid);
+            try { return renameParametersLocked(tid, methodSymbol, changes, source, actor, expectCurrent); }
+            finally { rebuildRenameClaims(tid); }
+        });
+    }
+
+    private synchronized Map<String, Object> renameParametersLocked(String targetParam, String methodSymbol, List<Map<String, Object>> changes, String source, String actor, List<Map<String, Object>> expectCurrent) throws OpException {
         String tid = resolveTargetIdOrActive(targetParam);
         Engine e = engineFor(tid);
         Map<String, Object> meta = e.methodParameters(methodSymbol);
@@ -4269,10 +4480,41 @@ public final class Workspace {
     /** locals.auto: name the generated locals of a method after their types, record one History
      *  entry per local (kind local, undoable) and a binding per local so a later class rename is
      *  followed. Returns the engine's {addr, renames, skipped} plus historyIds. */
-    public synchronized Map<String, Object> autoNameLocals(String targetParam, String methodSymbol, boolean all, String actor) throws OpException {
+    public Map<String,Object> autoNameLocals(String targetParam, String methodSymbol, boolean all, String actor) throws OpException {
+        String tid;
+        synchronized (this) { tid = resolveTargetIdOrActive(targetParam); }
+        return withTargetWrite(tid, () -> {
+            requireHistoryPersisted(tid);
+            try { return autoNameLocalsLocked(tid, methodSymbol, all, actor); }
+            finally { rebuildRenameClaims(tid); }
+        });
+    }
+
+    private synchronized Map<String, Object> autoNameLocalsLocked(String targetParam, String methodSymbol, boolean all, String actor) throws OpException {
         String tid = resolveTargetIdOrActive(targetParam);
         Engine e = engineFor(tid);
+        // Preflight the entire affected set before the engine's bulk mutation. A target
+        // gate prevents a race, but it does not itself stop another actor overwriting a name.
+        Map<String,Map<String,Object>> identities = new LinkedHashMap<>();
+        for (Object value : e.locals(methodSymbol)) {
+            if (!(value instanceof Map<?,?> local)) continue;
+            String current = String.valueOf(local.get("name"));
+            if ("this".equals(current) || (!all && !current.matches("(v|arg|p|var|local)\\d+(_\\d+)?"))) continue;
+            String type = local.get("type") == null ? null : String.valueOf(local.get("type"));
+            String proposed = dev.workbench.engine.TypeNames.nameForType(type);
+            if (proposed == null || proposed.equals(current)) continue;
+            Map<String,Object> identity = e.resolveLocal(methodSymbol, current);
+            renameCoordinator.check(tid, String.valueOf(identity.get("originalSymbol")), current, actor, null);
+            identities.put(current, identity);
+        }
         Map<String, Object> res = e.autoNameLocals(methodSymbol, all, actor);
+        // Every engine-applied local gets a claim BEFORE the first journal flush can fail.
+        for (Object value : (List<?>)res.get("renames")) {
+            Map<?,?> rename = (Map<?,?>)value;
+            Map<String,Object> identity = identities.get(String.valueOf(rename.get("local")));
+            renameCoordinator.renamed(tid, String.valueOf(identity.get("originalSymbol")), String.valueOf(rename.get("name")), actor, null);
+        }
+        OpException persistenceFailure = null;
         List<Object> ids = new ArrayList<>();
         List<Map<String, Object>> bindings = bindingsFor(tid);
         for (Object o : (List<?>) res.get("renames")) {
@@ -4287,7 +4529,13 @@ public final class Workspace {
             h.put("newName", rn.get("name"));
             h.put("owner", ownerOfAddr(String.valueOf(res.get("addr"))));
             h.put("auto", "type");
-            recordHistory(tid, h);
+            Map<String,Object> identity = identities.get(String.valueOf(rn.get("local")));
+            h.put("originalSymbol", identity.get("originalSymbol"));
+            h.put("originalMethod", identity.get("originalMethod"));
+            try { recordHistory(tid, h); }
+            catch (OpException failure) { if (persistenceFailure == null) persistenceFailure = failure; }
+            finally { renameCoordinator.renamed(tid, String.valueOf(identity.get("originalSymbol")),
+                    String.valueOf(rn.get("name")), actor, h.get("id") == null ? null : String.valueOf(h.get("id"))); }
             ids.add(h.get("id"));
             // one binding per (method, local); a re-run replaces
             bindings.removeIf(b -> String.valueOf(res.get("addr")).equals(b.get("method")) && String.valueOf(rn.get("name")).equals(b.get("local")));
@@ -4309,6 +4557,11 @@ public final class Workspace {
         persistBindings(tid);
         res.put("historyIds", ids);
         res.put("bindings", bindings.stream().filter(b -> String.valueOf(res.get("addr")).equals(b.get("method"))).count());
+        if (persistenceFailure != null) {
+            persistenceFailure.extra.put("historyIds", ids);
+            persistenceFailure.extra.put("appliedRenames", res.get("renames"));
+            throw persistenceFailure;
+        }
         return res;
     }
 
@@ -4324,61 +4577,76 @@ public final class Workspace {
         if (b.removeIf(x -> method.equals(x.get("method")) && local.equals(x.get("local")))) persistBindings(tid);
     }
 
-    /** After a class or method rename (any actor, undo and redo included): re-key the bindings
-     *  whose method address moved, and rename every local bound to a renamed CLASS after its new
-     *  name — one History entry each, actor "<actor> (follows class rename)". Never throws. */
-    public synchronized List<Object> followRename(String tid, String kind, String oldAddr, String newAddr, String actor) {
+    /** Follow type-bound local names after a class rename. Conflicting locals stay unchanged
+     * and are reported in the parent history entry; applied local writes get stable claims
+     * and recovery records. A failed journal write is returned to the caller explicitly. */
+    public synchronized List<Object> followRename(String tid, String kind, String oldAddr, String newAddr, String actor) throws OpException {
         List<Object> followed = new ArrayList<>();
         if (oldAddr == null || newAddr == null || oldAddr.equals(newAddr)) return followed;
-        try {
-            List<Map<String, Object>> b = bindingsFor(tid);
-            boolean changed = false;
-            if ("class".equals(kind)) {
-                for (Map<String, Object> x : b) {
-                    /* the method key follows the class everywhere it appears — as the owner and inside
-                       the descriptor (a `Lpkg/C;` token is ;-delimited, so a substring swap is exact) */
-                    String m = String.valueOf(x.get("method"));
-                    if (m.contains(oldAddr)) { x.put("method", m.replace(oldAddr, newAddr)); changed = true; }
-                    if (oldAddr.equals(x.get("type"))) { x.put("type", newAddr); changed = true; }
-                }
-                Engine e = engineFor(tid);
-                String base = dev.workbench.engine.TypeNames.nameForType(newAddr);
-                for (Map<String, Object> x : new ArrayList<>(b)) {
-                    if (!newAddr.equals(x.get("type"))) continue;
-                    String method = String.valueOf(x.get("method")), local = String.valueOf(x.get("local"));
-                    String want = Boolean.TRUE.equals(x.get("array")) ? (base.endsWith("s") ? base + "Array" : base + "s") : base;
-                    if (want == null || want.equals(local)) continue;
-                    String picked = null;
-                    for (int n = 1; n <= 20 && picked == null; n++) {
-                        String cand = n == 1 ? want : want + "_" + n;
-                        if (cand.equals(local)) { picked = cand; break; }
-                        try { e.renameLocal(method, local, cand, actor); picked = cand; }
-                        catch (OpException ex) { if (!"E_BUSY".equals(ex.code)) break; }   // a taken name: next suffix; anything else: give up
-                    }
-                    if (picked == null || picked.equals(local)) continue;
-                    Map<String, Object> h = new LinkedHashMap<>();
-                    h.put("op", "rename");
-                    h.put("kind", "local");
-                    h.put("actor", (actor == null ? "human" : actor) + " (follows class rename)");
-                    h.put("addr", method);
-                    h.put("newAddr", method);
-                    h.put("oldName", local);
-                    h.put("newName", picked);
-                    h.put("owner", ownerOfAddr(method));
-                    h.put("auto", "type");
-                    recordHistory(tid, h);
-                    x.put("local", picked);
-                    changed = true;
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("method", method); row.put("local", local); row.put("name", picked);
-                    followed.add(row);
-                }
-            } else if ("method".equals(kind)) {
-                for (Map<String, Object> x : b)
-                    if (oldAddr.equals(x.get("method"))) { x.put("method", newAddr); changed = true; }
+        List<Map<String, Object>> bindings = bindingsFor(tid);
+        boolean changed = false;
+        OpException persistenceFailure = null;
+        if ("class".equals(kind)) {
+            for (Map<String, Object> binding : bindings) {
+                String method = String.valueOf(binding.get("method"));
+                if (method.contains(oldAddr)) { binding.put("method", method.replace(oldAddr, newAddr)); changed = true; }
+                if (oldAddr.equals(binding.get("type"))) { binding.put("type", newAddr); changed = true; }
             }
-            if (changed) persistBindings(tid);
-        } catch (Exception ignored) {}
+            Engine engine = engineFor(tid);
+            String base = dev.workbench.engine.TypeNames.nameForType(newAddr);
+            for (Map<String, Object> binding : new ArrayList<>(bindings)) {
+                if (!newAddr.equals(binding.get("type")) || base == null) continue;
+                String method = String.valueOf(binding.get("method")), local = String.valueOf(binding.get("local"));
+                String desired = Boolean.TRUE.equals(binding.get("array")) ? (base.endsWith("s") ? base + "Array" : base + "s") : base;
+                if (desired.equals(local)) continue;
+                Map<String,Object> identity;
+                try {
+                    identity = engine.resolveLocal(method, local);
+                    renameCoordinator.check(tid, String.valueOf(identity.get("originalSymbol")), String.valueOf(identity.get("name")), actor, null);
+                } catch (OpException conflict) {
+                    followed.add(Map.of("method", method, "local", local, "status", "skipped", "errorDetails", conflict.toMap()));
+                    continue;
+                }
+                String picked = null;
+                OpException renameFailure = null;
+                for (int n = 1; n <= 20 && picked == null; n++) {
+                    String candidate = n == 1 ? desired : desired + "_" + n;
+                    if (candidate.equals(local)) { picked = candidate; break; }
+                    try { engine.renameLocal(method, local, candidate, actor); picked = candidate; }
+                    catch (OpException failure) { renameFailure = failure; if (!"E_BUSY".equals(failure.code)) break; }
+                }
+                if (picked == null) {
+                    Map<String,Object> skipped = new LinkedHashMap<>();
+                    skipped.put("method", method); skipped.put("local", local); skipped.put("status", "skipped");
+                    if (renameFailure != null) skipped.put("errorDetails", renameFailure.toMap());
+                    followed.add(skipped); continue;
+                }
+                if (picked.equals(local)) continue;
+                String followActor = (actor == null ? "human" : actor) + " (follows class rename)";
+                String original = String.valueOf(identity.get("originalSymbol"));
+                renameCoordinator.renamed(tid, original, picked, followActor, null);
+                binding.put("local", picked); changed = true;
+                Map<String, Object> historyEntry = new LinkedHashMap<>();
+                historyEntry.put("op", "rename"); historyEntry.put("kind", "local");
+                historyEntry.put("actor", followActor); historyEntry.put("addr", method); historyEntry.put("newAddr", method);
+                historyEntry.put("originalSymbol", original); historyEntry.put("originalMethod", identity.get("originalMethod"));
+                historyEntry.put("oldName", local); historyEntry.put("newName", picked);
+                historyEntry.put("owner", ownerOfAddr(method)); historyEntry.put("auto", "type");
+                try { recordHistory(tid, historyEntry); }
+                catch (OpException failure) { if (persistenceFailure == null) persistenceFailure = failure; }
+                finally { renameCoordinator.renamed(tid, original, picked, followActor,
+                        historyEntry.get("id") == null ? null : String.valueOf(historyEntry.get("id"))); }
+                followed.add(Map.of("method", method, "local", local, "name", picked, "historyId", historyEntry.get("id")));
+            }
+        } else if ("method".equals(kind)) {
+            for (Map<String, Object> binding : bindings)
+                if (oldAddr.equals(binding.get("method"))) { binding.put("method", newAddr); changed = true; }
+        }
+        if (changed) persistBindings(tid);
+        if (persistenceFailure != null) {
+            persistenceFailure.extra.put("followed", followed);
+            throw persistenceFailure;
+        }
         return followed;
     }
 
@@ -4561,19 +4829,24 @@ public final class Workspace {
      *  never renamed, or named by an agent (an accepted or auto-applied proposal carries the
      *  agent in its actor string). */
     public String humanNamedBy(String tid, String symbol) {
-        String cur;
-        try { cur = String.valueOf(engineFor(tid).resolve(symbol).get("addr")); }
-        catch (Exception e) { return null; }
-        List<Map<String, Object>> h = historyFor(tid);
-        for (int i = h.size() - 1; i >= 0; i--) {
-            Map<String, Object> e = h.get(i);
-            if (!"rename".equals(e.get("op")) || Boolean.TRUE.equals(e.get("undone"))) continue;
-            if ("local".equals(e.get("kind")) || "parameters".equals(e.get("kind"))) continue;   // a human's local or argument name does not make the METHOD human-named
-            if (!cur.equals(String.valueOf(e.get("newAddr")))) continue;
-            String actor = String.valueOf(e.get("actor"));
-            return "agent".equals(EventBus.actorKind(actor)) || actor.startsWith("agent:") ? null : String.valueOf(e.get("id"));
+        String cur, original, currentName;
+        try {
+            Map<String,Object> resolved = engineFor(tid).resolve(symbol);
+            cur = String.valueOf(resolved.get("addr"));
+            original = stableSymbol(resolved, symbol);
+            currentName = String.valueOf(resolved.get("name"));
+        } catch (Exception e) { return null; }
+        Map<String,Object> latest = null;
+        for (Map<String,Object> entry : historyFor(tid)) {
+            if (!"rename".equals(entry.get("op")) || Boolean.TRUE.equals(entry.get("undone"))) continue;
+            if ("local".equals(entry.get("kind")) || "parameters".equals(entry.get("kind"))) continue;
+            if (!cur.equals(String.valueOf(entry.get("newAddr"))) && !renameOriginals(entry).contains(original)) continue;
+            if (!currentName.equals(String.valueOf(entry.get("newName")))) continue;
+            if (latest == null || !HistoryJournal.lastChange(entry).isBefore(HistoryJournal.lastChange(latest))) latest = entry;
         }
-        return null;
+        if (latest == null) return null;
+        String actor = String.valueOf(latest.get("actor"));
+        return "agent".equals(EventBus.actorKind(actor)) || actor.startsWith("agent:") ? null : String.valueOf(latest.get("id"));
     }
 
     private List<Map<String, Object>> historyFor(String tid) {
@@ -4604,7 +4877,7 @@ public final class Workspace {
     }
 
     /** history.undo [id]: revert an entry (newest non-undone when no id). */
-    public synchronized Map<String, Object> historyUndo(String targetParam, String id) throws OpException { return historyUndo(targetParam, id, "human"); }
+    public Map<String, Object> historyUndo(String targetParam, String id) throws OpException { return historyUndo(targetParam, id, "human"); }
 
     /** The analyst's own decisions — an argument mapping, a restored original name — are theirs to
      *  reverse: an agent gets a refusal, not a silent re-application (fix-review
@@ -4615,84 +4888,111 @@ public final class Workspace {
             throw OpException.scope("History " + entry.get("id") + " is the analyst's own decision (an argument mapping or a restored original name) — not an agent's to " + what, "actor=" + actor);
     }
 
-    public synchronized Map<String, Object> historyUndo(String targetParam, String id, String actor) throws OpException {
+    public Map<String,Object> historyUndo(String targetParam, String id, String actor) throws OpException {
+        String tid;
+        synchronized (this) { tid = resolveTargetIdOrActive(targetParam); }
+        return withTargetWrite(tid, () -> {
+            requireHistoryPersisted(tid);
+            try { return historyUndoLocked(tid, id, actor); }
+            finally { rebuildRenameClaims(tid); }
+        });
+    }
+
+    private synchronized Map<String, Object> historyUndoLocked(String targetParam, String id, String actor) throws OpException {
         String tid = resolveTargetIdOrActive(targetParam);
         Map<String, Object> entry = findHistory(tid, id, true);
         analystsReversal(entry, actor, "undo");
         Engine e = engineFor(tid);
+        String original = entry.get("originalSymbol") == null ? null : String.valueOf(entry.get("originalSymbol"));
+        String method = entry.get("originalMethod") == null ? String.valueOf(entry.get("addr")) : String.valueOf(entry.get("originalMethod"));
         switch (String.valueOf(entry.get("op"))) {
             case "rename" -> {
                 if ("local".equals(entry.get("kind"))) {
-                    e.renameLocal(String.valueOf(entry.get("addr")), String.valueOf(entry.get("newName")), String.valueOf(entry.get("oldName")), "human");
-                    dropLocalBinding(tid, String.valueOf(entry.get("addr")), String.valueOf(entry.get("newName")));   // an undone auto-name stops following
+                    e.renameLocal(method, String.valueOf(entry.get("newName")), String.valueOf(entry.get("oldName")), "human");
                 } else if ("parameters".equals(entry.get("kind"))) {
-                    e.renameParameters(String.valueOf(entry.get("newAddr")), parameterChanges(entry, true), "human");   // whole or not at all: the engine rolls back a refusal
+                    e.renameParameters(original == null ? String.valueOf(entry.get("newAddr")) : original, parameterChanges(entry, true), "human");   // whole or not at all: the engine rolls back a refusal
                 } else {
-                    applyName(e, String.valueOf(entry.get("newAddr")), String.valueOf(entry.get("oldName")));
-                    followRename(tid, String.valueOf(entry.get("kind")), String.valueOf(entry.get("newAddr")), String.valueOf(entry.get("addr")), "human");
+                    applyName(e, original == null ? String.valueOf(entry.get("newAddr")) : original, String.valueOf(entry.get("oldName")));
                 }
             }
             case "comment" ->
-                e.comment(String.valueOf(entry.get("newAddr")),
+                e.comment(original == null ? String.valueOf(entry.get("newAddr")) : original,
                         entry.get("oldText") == null ? "" : String.valueOf(entry.get("oldText")), "human");
             default -> throw OpException.syntax("not an undoable op: " + entry.get("op"), "id=" + id);
         }
-        entry.put("undone", true);
-        persistHistory(tid);
         noteHistoryReversal(tid, entry, "undo", actor);
+        if ("rename".equals(entry.get("op"))) {
+            if ("local".equals(entry.get("kind"))) dropLocalBinding(tid, String.valueOf(entry.get("addr")), String.valueOf(entry.get("newName")));
+            else if (!"parameters".equals(entry.get("kind"))) followRename(tid, String.valueOf(entry.get("kind")), String.valueOf(entry.get("newAddr")), String.valueOf(entry.get("addr")), "human");
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("undone", entry);
         out.put("history", historyList(tid, 200));
         return out;
     }
 
-    /** An undo or redo is a state change too: the revision moves (a snapshot taken before and after
-     *  differ) and the history listener hears of it as its own entry — op undo|redo, `of` the entry
-     *  reversed — so a capture that holds the agent's names as live learns they were reverted. The
-     *  synthetic entry consumes a revision number and is not stored in the history. */
-    private void noteHistoryReversal(String tid, Map<String, Object> entry, String what, String reversalActor) {
+    /** Reversals consume their own revision and are persisted atomically with the UI flag.
+     * The engine mutation already happened: a write failure keeps it in memory and is explicit. */
+    private void noteHistoryReversal(String tid, Map<String,Object> entry, String what, String reversalActor) throws OpException {
         int n = historySeq.merge(tid, 1, Integer::sum);
-        java.util.function.BiConsumer<String, Map<String, Object>> hl = historyListener;
-        if (hl == null) return;
-        Map<String, Object> ev = new LinkedHashMap<>();
-        ev.put("id", tid + "-h" + n);
-        ev.put("op", what);
-        ev.put("of", entry.get("id"));
-        for (String k : List.of("kind", "addr", "newAddr", "oldName", "newName", "oldText", "newText", "changes", "source", "original_method", "revert")) if (entry.get(k) != null) ev.put(k, entry.get(k));
-        ev.put("reversedActor", entry.get("actor"));
-        ev.put("actor", reversalActor == null ? "human" : reversalActor);
-        ev.put("ts", java.time.Instant.now().toString());
-        ev.put("target", tid);
-        try { hl.accept(tid, ev); } catch (Throwable t) { Log.warn("history listener", String.valueOf(t), null); }
+        Map<String,Object> event = new LinkedHashMap<>();
+        event.put("id", tid + "-h" + n); event.put("op", what); event.put("of", entry.get("id"));
+        for (String k : List.of("kind", "addr", "newAddr", "oldName", "newName", "oldText", "newText", "changes", "source", "original_method", "revert", "originalSymbol", "originalMethod", "renameTargets"))
+            if (entry.get(k) != null) event.put(k, entry.get(k));
+        event.put("reversedActor", entry.get("actor"));
+        event.put("actor", reversalActor == null ? "human" : reversalActor);
+        event.put("ts", java.time.Instant.now().toString()); event.put("target", tid);
+        HistoryJournal.appendReversal(entry, event);
+        entry.put("undone", "undo".equals(what));
+        try { requireHistoryPersisted(tid); }
+        catch (OpException failure) {
+            failure.extra.put("applied", true); failure.extra.put("historyId", event.get("id"));
+            failure.extra.put("recovery", "The reversal remains in memory. Keep the target open and retry target.save after correcting storage.");
+            throw failure;
+        }
+        java.util.function.BiConsumer<String,Map<String,Object>> listener = historyListener;
+        if (listener != null) try { listener.accept(tid, new LinkedHashMap<>(event)); }
+        catch (Throwable failure) { Log.warn("history listener", String.valueOf(failure), null); }
     }
 
     /** history.redo [id]: re-apply an undone entry (newest undone when no id). */
-    public synchronized Map<String, Object> historyRedo(String targetParam, String id) throws OpException { return historyRedo(targetParam, id, "human"); }
+    public Map<String, Object> historyRedo(String targetParam, String id) throws OpException { return historyRedo(targetParam, id, "human"); }
 
-    public synchronized Map<String, Object> historyRedo(String targetParam, String id, String actor) throws OpException {
+    public Map<String,Object> historyRedo(String targetParam, String id, String actor) throws OpException {
+        String tid;
+        synchronized (this) { tid = resolveTargetIdOrActive(targetParam); }
+        return withTargetWrite(tid, () -> {
+            requireHistoryPersisted(tid);
+            try { return historyRedoLocked(tid, id, actor); }
+            finally { rebuildRenameClaims(tid); }
+        });
+    }
+
+    private synchronized Map<String, Object> historyRedoLocked(String targetParam, String id, String actor) throws OpException {
         String tid = resolveTargetIdOrActive(targetParam);
         Map<String, Object> entry = findHistory(tid, id, false);
         analystsReversal(entry, actor, "redo");
         Engine e = engineFor(tid);
+        String original = entry.get("originalSymbol") == null ? null : String.valueOf(entry.get("originalSymbol"));
+        String method = entry.get("originalMethod") == null ? String.valueOf(entry.get("addr")) : String.valueOf(entry.get("originalMethod"));
         switch (String.valueOf(entry.get("op"))) {
             case "rename" -> {
                 if ("local".equals(entry.get("kind")))
-                    e.renameLocal(String.valueOf(entry.get("addr")), String.valueOf(entry.get("oldName")), String.valueOf(entry.get("newName")), "human");
+                    e.renameLocal(method, String.valueOf(entry.get("oldName")), String.valueOf(entry.get("newName")), "human");
                 else if ("parameters".equals(entry.get("kind")))
-                    e.renameParameters(String.valueOf(entry.get("addr")), parameterChanges(entry, false), "human");
+                    e.renameParameters(original == null ? String.valueOf(entry.get("addr")) : original, parameterChanges(entry, false), "human");
                 else {
-                    applyName(e, String.valueOf(entry.get("addr")), String.valueOf(entry.get("newName")));
-                    followRename(tid, String.valueOf(entry.get("kind")), String.valueOf(entry.get("addr")), String.valueOf(entry.get("newAddr")), "human");
+                    applyName(e, original == null ? String.valueOf(entry.get("addr")) : original, String.valueOf(entry.get("newName")));
                 }
             }
             case "comment" ->
-                e.comment(String.valueOf(entry.get("addr")),
+                e.comment(original == null ? String.valueOf(entry.get("addr")) : original,
                         entry.get("newText") == null ? "" : String.valueOf(entry.get("newText")), "human");
             default -> throw OpException.syntax("not a redoable op: " + entry.get("op"), "id=" + id);
         }
-        entry.put("undone", false);
-        persistHistory(tid);
         noteHistoryReversal(tid, entry, "redo", actor);
+        if ("rename".equals(entry.get("op")) && !"local".equals(entry.get("kind")) && !"parameters".equals(entry.get("kind")))
+            followRename(tid, String.valueOf(entry.get("kind")), String.valueOf(entry.get("addr")), String.valueOf(entry.get("newAddr")), "human");
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("redone", entry);
         out.put("history", historyList(tid, 200));
@@ -4742,7 +5042,7 @@ public final class Workspace {
 
     /** @return true when history.json was durably written; false when the write was skipped
      *  (degraded park failed) or the atomic write failed. Callers that MUST know the edit is
-     *  recorded on disk (the discard-close) act on this; the rest ignore it as before. */
+     *  recorded on disk must check this result before confirming success. */
     private boolean persistHistory(String tid) {
         File f = historyFile(tid);
         if (f == null) return false;
@@ -4775,11 +5075,8 @@ public final class Workspace {
                             @SuppressWarnings("unchecked")
                             Map<String, Object> e = (Map<String, Object>) m;
                             out.add(new LinkedHashMap<>(e));
-                            String eid = String.valueOf(e.get("id"));
-                            int dash = eid.lastIndexOf("-h");
-                            if (dash >= 0)
-                                try { max = Math.max(max, Integer.parseInt(eid.substring(dash + 2))); }
-                                catch (NumberFormatException ignored) {}
+                            max = Math.max(max, historyNum(e));
+                            for (Map<String,Object> event : HistoryJournal.reversals(e)) max = Math.max(max, historyNum(event));
                         }
                     historySeq.merge(tid, max, Math::max);
                     return out;
