@@ -66,7 +66,12 @@ def workbenchXmx = System.getenv('WORKBENCH_XMX') ?: '16g'
 // the JVM's temp dir for every gradle-run server and IT: under build/, never the system /tmp
 // (nothing of the workbench's is kept there — 2026-09-15)
 def jvmTmp = file("${buildDir}/tmp/jvm")
-def jebJvmArgs = [
+// Use the selected installation's normal JVM options, like the vendor launcher.
+// This is whitespace tokenization, never shell evaluation. Jeeves options follow.
+def installedJvmOptions = new File(engineDir, 'jvmopt.txt')
+def installedJvmArgs = hasEngine && installedJvmOptions.isFile() && !installedJvmOptions.text.trim().isEmpty()
+        ? installedJvmOptions.text.trim().split(/\s+/).toList() : []
+def jebJvmArgs = installedJvmArgs + [
     '-Xms1g', "-Xmx${workbenchXmx}", '-XX:+UseG1GC', '-Djava.awt.headless=true',
     '-Djava.security.manager=allow', "-Djava.io.tmpdir=${jvmTmp}",
     '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
@@ -169,7 +174,6 @@ tasks.register('searchIndexPersistenceIT', JavaExec) {
         if (hasEngine) {
             classpath += engineJars
             jvmArgs jebJvmArgs.findAll { !it.startsWith('-Djava.io.tmpdir=') }
-            jvmArgs "-Xbootclasspath/a:${engineDir}/bin/app/salt"
         }
         doFirst {
             if (!hasEngine) throw new GradleException('This native fixture needs an activated JEB_HOME')

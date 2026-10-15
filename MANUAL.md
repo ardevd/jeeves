@@ -55,8 +55,8 @@ The app reserves **7800–7809**: `7800` HTTP API + SSE + web UI,
 
 ### 4.2 Engine
 
-`JEB_HOME` names your activated JEB install; the server uses its jars in
-place and copies nothing (`docs/local-jeb.md`: the two start-up routes and
+`JEB_HOME` names your activated JEB install; the server uses its jars and normal
+`jvmopt.txt` startup options in place and copies nothing (`docs/local-jeb.md`: the two start-up routes and
 the edition they need). A copy of an install under `backend/engine/`
 (gitignored) is used when `JEB_HOME` is unset. Without either the app
 still runs with the mock engine (fixtures only).

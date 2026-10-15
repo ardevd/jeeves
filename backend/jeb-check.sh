@@ -24,6 +24,8 @@ OUT="$HERE/build/jebsmoke"
 mkdir -p "$OUT"
 "$JAVAC" -cp "$JEB/bin/app/*" -d "$OUT" "$HERE/tools/JebSmoke.java"
 echo "[jeb-check] $JEB · $(cat "$JEB/bin/VERSION.TXT" 2>/dev/null || echo '?')"
+source "$HERE/jeb-jvm-options.sh"
+load_jeb_jvm_options "$JEB"
 cd "$JEB"
-exec "$JAVA_BIN" -Djava.security.manager=allow --add-opens java.base/java.lang=ALL-UNNAMED \
+exec "$JAVA_BIN" ${JEB_JVM_OPTIONS[@]+"${JEB_JVM_OPTIONS[@]}"} -Djava.security.manager=allow --add-opens java.base/java.lang=ALL-UNNAMED \
   -Djava.awt.headless=true -cp "$OUT:$JEB/bin/app/*" JebSmoke "$JEB"

@@ -122,7 +122,10 @@ if [ -f "$ENGINE/bin/app/jeb.jar" ]; then
   echo "[workbench] JEB install: $ENGINE" >&2
   # WORKBENCH_JAVA_OPTS: extra JVM flags, word-split (a JFR recording, a GC log, a heap dump on OOM)
   # shellcheck disable=SC2086
+  source "$SCRIPT_DIR/jeb-jvm-options.sh"
+  load_jeb_jvm_options "$ENGINE"
   exec "$JAVA_HOME/bin/java" \
+    ${JEB_JVM_OPTIONS[@]+"${JEB_JVM_OPTIONS[@]}"} \
     -Xms"$XMS" -Xmx"$XMX" -XX:+UseG1GC -Djava.awt.headless=true ${WORKBENCH_JAVA_OPTS:-} \
     -Djava.security.manager=allow \
     -Djava.io.tmpdir="$WORKBENCH_HOME/tmp" \

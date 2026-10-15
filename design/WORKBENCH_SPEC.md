@@ -73,6 +73,11 @@ running in the background (analysis, agents, frida capture all continue).
 
 ### 2.4 Target launcher
 
+Local JEB startup reads the selected installation's optional, whitespace-separated
+`jvmopt.txt` before the explicit Jeeves JVM options. Shell, Gradle and native-test
+launches use the same option source; none evaluates it as shell code or changes
+the installation. See `docs/local-jeb.md` for precedence and supported formats.
+
 The replacement for the old picker screen — a modal (or the zero-state view
 when no target is open) with three zones:
 

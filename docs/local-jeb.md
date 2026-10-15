@@ -29,6 +29,18 @@ boots that install's core once, in-process, the way the workbench embeds it, and
 reports its version — the first check on a new machine, a new JEB version or a
 new licence.
 
+## Installed JVM options
+
+The shell server launcher, `jeb-check.sh`, Gradle server and native tests read
+`jvmopt.txt` from the selected installation, matching the vendor launcher's
+whitespace-separated option format. The file is optional. Its contents are
+arguments, never evaluated as shell code; wildcards are not expanded. As with
+that format, shell quoting does not group an argument containing whitespace.
+Jeeves supplies its explicit heap, temporary-directory and engine-selection
+options afterwards. `WORKBENCH_JAVA_OPTS` and the isolated Java home retain their
+existing precedence in the shell launcher. The installation is read in place;
+no installation, activation or license file is changed.
+
 ## Native cache isolation
 
 JEB keeps native caches under the Java `user.home` (notably `~/.jeb/z3`). Two
