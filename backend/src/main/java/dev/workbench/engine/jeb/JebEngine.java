@@ -5319,12 +5319,14 @@ public final class JebEngine implements Engine, SearchIndex.Host {
         }
     }
 
-    /** The locals of a method as the text shows them: [{name, type, line}] — one row per variable. */
+    /** Locals as displayed, with the same stable original identity used by resolveLocal. */
     @Override
     public List<Object> locals(String methodSymbol) throws OpException {
         requireReady();
         synchronized (this) {
             MethodUnit mu = methodUnit(methodSymbol);
+            IDexMethod method = findAnyMethod(mu.r().addr());
+            String originalMethod = method == null ? mu.r().addr() : method.getSignature(false);
             Map<String, Map<String, Object>> byName = new LinkedHashMap<>();
             for (LocalRef ref : localRefs(mu.ju(), mu.cls(), mu.r().addr())) {
                 if (byName.containsKey(ref.shown())) continue;
@@ -5332,6 +5334,12 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                 row.put("name", ref.shown());
                 if (ref.type() != null) row.put("type", ref.type());
                 row.put("line", ref.line());
+                // String encoding preserves every bit when a JavaScript client parses JSON.
+                String itemId = Long.toUnsignedString(ref.itemId());
+                row.put("originalMethod", originalMethod);
+                row.put("originalSymbol", originalMethod + "#local:" + itemId);
+                row.put("originalName", ref.ident());
+                row.put("itemId", itemId);
                 byName.put(ref.shown(), row);
             }
             return new ArrayList<>(byName.values());

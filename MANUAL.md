@@ -645,6 +645,8 @@ verdicts arrive as proposals). `map.export` renders md/json posters.
 
 ## Database save durability
 
+`locals.list` includes each native local’s original method, original name, and identifier. Its `originalSymbol` stays the same through a local rename and containing-class rename; `itemId` is a decimal string so JSON clients do not round it. A saved-name check should compare this identity and the displayed name together.
+
 See [Saving edits and recovering interrupted writes](docs/persistence.md) for the asynchronous save completion rule, verified native checkpoints, recovery after interruption, durable undo/redo across restart, and independent backup/reopen checks. A failed recovery cannot overwrite the native checkpoint with partial state. A closed target alone is not a save-success receipt.
 
 See [Search-index interruption recovery](docs/search-index-recovery.md) for the derived search corpus, pending-work ordering, and failure-injection checks.

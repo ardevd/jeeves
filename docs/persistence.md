@@ -47,7 +47,7 @@ Legacy entries remain readable. A new reversal records their starting state befo
 
 Stop issuing new edits while making a round checkpoint. Require a fresh successful save, preserve the database, `.key`, artifact `.workbench` sidecar and project state, and record hashes and modification times. Preserve the original database timestamp when restoring a copied checkpoint: recovery uses it to distinguish edits already in that database from later journal events. Copy the checkpoint to independent storage; a second directory on the same disk does not protect against disk loss.
 
-Verify the saved database without supplying recovery history as well as with its full sidecars. Otherwise history replay could hide a native save that did not contain the expected changes. Do not open the same writable database in two processes or two copies with one internal JEB key in the same context. Target IDs can change on reopen; resolve the new ID before launching the next agents.
+Verify the saved database without supplying recovery history as well as with its full sidecars. Otherwise history replay could hide a native save that did not contain the expected changes. Do not open the same writable database in two processes or two copies with one internal JEB key in the same context. Target IDs can change on reopen; resolve the new ID before launching the next agents. For locals, record `locals.list`'s `originalSymbol` and `name` together. Native rows expose `originalMethod`, `originalName` and `itemId` (an unsigned decimal string); the stable identity is `originalMethod + "#local:" + itemId`, matching `resolveLocal`. A matching display name alone does not prove the same variable retained it.
 
 ## Reproducing the checks
 
@@ -70,7 +70,7 @@ JEB_HOME=/path/to/activated/jeb gradle -p backend nativeSaveIT nativeRecoveryIT 
 - `PersistenceTest`: 19 actual-filesystem checks covering refused/throwing writers, rollback bytes and timestamps, a child halted mid-write, lock refusal, explicit recovery and sidecar errors.
 - `HistoryJournalTest`: 17 checks covering chronological edits/reversals, saved undo/redo, legacy entries, discard, parameter inverses, stable identities and timestamp precision.
 - `WorkspacePersistenceTest`: 21 checks covering an actual blocked journal path, applied/not-durable errors, retained records and claims, retry, failed save polling, close gating/error reporting, out-of-order redo and overlapping saves.
-- `NativeSaveIT`: 13 checks on personal JEB covering repeated saves, native lock retention/release, a database-only reopen retaining a class name and comment, and invalid recovery leaving the original database bytes unchanged.
+- `NativeSaveIT`: 21 checks on personal JEB covering repeated saves, native lock retention/release, stable local identities across a local and owner-class rename, a database-only reopen retaining the local identity/name, class name and comment, and invalid recovery leaving the original database bytes unchanged.
 - `NativeRecoveryIT`: 11 checks across two fresh JVMs covering accepted rename/comment records, a deliberate interrupted native write, checkpoint restore, journal replay and a later database-only reopen.
 - `NativeHistoryRecoveryIT`: 48 checks across three fresh JVMs covering saved class/method/comment/local/parameter changes and an obfuscated original name, unsaved undo, restart, saved undo, unsaved redo, restart, ownership reconstruction, discard and final database-only reopen.
 
