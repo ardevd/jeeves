@@ -148,6 +148,28 @@ legacy descriptor or unresolvable historical alias produces no attribution row.
 Provenance decoration does not mutate the database, rewrite history or replace
 the requested operation's resolution metadata.
 
+`locals.list` and `code.params` participate in agent-read provenance. A local
+inventory row carries `originalMethod`, `originalSymbol` (original method plus
+`#local:<unsigned itemId>`), `originalName`, `itemId`, and `parameterIndex` for a
+formal argument. Its `nameProvenance` and `namedBy` describe the current assignment;
+`was` is included only when the original name is known. `code.params.parameters`
+joins by original method and formal index. Java reads include the corresponding
+`agentNames`/`humanNames` entries, with `kind: local|parameter`, current method
+`addr`, stable identity, history and optional confidence. A non-rendered formal
+argument may instead use `#parameter:<index>` and `previousName` (not a fabricated
+original name). A human parameter mapping and local rename of that argument share
+one identity when the engine supplies its text item. Cleared mappings, undo and
+redo follow effective history order. Navigation owners do not broaden a method
+read into a class read. Each relevant method is inventoried at most once per
+decoration; common variable names elsewhere do not trigger historical method
+decompilation. Unprovable legacy local identities are omitted.
+
+Native local discovery uses the method's AST identifiers and temporarily sets
+the public `JavaDocument.propnameDisregardCollapse` rendering property. It restores
+that property afterwards, matches the actual actionable identifier token (including
+indentation-spanning object locations), and deduplicates by item identity. It does
+not infer method ownership from declaration text or parameter count.
+
 Cross-reference `type` is JEB's reference-type value, passed through unchanged.
 `UNKNOWN` is an unclassified reference, not evidence that no access occurs.
 Pagination applies before the client sees rows: `total` and `truncated` describe

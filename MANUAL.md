@@ -312,6 +312,21 @@ and overrides in its `renameTargets`. Old labels are omitted when their name is
 no longer current or their identity cannot be established from legacy history.
 These labels describe recorded authorship; they do not rename anything.
 
+This also covers locals and method arguments in `code` Java, locals and params
+views. Local rows include `namedBy` and `nameProvenance`; argument rows match by
+formal `parameterIndex`, not by a name shared with another variable. The metadata
+includes the original method and stable variable identity, original name when
+known, assigning agent, history entry and confidence. Explicit human argument
+mappings appear as human authorship. Undo/redo and subsequent renames take effect
+on the next read. A previous agent's name remains a hypothesis: keep supported
+names and change them only when new evidence contradicts them.
+
+Headless local inventory expands JEB's collapsed/inlined method rendering and
+uses the native method AST to find variables, so hidden bodies and same-arity
+overloads do not make argument lookup depend on text formatting. The saved
+display setting is restored after the read. This inventories decompiler
+identifiers; a raw smali register is not necessarily a renameable Java local.
+
 Cross-reference `type` comes from JEB. `UNKNOWN` means JEB did not classify that
 reference; other rows may report `ALLOC`, `GET`, `SET` or `INVOKE`. Check `total`
 and `truncated` before describing the full result, and inspect the reference's

@@ -4250,7 +4250,7 @@ public final class Workspace {
        agent-named, classWas when only its class is. Humans' reads are untouched. */
     private static final java.util.Set<String> PROVENANCE_OPS = java.util.Set.of(
             "code.decompile", "code.outline", "code.smali", "xref.to", "xref.from", "callers", "callees",
-            "symbol.search", "symbol.tree", "symbol.resolve", "search", "string.xrefs");
+            "symbol.search", "symbol.tree", "symbol.resolve", "search", "string.xrefs", "locals.list", "code.params");
 
     /* ---------------------------------------------------------------- locals named after their types
        locals.auto names a method's generated locals after their declared types (DownloadHelper v5
@@ -4690,7 +4690,7 @@ public final class Workspace {
     /** Current attribution, keyed by original identity before display addresses are attached.
      * History may predate owner renames or omit an SDK-propagated method rename. Such a row
      * must not label an obsolete name as current merely because that word appears in code. */
-    private NameLedgers currentNameLedgers(String tid, String resultText) {
+    private NameLedgers currentNameLedgers(String tid, String resultText, Map<String,Object> params, Object data) {
         List<Map<String,Object>> entries;
         synchronized (this) {
             entries = historyFor(tid).stream().map(LinkedHashMap<String,Object>::new)
@@ -4700,13 +4700,89 @@ public final class Workspace {
         ordered.sort(java.util.Comparator.comparing(HistoryJournal::lastChange));
         Map<String,Map<String,Object>> currentByLookup = new java.util.HashMap<>();
         Map<String,Map<String,Object>> byOriginal = new LinkedHashMap<>();
+        Map<String,List<Map<String,Object>>> localsByMethod = new java.util.HashMap<>();
+        Map<String,Map<String,Object>> paramsByMethod = new java.util.HashMap<>();
+        java.util.Set<String> scopes = null;
         Engine engine;
         try { engine = engineFor(tid); }
         catch (OpException unavailable) { return new NameLedgers(Map.of(), Map.of()); }
         for (Map<String,Object> entry : ordered) {
             if (!"rename".equals(entry.get("op")) || Boolean.TRUE.equals(entry.get("undone"))
-                    || Boolean.TRUE.equals(entry.get("discarded")) || entry.get("newName") == null
-                    || "local".equals(entry.get("kind")) || "parameters".equals(entry.get("kind"))) continue;
+                    || Boolean.TRUE.equals(entry.get("discarded")) || entry.get("newName") == null) continue;
+            boolean local = "local".equals(entry.get("kind")), parameters = "parameters".equals(entry.get("kind"));
+            if (local || parameters) {
+                List<Map<String,Object>> changes = new ArrayList<>();
+                if (parameters && entry.get("changes") instanceof List<?> list) {
+                    for (Object value : list) if (value instanceof Map<?,?> change) {
+                        Map<String,Object> copy = new LinkedHashMap<>();
+                        change.forEach((key,value2) -> copy.put(String.valueOf(key), value2)); changes.add(copy);
+                    }
+                } else if (local) changes.add(entry);
+                if (changes.stream().noneMatch(change -> Boolean.TRUE.equals(change.get("cleared"))
+                        || change.get("newName") instanceof String name && resultText.contains(name))) continue;
+                String method = entry.get(local ? "originalMethod" : "original_method") instanceof String s ? s : null;
+                if (method == null || !method.contains("->") || (local && !(entry.get("originalSymbol") instanceof String))) continue;
+                if (scopes == null) scopes = provenanceScopes(engine, params, data);
+                if (!inProvenanceScope(method, scopes)) continue;
+                Map<String,Object> currentMethod = currentByLookup.get(method);
+                if (!currentByLookup.containsKey(method)) {
+                    try { currentMethod = engine.resolve(method); }
+                    catch (OpException unavailable) { currentMethod = null; }
+                    currentByLookup.put(method, currentMethod);
+                }
+                if (currentMethod == null || !method.equals(stableSymbol(currentMethod, method))
+                        || Boolean.TRUE.equals(currentMethod.get("contradiction"))) continue;
+                if (!localsByMethod.containsKey(method)) {
+                    List<Map<String,Object>> rows = new ArrayList<>();
+                    try {
+                        for (Object value : engine.locals(method)) if (value instanceof Map<?,?> row) {
+                            Map<String,Object> copy = new LinkedHashMap<>();
+                            row.forEach((key,value2) -> copy.put(String.valueOf(key), value2)); rows.add(copy);
+                        }
+                    } catch (OpException unavailable) { /* No native local identity: do not guess from a name. */ }
+                    localsByMethod.put(method, rows);
+                }
+                for (Map<String,Object> change : changes) {
+                    Map<String,Object> current = null;
+                    for (Map<String,Object> row : localsByMethod.get(method)) {
+                        if (local ? entry.get("originalSymbol").equals(row.get("originalSymbol"))
+                                : change.get("index") != null && String.valueOf(change.get("index")).equals(String.valueOf(row.get("parameterIndex")))) {
+                            current = row; break;
+                        }
+                    }
+                    String original = current == null ? null : String.valueOf(current.get("originalSymbol"));
+                    if (parameters && current == null) {
+                        // Abstract/unused arguments may have no actionable text item. The formal
+                        // index is still a native identity; never bind it by a coincidental name.
+                        if (!paramsByMethod.containsKey(method)) {
+                            Map<String,Object> meta = null;
+                            try { meta = engine.methodParameters(method); } catch (OpException unavailable) {}
+                            paramsByMethod.put(method, meta);
+                        }
+                        Map<String,Object> meta = paramsByMethod.get(method);
+                        if (meta != null && method.equals(meta.get("original_method")) && meta.get("parameters") instanceof List<?> ps)
+                            for (Object value : ps) if (value instanceof Map<?,?> row && change.get("index") != null
+                                    && String.valueOf(change.get("index")).equals(String.valueOf(row.get("index")))) {
+                                current = new LinkedHashMap<>(); current.put("name", row.get("name"));
+                                current.put("parameterIndex", row.get("index")); original = method + "#parameter:" + row.get("index"); break;
+                            }
+                    }
+                    if (original == null) continue;
+                    if (Boolean.TRUE.equals(change.get("cleared"))) { byOriginal.remove(original); continue; }
+                    if (current == null || !java.util.Objects.equals(change.get("newName"), current.get("name"))) continue;
+                    Map<String,Object> row = new LinkedHashMap<>();
+                    row.put("name", current.get("name")); row.put("originalSymbol", original);
+                    row.put("originalMethod", method); row.put("addr", currentMethod.get("addr"));
+                    row.put("kind", current.containsKey("parameterIndex") ? "parameter" : "local");
+                    if (current.get("originalName") != null) row.put("was", current.get("originalName"));
+                    else row.put("previousName", change.get("oldName"));
+                    for (String key : List.of("itemId", "parameterIndex", "line"))
+                        if (current.get(key) != null) row.put(key, current.get(key));
+                    provenanceAuthor(row, entry);
+                    byOriginal.put(original, row);
+                }
+                continue;
+            }
             // Attribution can only decorate a name/address present in this answer.
             // Avoid resolving the entire historical rename corpus for every read.
             // This is a conservative substring filter, not cached native state:
@@ -4736,24 +4812,70 @@ public final class Workspace {
                 if (current == null || !String.valueOf(entry.get("newName")).equals(current.get("name"))) continue;
                 String original = stableSymbol(current, lookup);
                 if (stable && !lookup.equals(original)) continue;
-                String actor = String.valueOf(entry.get("actor"));
                 Map<String,Object> row = new LinkedHashMap<>();
                 row.put("name", current.get("name"));
                 row.put("was", current.get("origName") != null ? current.get("origName") : provenanceOriginalName(original));
                 row.put("addr", current.getOrDefault("addr", current.getOrDefault("fqcn", lookup)));
                 row.put("originalSymbol", original);
-                row.put("historyId", entry.get("id"));
-                if ("agent".equals(EventBus.actorKind(actor))) {
-                    row.put("by", actor.replaceFirst("^(agent|llm):", "").replaceFirst(" (auto-applied|accepted by human)$", ""));
-                    if (entry.get("confidence") != null) row.put("confidence", entry.get("confidence"));
-                }
+                provenanceAuthor(row, entry);
                 byOriginal.put(original, row);
             }
         }
         Map<String,Map<String,Object>> agents = new LinkedHashMap<>(), humans = new LinkedHashMap<>();
         for (Map<String,Object> row : byOriginal.values())
-            (row.containsKey("by") ? agents : humans).put(String.valueOf(row.get("addr")), row);
+            (row.containsKey("by") ? agents : humans).put(String.valueOf(row.get(row.containsKey("originalMethod") ? "originalSymbol" : "addr")), row);
         return new NameLedgers(agents, humans);
+    }
+
+    private static void provenanceAuthor(Map<String,Object> row, Map<String,Object> entry) {
+        String actor = String.valueOf(entry.get("actor"));
+        row.put("historyId", entry.get("id"));
+        if ("agent".equals(EventBus.actorKind(actor))) {
+            row.put("by", actor.replaceFirst("^(agent|llm):", "").replaceFirst(" (auto-applied|accepted by human)$", ""));
+            if (entry.get("confidence") != null) row.put("confidence", entry.get("confidence"));
+        }
+    }
+
+    /** Scope local attribution to methods actually returned by the read, or its requested
+     * class. A common word such as 'value' must not decompile every historical method. */
+    private static java.util.Set<String> provenanceScopes(Engine engine, Map<String,Object> params, Object data) {
+        java.util.Set<String> scopes = new java.util.LinkedHashSet<>(), lookups = new java.util.LinkedHashSet<>();
+        collectProvenanceScopes(data, scopes, lookups);
+        if (params != null && params.get("symbol") instanceof String symbol) lookups.add(symbol);
+        for (String lookup : lookups) {
+            if (scopes.contains(lookup)) continue;
+            try {
+                Map<String,Object> resolved = engine.resolve(lookup);
+                if (!Boolean.TRUE.equals(resolved.get("contradiction")) && resolved.get("origSig") instanceof String original) scopes.add(original);
+            } catch (OpException unavailable) { /* No proven scope: omit attribution. */ }
+        }
+        return scopes;
+    }
+
+    private static void collectProvenanceScopes(Object value, java.util.Set<String> scopes, java.util.Set<String> lookups) {
+        if (value instanceof List<?> list) { for (Object row : list) collectProvenanceScopes(row, scopes, lookups); }
+        else if (value instanceof Map<?,?> map) {
+            for (String key : List.of("origSig", "original_method", "originalMethod"))
+                if (map.get(key) instanceof String original) scopes.add(original);
+            if (!map.containsKey("origSig") && !map.containsKey("original_method") && !map.containsKey("originalMethod"))
+                for (String key : List.of("addr", "method", "from", "to"))
+                    if (map.get(key) instanceof String address && address.startsWith("L")) lookups.add(address);
+            for (Map.Entry<?,?> entry : map.entrySet()) {
+                // A method's owner is navigation context, not a class-sized code read.
+                if ("owner".equals(entry.getKey())) continue;
+                Object row = entry.getValue();
+                if (row instanceof Map<?,?> || row instanceof List<?>) collectProvenanceScopes(row, scopes, lookups);
+            }
+        }
+    }
+
+    private static boolean inProvenanceScope(String method, java.util.Set<String> scopes) {
+        for (String scope : scopes) {
+            if (method.equals(scope)) return true;
+            if (!scope.contains("->") && scope.endsWith(";")
+                    && (method.startsWith(scope + "->") || method.startsWith(scope.substring(0,scope.length()-1) + "$"))) return true;
+        }
+        return false;
     }
 
     private static String provenanceOriginalName(String original) {
@@ -4786,52 +4908,75 @@ public final class Workspace {
         if (tid == null) return null;
         StringBuilder resultText = new StringBuilder();
         appendProvenanceStrings(data, resultText);
-        NameLedgers namesByActor = currentNameLedgers(tid, resultText.toString());
+        NameLedgers namesByActor = currentNameLedgers(tid, resultText.toString(), params, data);
         Map<String, Map<String, Object>> ledger = namesByActor.agents();
         Map<String, Map<String, Object>> humans = namesByActor.humans();
         if (ledger.isEmpty() && humans.isEmpty()) return null;
-        if (data instanceof List<?> l) return decorateRows((List<Object>) l, ledger);
+        if (data instanceof List<?> l) return decorateRows((List<Object>) l, ledger, humans, null);
         if (!(data instanceof Map<?, ?>)) return null;
         Map<String, Object> out = new LinkedHashMap<>((Map<String, Object>) data);
-        for (String k : List.of("rows", "items", "hits", "groups", "methods", "fields"))
-            if (out.get(k) instanceof List<?> rl) out.put(k, decorateRows((List<Object>) rl, ledger));
+        for (String k : List.of("rows", "items", "hits", "groups", "methods", "fields", "parameters"))
+            if (out.get(k) instanceof List<?> rl) out.put(k, decorateRows((List<Object>) rl, ledger, humans,
+                    "parameters".equals(k) ? String.valueOf(out.get("original_method")) : null));
         if (opName.startsWith("code.") || opName.equals("symbol.resolve")) {
             String text = out.get("text") == null ? "" : String.valueOf(out.get("text"));
             String json = dev.workbench.registry.Json.write(out.get("symbol")) + dev.workbench.registry.Json.write(out.get("methods"));
             List<Object> names = new ArrayList<>();
             for (Map<String, Object> r : ledger.values()) {
                 String nm = String.valueOf(r.get("name"));
-                boolean hit = json.contains(String.valueOf(r.get("addr")))
+                boolean hit = opName.equals("code.params") && java.util.Objects.equals(out.get("original_method"),r.get("originalMethod"))
+                        || json.contains(String.valueOf(r.get("addr")))
                         || (!text.isEmpty() && java.util.regex.Pattern.compile("(?<![\\w$])" + java.util.regex.Pattern.quote(nm) + "(?![\\w$])").matcher(text).find());
                 if (hit) names.add(r);
                 if (names.size() >= 60 && !dev.workbench.llm.Depth.unlimitedTurns()) break;
             }
             if (!names.isEmpty()) {
                 out.put("agentNames", names);
-                out.put("agentNamesNote", "names in this result that an agent assigned — working hypotheses, not ground truth; 'was' is the original name");
+                out.put("agentNamesNote", "names in this result that an agent assigned, including locals and arguments — working hypotheses, not ground truth; keep supported names and revise only with evidence; 'was' is the original name when known");
             }
             List<Object> hn = new ArrayList<>();
             for (Map<String, Object> r : humans.values()) {
                 String nm = String.valueOf(r.get("name"));
-                boolean hit = json.contains(String.valueOf(r.get("addr")))
+                boolean hit = opName.equals("code.params") && java.util.Objects.equals(out.get("original_method"),r.get("originalMethod"))
+                        || json.contains(String.valueOf(r.get("addr")))
                         || (!text.isEmpty() && java.util.regex.Pattern.compile("(?<![\\w$])" + java.util.regex.Pattern.quote(nm) + "(?![\\w$])").matcher(text).find());
                 if (hit) hn.add(r);
                 if (hn.size() >= 60 && !dev.workbench.llm.Depth.unlimitedTurns()) break;
             }
             if (!hn.isEmpty()) {
                 out.put("humanNames", hn);
-                out.put("humanNamesNote", "names in this result a human assigned — final: a rename of these is refused");
+                out.put("humanNamesNote", "names in this result a human assigned — preserve them; symbol names and explicitly mapped arguments are protected by rename checks; local labels report authorship");
             }
         }
         return out;
     }
 
     @SuppressWarnings("unchecked")
-    private static List<Object> decorateRows(List<Object> rows, Map<String, Map<String, Object>> ledger) {
+    private static List<Object> decorateRows(List<Object> rows, Map<String, Map<String, Object>> ledger,
+            Map<String,Map<String,Object>> humans, String parameterMethod) {
         List<Object> out = new ArrayList<>(rows.size());
         for (Object o : rows) {
             if (!(o instanceof Map<?, ?> m)) { out.add(o); continue; }
             Map<String, Object> row = null;
+            Map<String,Object> local = null;
+            if (m.get("originalSymbol") instanceof String identity && m.containsKey("originalMethod"))
+                local = ledger.containsKey(identity) ? ledger.get(identity) : humans.get(identity);
+            if (parameterMethod != null && m.get("index") != null) {
+                for (Map<String,Map<String,Object>> candidates : List.of(ledger, humans))
+                    for (Map<String,Object> candidate : candidates.values())
+                        if (parameterMethod.equals(candidate.get("originalMethod"))
+                                && String.valueOf(m.get("index")).equals(String.valueOf(candidate.get("parameterIndex")))) local = candidate;
+            }
+            if (local != null && java.util.Objects.equals(local.get("name"), m.get("name"))) {
+                row = new LinkedHashMap<>((Map<String,Object>)m);
+                if (local.containsKey("was")) row.put("was", local.get("was"));
+                row.put("namedBy", local.getOrDefault("by", "human"));
+                row.put("nameProvenance", local);
+                out.add(row); continue;
+            }
+            // The containing method/type may have been named, but that is not
+            // authorship of an untouched variable or an argument at this index.
+            if (m.containsKey("originalMethod") || parameterMethod != null) { out.add(o); continue; }
             for (Object v : m.values()) {
                 if (!(v instanceof String sv) || sv.length() < 4 || sv.charAt(0) != 'L') continue;
                 Map<String, Object> hit = ledger.get(sv);

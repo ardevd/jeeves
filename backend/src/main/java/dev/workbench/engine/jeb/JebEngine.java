@@ -2521,6 +2521,13 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                 saved.put(k, pm.getBoolean(k, false));
                 pm.setBoolean(k, false);
             } catch (Exception e) {}
+        // Inlined/collapsed methods still contain renameable arguments and locals.
+        // Headless reads must expose them, without changing the user's saved view.
+        try {
+            String key = JavaDocument.propnameDisregardCollapse;
+            saved.put(key, pm.getBoolean(key, false));
+            pm.setBoolean(key, true);
+        } catch (Exception e) {}
         return saved;
     }
 
@@ -5082,6 +5089,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
      *  identity — the same local appears at every use). */
     private static void collectIdentifiers(IJavaElement el, java.util.IdentityHashMap<IJavaIdentifier, Integer> params, java.util.IdentityHashMap<IJavaIdentifier, Boolean> locals) {
         if (el == null) return;
+        if (el instanceof IJavaClass || el instanceof IJavaMethod) return; // nested methods have their own local namespace
         if (el instanceof IJavaIdentifier id && !params.containsKey(id)) locals.put(id, Boolean.TRUE);
         List<IJavaElement> subs;
         try { subs = el.getSubElements(); } catch (Throwable t) { return; }
@@ -5277,42 +5285,59 @@ public final class JebEngine implements Engine, SearchIndex.Host {
 
     /** One occurrence of a local in a method's decompiled text: the name as shown, the AST
      *  identifier's own name (its original), the declared type signature, JEB's text-item id. */
-    private record LocalRef(String shown, String ident, String type, long itemId, int line) {}
+    private record LocalRef(String shown, String ident, String type, long itemId, int line, Integer parameterIndex) {}
 
     /** Every identifier occurrence inside a method, in text order (declarations first by nature). */
     private List<LocalRef> localRefs(IJavaSourceUnit ju, IDexClass cls, String methodAddr) {
         List<LocalRef> out = new ArrayList<>();
+        IDexMethod method = findAnyMethod(methodAddr);
+        if (method == null || !(ju.getASTElement() instanceof IJavaClass root)) return out;
+        IJavaMethod jm = findJavaMethod(root, method);
+        if (jm == null) return out;
+        int count = countParams(method.getSignature(false));
+        List<IJavaDefinition> definitions = jm.getParameters();
+        int offset = definitions.size() - count;
+        if (offset < 0 || offset > 1) return out; // do not shift an uncertain argument mapping
+        java.util.IdentityHashMap<IJavaIdentifier,Integer> parameters = new java.util.IdentityHashMap<>();
+        for (int i = 0; i < count; i++) {
+            IJavaDefinition definition = definitions.get(offset + i);
+            if (definition != null && definition.getIdentifier() != null) parameters.put(definition.getIdentifier(), i);
+        }
+        java.util.IdentityHashMap<IJavaIdentifier,Boolean> identifiers = new java.util.IdentityHashMap<>();
+        collectIdentifiers(jm.getBody(), parameters, identifiers);
+        // Keep the receiver in the inventory (existing contract), with no formal index.
+        if (offset == 1 && definitions.get(0) != null && definitions.get(0).getIdentifier() != null)
+            identifiers.put(definitions.get(0).getIdentifier(), Boolean.TRUE);
         IPropertyManager pm = ju.getPropertyManager();
         Map<String, Object> savedProps = setCleanRender(pm);
+        JavaDocument doc = new JavaDocument(ju);
         try {
-            JavaDocument doc = new JavaDocument(ju);
             String text = doc.format();
             ITextDocumentPart part = doc.getDocumentPart(doc.getFirstAnchor(), countLines(text) + 5);
-            int mFrom = -1, mTo = Integer.MAX_VALUE;
-            for (Object o : methodRanges(cls, text)) {
-                if (!(o instanceof Map<?, ?> mm) || !methodAddr.equals(mm.get("addr"))) continue;
-                if (mm.get("line") instanceof Number a) mFrom = a.intValue() - 1;
-                if (mm.get("endLine") instanceof Number b) mTo = b.intValue() - 1;
-            }
-            if (mFrom < 0) return out;
             java.util.List<? extends com.pnfsoftware.jeb.core.output.text.ILine> lines = part == null ? List.of() : part.getLines();
             if (part != null) for (IObjectLocation loc : part.getObjectLocations()) {
                 if (!(loc.getObject() instanceof IJavaIdentifier ident)) continue;
+                if (!parameters.containsKey(ident) && !identifiers.containsKey(ident)) continue;
                 int lb = loc.getLineBegin();
-                if (lb < mFrom || lb > mTo || lb < 0 || lb >= lines.size()) continue;
-                if (loc.getColumnEnd() <= loc.getColumnBegin()) continue;
+                if (lb < 0 || lb >= lines.size() || loc.getLineEnd() != lb) continue;
+                if (loc.getColumnBegin() < 0 || loc.getColumnEnd() <= loc.getColumnBegin()) continue;
                 String lineText = String.valueOf(lines.get(lb).getText());
                 if (loc.getColumnEnd() > lineText.length()) continue;
-                String shown = lineText.substring(loc.getColumnBegin(), loc.getColumnEnd());
-                long itemId = -1;
+                int start = loc.getColumnBegin(), end = loc.getColumnEnd();
+                while (start < end && Character.isWhitespace(lineText.charAt(start))) start++;
+                while (end > start && Character.isWhitespace(lineText.charAt(end - 1))) end--;
+                String shown = lineText.substring(start, end);
+                Long itemId = null;
                 for (com.pnfsoftware.jeb.core.output.text.ITextItem it : lines.get(lb).getItems())
-                    if (it.getOffset() == loc.getColumnBegin() && it instanceof com.pnfsoftware.jeb.core.output.IActionableItem ai) { itemId = ai.getItemId(); break; }
-                if (itemId < 0) continue;
+                    if (it.getOffset() == start && it.getLength() == end - start
+                            && it instanceof com.pnfsoftware.jeb.core.output.IActionableItem ai) { itemId = ai.getItemId(); break; }
+                if (itemId == null || shown.isEmpty()) continue;
                 String type = null;
                 try { type = ident.getType() == null ? null : currentTypeSig(ident.getType().getSignature()); } catch (Exception ignored) {}
-                out.add(new LocalRef(shown, ident.getName(), type, itemId, lb + 1));
+                out.add(new LocalRef(shown, ident.getName(), type, itemId, lb + 1, parameters.get(ident)));
             }
         } finally {
+            doc.dispose();
             restoreRender(pm, savedProps);
         }
         return out;
@@ -5459,9 +5484,9 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             MethodUnit mu = methodUnit(methodSymbol);
             IDexMethod method = findAnyMethod(mu.r().addr());
             String originalMethod = method == null ? mu.r().addr() : method.getSignature(false);
-            Map<String, Map<String, Object>> byName = new LinkedHashMap<>();
+            Map<Long, Map<String, Object>> byIdentity = new LinkedHashMap<>();
             for (LocalRef ref : localRefs(mu.ju(), mu.cls(), mu.r().addr())) {
-                if (byName.containsKey(ref.shown())) continue;
+                if (byIdentity.containsKey(ref.itemId())) continue;
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("name", ref.shown());
                 if (ref.type() != null) row.put("type", ref.type());
@@ -5472,9 +5497,10 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                 row.put("originalSymbol", originalMethod + "#local:" + itemId);
                 row.put("originalName", ref.ident());
                 row.put("itemId", itemId);
-                byName.put(ref.shown(), row);
+                if (ref.parameterIndex() != null) row.put("parameterIndex", ref.parameterIndex());
+                byIdentity.put(ref.itemId(), row);
             }
-            return new ArrayList<>(byName.values());
+            return new ArrayList<>(byIdentity.values());
         }
     }
 

@@ -174,7 +174,7 @@ public final class ToolFacade {
                         + " NOT a verified mapping to the arguments (argumentMapping: unverified; WhatsApp keeps permuted and stale lists);"
                         + " only the analyst maps names onto arguments — an argument name you give through annotate {local} that equals a"
                         + " retained entry is recorded as such, and an argument the analyst mapped is not yours to rename."
-                        + " view locals lists every decompiler local/argument with its current name, original name and stable originalSymbol;"
+                        + " view locals lists every decompiler local/argument, including collapsed method bodies, with its current/original name, stable originalSymbol and formal parameterIndex when applicable; namedBy/nameProvenance identify prior assignments;"
                         + " use it for exhaustive naming, then annotate {symbol: original method, local: current local name, name: new name}."
                         + " Results carry agentNames[]: current analyst names paired with their originals (was/originalName/originalSymbol).",
                 "{\"symbol\": \"Lm76/ak;->a()V\"}",
