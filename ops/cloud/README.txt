@@ -235,3 +235,16 @@ no automatic top-up or teardown is configured. The local dashboard relay require
 the laptop, but the cloud campaign and durable results do not. Qualify the actual
 deployed units, model slots and saved deadline before claiming sleep safety.
 
+To deploy during a running window, stage and verify the immutable release and
+deployment-request.json first. Also write maintenance-request.json with revision,
+session and invocation_started_at matching the running invocation and requested
+session. The coordinator finishes that session's save and review, writes matching
+maintenance-ready.json, then releases controller.lock while waiting for the
+deployer's completed receipt. The deployer independently rechecks the catalog,
+native/live save, quality, history and active operations before restarting Jeeves.
+Only a matching clean runtime and positive live-verification receipt release the
+coordinator to its next admission check. Controller restart follows the same wait
+before making any API call. The original deadline and stop-after-session remain
+in force; maintenance never creates a new invocation or grants extra run time.
+The maintenance service, coordinator and their request files live on the cloud.
+

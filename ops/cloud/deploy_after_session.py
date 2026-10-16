@@ -9,18 +9,20 @@ same deployment stage, never another campaign session.
 from __future__ import annotations
 import argparse, fcntl, json, os, pwd, sqlite3, subprocess, sys, time
 from pathlib import Path
+from contextlib import closing
 from barrier import API, ROOT, ensure_target, run_barrier, verify_live
 from checkpoint_backup import durable_json, sha256
+from maintenance import admission_held
 
 TERMINAL={'done','blocked','stopped','interrupted'}
 
 def read(path):
     return json.loads(Path(path).read_text())
 
-def boundary(root,session,api):
+def boundary(root,session,api,revision=None):
     invocation=read(root/'invocation.json')
-    if invocation.get('phase')!='complete':return None
-    with sqlite3.connect('file:'+str(root/'catalog.sqlite3')+'?mode=ro',uri=True) as db:
+    if invocation.get('phase')!='complete' and not admission_held(root,session,revision,invocation):return None
+    with closing(sqlite3.connect('file:'+str(root/'catalog.sqlite3')+'?mode=ro',uri=True)) as db:
         sessions=db.execute('SELECT id,phase FROM sessions ORDER BY id').fetchall()
     if not sessions or sessions[-1][0]!=session or any(phase!='complete' for _,phase in sessions):return None
     folder=root/'rounds'/f'cloud-{session:06d}'
@@ -74,10 +76,11 @@ def deployment_note(root,**fields):
 
 def publish_completion(root,folder,state):
     durable_json(folder/'receipt.json',state)
+    notes={k:v for k,v in state.get('notes',{}).items() if k in ('performance_note','naming_audit_note')}
     deployment_note(root,revision=state['revision'],pending_revision=None,
-        performance_note='Current-name attribution resolves relevant identities only; the optimized backend is active.',
-        naming_audit_note='Collision diagnostics and local/argument attribution/lookup fixes are deployed. The completed session and its quality findings are preserved; no additional reversing session was started.',
-        maintenance={'phase':'complete','revision':state['revision'],'receipt':str(folder/'receipt.json')})
+        maintenance={'phase':'complete','revision':state['revision'],'session':state['session'],
+            'invocation_started_at':state.get('invocation_started_at',read(root/'invocation.json').get('started_at')),
+            'live_checks':state['live_checks'],'runtime':state['runtime'],'receipt':str(folder/'receipt.json')},**notes)
 
 def presave(api,folder,artifact):
     """Keep native JEB and private checkpoint files under the licensed account.
@@ -128,7 +131,8 @@ def deploy(request,api,systemctl):
     if root!=ROOT:raise ValueError('Request must use the configured campaign root')
     folder=root/'maintenance'/('deploy-'+revision);folder.mkdir(parents=True,exist_ok=True)
     state_path=folder/'state.json'
-    state=read(state_path) if state_path.exists() else {'phase':'waiting','revision':revision,'session':session}
+    state=read(state_path) if state_path.exists() else {'phase':'waiting','revision':revision,'session':session,
+            'invocation_started_at':read(root/'invocation.json').get('started_at'),'notes':request.get('notes',{})}
     if not state_path.exists():durable_json(state_path,state)
     if state['phase']=='complete':
         publish_completion(root,folder,state)
@@ -143,10 +147,12 @@ def deploy(request,api,systemctl):
         with (root/'controller.lock').open('a') as lock:
             if state['phase']=='waiting':
                 while True:
-                    if read(root/'invocation.json').get('phase')!='complete':time.sleep(5);continue
+                    invocation=read(root/'invocation.json')
+                    if invocation.get('phase')!='complete' and not admission_held(root,session,revision,invocation):
+                        time.sleep(5);continue
                     try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
                     except BlockingIOError:time.sleep(5);continue
-                    ended=boundary(root,session,api)
+                    ended=boundary(root,session,api,revision)
                     if ended:break
                     fcntl.flock(lock,fcntl.LOCK_UN);time.sleep(5)
                 ended_folder,receipt,quality=ended
@@ -179,7 +185,7 @@ def deploy(request,api,systemctl):
                       expected=str(expected),barrier=receipt)
             else:fcntl.flock(lock,fcntl.LOCK_EX)
             if state['phase']=='closing':
-                if boundary(root,session,api) is None:raise RuntimeError('Session no longer quiescent before deployment')
+                if boundary(root,session,api,revision) is None:raise RuntimeError('Session no longer quiescent before deployment')
                 # Also recover a prior deployer that already closed the target
                 # before noticing it had selected the older session checksum.
                 baseline,expected=saved_baseline(root,state['barrier'],state['expected'],state['history_sha256'])
@@ -213,7 +219,7 @@ def deploy(request,api,systemctl):
                 if not result.get('ok'):raise RuntimeError('Saved names differ after release activation')
                 if sha256(Path(request['artifact']+'.workbench/history.json'))!=state['history_sha256']:
                     raise RuntimeError('Deployment changed rename history')
-                if boundary(root,session,api) is None:raise RuntimeError('Unexpected session activity after deployment')
+                if boundary(root,session,api,revision) is None:raise RuntimeError('Unexpected session activity after deployment')
                 phase('complete',runtime=api.call('workspace.state')['runtime'],live_checks=result['checked'],target=target)
                 publish_completion(root,folder,state)
         return state

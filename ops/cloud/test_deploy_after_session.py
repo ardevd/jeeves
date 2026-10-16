@@ -1,5 +1,5 @@
 import json, os, sqlite3, tarfile, tempfile, unittest
-from contextlib import ExitStack
+from contextlib import ExitStack, closing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -50,8 +50,9 @@ class Tests(unittest.TestCase):
         self.write(self.folder/'barrier/receipt.json',self.receipt);self.write(self.folder/'barrier/expected.json',{'symbols':[]})
         self.quality={'status':'complete','read_only':True,'history_unchanged':True,'history_sha256':sha256(self.history),'classes':[{}]*8}
         self.write(self.folder/'quality/receipt.json',self.quality)
-        with sqlite3.connect(self.root/'catalog.sqlite3') as db:
+        with closing(sqlite3.connect(self.root/'catalog.sqlite3')) as db:
             db.execute('CREATE TABLE sessions(id INTEGER,phase TEXT)');db.execute("INSERT INTO sessions VALUES(1,'complete')")
+            db.commit()
     def tearDown(self):self.tmp.cleanup()
     def write(self,path,value):path.write_text(json.dumps(value))
     def run_deploy(self):
@@ -62,6 +63,7 @@ class Tests(unittest.TestCase):
         for flag in ('loopActive','cancellationUnconfirmed'):
             self.api.missions[0][flag]=True;self.assertIsNone(deploy.boundary(self.root,1,self.api));self.api.missions[0][flag]=False
         self.api.active=[{'actor':'llm:finishing','op':'rename'}];self.assertIsNone(deploy.boundary(self.root,1,self.api));self.api.active=[]
+        self.api.active=[{'actor':'human:manual','op':'rename','mutating':True}];self.assertIsNone(deploy.boundary(self.root,1,self.api));self.api.active=[]
         self.quality['status']='stale';self.write(self.folder/'quality/receipt.json',self.quality)
         self.assertIsNone(deploy.boundary(self.root,1,self.api))
     def test_success_preserves_old_release_verifies_and_never_launches_agents(self):
@@ -72,6 +74,19 @@ class Tests(unittest.TestCase):
         self.assertNotIn('agent.spawn',self.api.calls);self.assertNotIn('target.save',self.api.calls)
         self.assertEqual(self.db.read_text(),'saved native names')
         self.control.clear();self.run_deploy();self.assertEqual(self.control,[])
+    def test_verified_maintenance_boundary_keeps_overnight_invocation_running(self):
+        invocation={'phase':'running','started_at':100,'deadline_at':28900,'mode':'window'}
+        self.write(self.root/'invocation.json',invocation)
+        request=dict(revision=self.request['revision'],session=1,invocation_started_at=100)
+        self.write(self.root/'maintenance-request.json',request)
+        self.assertIsNone(deploy.boundary(self.root,1,self.api,self.request['revision']))
+        self.write(self.root/'maintenance-ready.json',dict(request,phase='ready'))
+        self.assertEqual(self.run_deploy()['phase'],'complete')
+        self.assertEqual(json.loads((self.root/'invocation.json').read_text()),invocation)
+        self.assertNotIn('agent.spawn',self.api.calls)
+        self.write(self.root/'invocation.json',dict(invocation,started_at=50000,deadline_at=78800))
+        self.run_deploy()
+        self.assertEqual(json.loads((self.root/'deployment.json').read_text())['maintenance']['invocation_started_at'],100)
     def test_unsaved_changes_never_stop_the_server(self):
         self.api.changes['dirty']=True
         with self.assertRaisesRegex(RuntimeError,'unsaved edits'):self.run_deploy()

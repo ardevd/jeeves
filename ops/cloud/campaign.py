@@ -7,6 +7,7 @@ from barrier import API, ROOT, APK_SHA, ensure_target, run_barrier
 from checkpoint_backup import durable_json, sha256
 from quality import review_session
 from naming_coverage import audit_session
+from maintenance import wait_at_boundary
 
 HERE=Path(__file__).resolve().parent
 TERMINAL={'done','blocked','stopped','interrupted'}
@@ -192,14 +193,16 @@ def boundary_reason(root,db,invocation,now):
     completed=db.execute("SELECT count(*) FROM sessions WHERE phase='complete'").fetchone()[0]
     return 'Requested sessions saved and reviewed' if completed>=invocation['start_completed']+invocation['rounds'] else None
 
-def run_invocation(api,db,config,artifact,root,invocation):
+def run_invocation(api,db,config,artifact,root,invocation,before_session=None):
     while True:
+        if before_session:before_session()
         reason=boundary_reason(root,db,invocation,time.time())
         if reason:break
         focus=None
         if config.get('focus_manifest'):
             from focus import load
             focus=load(config['focus_manifest'],db,APK_SHA)
+        if before_session:before_session()
         reason=boundary_reason(root,db,invocation,time.time())
         if reason:break
         session=claim_session(db,config['models'],focus)
@@ -233,17 +236,21 @@ def main():
     lock=(root/'controller.lock').open('a');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
     api=API(config['url']);artifact=Path(config['artifact'])
     if sha256(artifact)!=APK_SHA:raise ValueError('APK identity mismatch')
-    api.call('project.open',name=config['project'])
     if args.command=='catalog':
+        api.call('project.open',name=config['project'])
         target=ensure_target(api,artifact)
         count=catalog(api,target,db);durable_json(root/'catalog-receipt.json',{'classes':count,'apk_sha256':APK_SHA,'at':time.time()});print('Catalog verified:',count);return
     invocation=invocation_state(root,db,rounds=args.rounds,hours=args.hours)
     try:
+        # On restart this must precede project.open or any other native call: the
+        # deployer may have deliberately closed the database for verification.
+        before_session=lambda:wait_at_boundary(root,db,invocation,lock)
+        before_session()
         if invocation['phase']=='complete':
             print('Requested invocation already complete. A new invocation requires an explicit operator action.',flush=True)
             return
         print('Running durable invocation:',json.dumps(invocation),flush=True)
-        run_invocation(api,db,config,artifact,root,invocation)
+        run_invocation(api,db,config,artifact,root,invocation,before_session)
     finally:lock.close();db.close()
 
 if __name__=='__main__':main()
