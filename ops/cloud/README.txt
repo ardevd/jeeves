@@ -35,7 +35,15 @@ listing limit and rejects truncation/count disagreement. SQLite keys preserve
 original descriptors byte-for-byte, including case and Unicode distinctions.
 Each session reserves eight distinct classes transactionally. A final partial
 page is filled with completed classes for another verification pass. Pending
-classes precede retries of incomplete classes. There is no attempt ceiling.
+classes precede ordinary retries of incomplete classes. There is no attempt ceiling.
+An optional repair_queue config path points to a JSON list inside the campaign
+root: [{"original_class":"LX/18X;","after_session":2,"goal":"Concrete concern to check"}].
+The class must exist and belong to the selected focus. This request gets priority
+until the class is assigned after the cited session; that assignment consumes its
+priority even if the class still needs review. Ordinary eligibility remains.
+Duplicate requests and classes outside the focus are rejected. Prior class
+results and review findings accompany every later assignment as evidence to
+check, never proof. This preserves exactly eight distinct slots and their model mix.
 
 Install jeeves-campaign@.service. Start an explicitly requested number of sessions:
  systemctl start jeeves-campaign@1
@@ -79,7 +87,13 @@ Missing/malformed receipts and failed missions remain needs_review.
 
 After the save barrier, quality.py inventories each of the eight classes and
 collects full decompiled class text, every method's argument/local metadata,
-the session's history delta and the agent's completion claim. The opposite
+the session's history delta and the agent's completion claim. Earlier per-class
+history is separately included as prior_changes. Successful recorded code reads
+of callers/reference sites are included as supporting_reads, using the last
+result per exact request and preserving requested windows. These are historical
+observations, not a promise of current display names; original identities and
+history disambiguate them. Model reasoning is excluded. UI transcript clipping
+and missing turns are explicit evidence gaps, never fabricated full source. The opposite
 provider makes one static Max review per class (GLM reviews DS, DS reviews GLM).
 It receives no mutation tools. Raw streamed responses, usage, evidence and
 findings are durable under rounds/cloud-NNNNNN/quality. Generic-name flags are
@@ -88,7 +102,8 @@ or second reversing session are launched by review. A failed/ambiguous paid
 review is retained for manual review instead of automatically repeating it.
 Collection errors, reported issues and missing claims keep classes needs_review.
 Full inventory uses native reads and history.json rather than history.list's
-existing 200-entry default / 2000-entry ceiling. Evidence is not truncated.
+existing 200-entry default / 2000-entry ceiling. This collector adds no truncation;
+the existing UI transcript restrictions above remain visible for recorded reads.
 
 jeeves-status.service exports campaign-only dashboard.json every five seconds.
 Read failures retain the last snapshot; each monitor API call has a 30-second

@@ -16,6 +16,13 @@ may properly remain unchanged. Obfuscation flags are heuristics, not proof.
 The naming_coverage section contains per-variable assessments checked against the
 fresh inventory. Inspect retained names and their evidence as carefully as renamed
 ones. Coverage completeness proves accounting only; it does not prove meaning.
+changes contains only this session's edits; prior_changes records earlier names
+and comments. A current name absent from changes is not evidence of an unlogged
+rename. supporting_reads contains code and reference-site results observed by
+the agent, including their requested windows and original request identities.
+These are historical observations and may show earlier display names. Use the
+original identities and rename history to disambiguate them. Truncated or missing
+transcript evidence is explicitly reported; do not invent the omitted content.
 Distinguish supported names, misleading/overconfident names, generic names and
 uncertain cases needing caller/context evidence. Do not accept the first agent's
 completion claim as proof. Explain concrete examples using original identities,
@@ -38,6 +45,43 @@ def entry_owner(row):
 
 def affects_class(row,original):
     return entry_owner(row)==original or any(entry_owner(target)==original for target in row.get('renameTargets',[]))
+
+def research_evidence(api,slot,evidence,history,baseline_ids):
+    """Reuse the recorded source evidence; do not send model reasoning or rerun tools.
+
+    The UI transcript can be bounded even though the headless model saw full tool
+    results. Preserve fragments with explicit gaps, never call them full source.
+    """
+    original=slot['original_class']
+    prior=[r for r in history if r.get('id') in baseline_ids and affects_class(r,original)
+           and not r.get('undone') and not r.get('discarded')]
+    own={original,evidence.get('outline',{}).get('symbol',{}).get('addr')}
+    reads={};gaps=[];numbers=[]
+    for row in api.call('agent.turns',mission=slot['mission']):
+        number=row['turn'];numbers.append(number)
+        turn=api.call('agent.turn',mission=slot['mission'],turn=number)
+        for index,call in enumerate(turn.get('calls',[]),1):
+            if call.get('tool')!='code' or call.get('ok') is not True:continue
+            try:args=json.loads(call.get('args','{}'))
+            except (ValueError,TypeError):
+                gaps.append({'turn':number,'call':index,'reason':'Stored code-call arguments are incomplete'});continue
+            if not isinstance(args,dict):continue
+            if args.get('view','java') not in ('java','smali','site','packet'):continue
+            if args.get('view','java')=='java' and str(args.get('symbol','')).split('->')[0] in own:continue
+            raw=call.get('result','');text=call.get('resultText')
+            clipped=any(isinstance(value,str) and re.search(r'…\[\+\d+ chars\]$',value) for value in (raw,text))
+            try:result=json.loads(raw)
+            except (ValueError,TypeError):result={'recorded_result_fragment':raw};clipped=True
+            if text is not None:
+                if not isinstance(result,dict):result={'recorded_result':result}
+                result=dict(result,text=text)
+            key=json.dumps(args,sort_keys=True,ensure_ascii=False)
+            reads[key]={'turn':number,'call':index,'request':args,'result':result,'transcript_truncated':clipped}
+    missing=sorted(set(range(1,max(numbers,default=0)+1))-set(numbers))
+    if missing:gaps.append({'reason':'Earlier agent turns are not in the retained UI transcript','turns':missing})
+    return {'prior_changes':prior,'supporting_reads':sorted(reads.values(),key=lambda r:(r['turn'],r['call'])),
+            'supporting_read_gaps':gaps,
+            'supporting_reads_note':'Historical tool observations, latest result per exact code request. No model reasoning is included. The UI may retain only 400 turns and truncate JSON/text at 8,000/24,000 characters; fragments are marked. No additional evidence truncation is applied here.'}
 
 def generic(name, kind):
     if name in ('this','<init>','<clinit>'):return False
@@ -162,6 +206,7 @@ def review_session(api,target,slots,folder,artifact):
                             research_focus=slot.get('research_focus'),
                             naming_coverage=coverage.get(slot['original_class']),
                             changes=[r for r in delta if affects_class(r,slot['original_class'])])
+            evidence.update(research_evidence(api,slot,evidence,history,baseline_ids))
             durable_json(evidence_path,evidence)
         evidence=read(evidence_path)
         reviewer='zai' if slot['model'].startswith('deepseek:') else 'deepseek'

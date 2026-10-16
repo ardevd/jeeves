@@ -37,6 +37,40 @@ class Tests(unittest.TestCase):
         self.assertTrue(quality.affects_class(row,'LB;'))
         self.assertFalse(quality.affects_class(row,'LC;'))
 
+    def test_review_reuses_callers_and_prior_names_without_model_reasoning(self):
+        class API:
+            def call(self,op,**args):
+                if op=='agent.turns':return [{'turn':1},{'turn':2}]
+                self_test.assertEqual(op,'agent.turn')
+                return {'reasoning':'private model reasoning must not enter the evidence', 'calls':[
+                    {'tool':'code','ok':True,'args':json.dumps({'symbol':'LB;->a()J','view':'java'}),
+                     'result':json.dumps({'symbol':{'origSig':'LB;->a()J'},'text':'(TEXT block)'}),
+                     'resultText':'return 1000L * timestamp;' if args['turn']==2 else 'earlier name'},
+                    {'tool':'code','ok':True,'args':json.dumps({'symbol':'LCurrent;','view':'java'}),'result':'{"text":"duplicate class"}'},
+                    {'tool':'annotate','ok':True,'args':'{}','result':'mutation receipt'}]}
+        self_test=self
+        prior={'id':'old','originalSymbol':'LA;->a:J','newName':'timestamp','actor':'llm:previous'}
+        evidence=quality.research_evidence(API(),{'mission':'m1','original_class':'LA;'},
+            {'outline':{'symbol':{'addr':'LCurrent;'}}},[prior,dict(prior,id='new'),dict(prior,id='undone',undone=True)],{'old','undone'})
+        self.assertEqual(evidence['prior_changes'],[prior]);self.assertEqual(len(evidence['supporting_reads']),1)
+        self.assertEqual(evidence['supporting_reads'][0]['result']['text'],'return 1000L * timestamp;')
+        self.assertFalse(evidence['supporting_reads'][0]['transcript_truncated'])
+        self.assertNotIn('private model reasoning',json.dumps(evidence))
+        self.assertEqual(evidence['supporting_read_gaps'],[])
+
+    def test_partial_transcripts_are_visible_not_presented_as_complete_code(self):
+        class API:
+            def call(self,op,**args):
+                if op=='agent.turns':return [{'turn':3}]
+                return {'calls':[{'tool':'code','ok':True,'args':'{"symbol":"LB;","view":"java"}',
+                                 'result':'{"broken…[+200 chars]','resultText':'prefix…[+900 chars]'},
+                                {'tool':'code','ok':True,'args':'{"broken…[+20 chars]'}]}
+        evidence=quality.research_evidence(API(),{'mission':'m1','original_class':'LA;'}, {},[],set())
+        self.assertTrue(evidence['supporting_reads'][0]['transcript_truncated'])
+        self.assertEqual(evidence['supporting_reads'][0]['result']['text'],'prefix…[+900 chars]')
+        self.assertEqual(evidence['supporting_read_gaps'][-1]['turns'],[1,2])
+        self.assertEqual(len(evidence['supporting_read_gaps']),2)
+
     def test_actual_http_stream_retains_full_evidence_and_native_max(self):
         requests=[]
         class Handler(BaseHTTPRequestHandler):

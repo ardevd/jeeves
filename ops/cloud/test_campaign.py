@@ -48,6 +48,30 @@ class Tests(unittest.TestCase):
         self.assertEqual(first,again)
         slots=json.loads(first['slots']);self.assertEqual(len({s['original_class'] for s in slots}),8)
         self.assertEqual([s['model'] for s in slots],MODELS)
+
+    def test_requested_repair_gets_one_followup_with_prior_review_and_eight_distinct_agents(self):
+        self.db.execute("INSERT INTO classes(original,name) VALUES('LNew;','New')")
+        prior={'quality_review':{'findings':[{'symbol':'LK;->a()V','reason':'bitwise OR, not replacement'}]}}
+        self.db.execute("UPDATE classes SET state='needs_review',attempts=5,session=1,result=? WHERE original='LK;'",(json.dumps(prior),))
+        self.db.execute("INSERT INTO sessions(id,phase,slots,created) VALUES(1,'complete','[]',0)");self.db.commit()
+        repairs=[{'original_class':'LK;','after_session':1,'goal':'Check the OR operation and stale comment {target}.'}]
+        first=campaign.claim_session(self.db,MODELS,repairs=repairs);slots=json.loads(first['slots'])
+        self.assertEqual(slots[0]['original_class'],'LK;');self.assertEqual(slots[0]['prior_result'],prior)
+        self.assertEqual(len({s['original_class'] for s in slots}),8);self.assertEqual([s['model'] for s in slots],MODELS)
+        goal=campaign.prompt(slots[0],'t2');self.assertIn('bitwise OR, not replacement',goal)
+        self.assertIn('stale comment {target}',goal);self.assertIn('Work against target t2.',goal)
+        self.assertEqual(campaign.claim_session(self.db,MODELS,repairs=repairs),first)
+        self.db.execute("UPDATE sessions SET phase='complete'")
+        self.db.execute("UPDATE classes SET state='pending' WHERE state='claimed' AND original!='LK;'")
+        self.db.execute("UPDATE classes SET state='needs_review' WHERE original='LK;'");self.db.commit()
+        next_slots=json.loads(campaign.claim_session(self.db,MODELS,repairs=repairs)['slots'])
+        self.assertNotIn('LK;',[s['original_class'] for s in next_slots])
+
+    def test_repair_request_cannot_escape_focus_or_hide_duplicate_work(self):
+        bad={'original_class':'LA;','after_session':0,'goal':'inspect caller'}
+        with self.assertRaises(ValueError):campaign.claim_session(self.db,MODELS,repairs=[bad,bad])
+        with self.assertRaises(ValueError):campaign.claim_session(self.db,MODELS,focus=[{'original_class':'LB;'}],repairs=[bad])
+        self.assertEqual(self.db.execute('SELECT count(*) FROM sessions').fetchone()[0],0)
     def test_truncated_catalog_is_rejected(self):
         api=CatalogAPI();old=api.call
         def truncated(op,**p):

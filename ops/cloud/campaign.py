@@ -49,20 +49,37 @@ def catalog(api,target,db):
             db.execute('INSERT INTO classes(original,name) VALUES(?,?) ON CONFLICT(original) DO UPDATE SET name=excluded.name',(original,name))
     return expected
 
-def claim_session(db,models,focus=None):
+def claim_session(db,models,focus=None,repairs=None):
     if len(models)!=8:raise ValueError('This campaign requires exactly eight model slots')
     # One transaction reserves all eight; binary original descriptors never fold case.
     with db:
         existing=db.execute("SELECT * FROM sessions WHERE phase!='complete' ORDER BY id LIMIT 1").fetchone()
         if existing:return dict(existing)
         focused={r['original_class']:r for r in focus} if focus is not None else None
+        repair_by_class={}
+        for repair in repairs or []:
+            original=repair.get('original_class');after=repair.get('after_session')
+            if (not isinstance(original,str) or original in repair_by_class
+                    or type(after) is not int or after<0 or not isinstance(repair.get('goal'),str) or not repair['goal'].strip()):
+                raise ValueError('Repair requests require a unique original class, source session and concrete goal')
+            if not db.execute('SELECT 1 FROM classes WHERE original=?',(original,)).fetchone():raise ValueError('Unknown repair class: '+original)
+            if focused is not None and original not in focused:raise ValueError('Repair class is outside the FMessage focus: '+original)
+            repair_by_class[original]=repair
+        def repair_for(row):
+            request=repair_by_class.get(row['original'])
+            # A request applies to the observed session, once. A later assignment
+            # remains ordinarily eligible but cannot consume this request twice.
+            return request if request and (row['session'] or 0)<=request['after_session'] else None
         if focused is not None:
             rank={s:i for i,s in enumerate(focused)}
             eligible=[db.execute('SELECT * FROM classes WHERE original=?',(s,)).fetchone() for s in focused]
             if any(r is None for r in eligible):raise RuntimeError('Focus contains an unknown class')
-            eligible.sort(key=lambda r:(r['attempts'],rank[r['original']]))
+            eligible.sort(key=lambda r:(0 if repair_for(r) else 1,r['attempts'],rank[r['original']]))
             rows=[r for r in eligible if r['state'] in ('pending','needs_review')][:8]
-        else:rows=db.execute("SELECT * FROM classes WHERE state IN ('pending','needs_review') ORDER BY attempts, original COLLATE BINARY LIMIT 8").fetchall()
+        else:
+            rows=db.execute("SELECT * FROM classes WHERE state IN ('pending','needs_review') ORDER BY attempts, original COLLATE BINARY").fetchall()
+            rows.sort(key=lambda r:(0 if repair_for(r) else 1,r['attempts'],r['original']))
+            rows=rows[:8]
         if not rows:return None
         if len(rows)<8:
             # Finish the last partial page with distinct previously completed
@@ -72,6 +89,10 @@ def claim_session(db,models,focus=None):
             if len(rows)!=8:raise RuntimeError('The target itself contains fewer than eight classes')
         slots=[{'original_class':r['original'],'current_name':r['name'],'model':models[i],
                 'assignment_id':str(uuid.uuid4()),'spawn':'prepared','mission':None} for i,r in enumerate(rows)]
+        for slot,row in zip(slots,rows):
+            if row['result']:slot['prior_result']=json.loads(row['result'])
+            repair=repair_for(row)
+            if repair:slot['repair_request']=repair
         if focused is not None:
             from focus import context
             for slot in slots:
@@ -87,9 +108,13 @@ def save_slots(db,sid,slots):
 
 def prompt(slot,target):
     text=(HERE/'class-prompt.txt').read_text()
-    focus=slot.get('research_focus')
-    text=text.replace('{research_focus}',('FMessage assignment context: '+json.dumps(focus,ensure_ascii=False)) if focus else '')
-    for key,value in dict(slot,target=target).items():text=text.replace('{'+key+'}',str(value))
+    values={key:str(slot[key]) for key in ('original_class','current_name','assignment_id')}
+    values['target']=target
+    for key,label in [('research_focus','FMessage assignment context'),('prior_result','Prior session evidence and independent review'),('repair_request','Requested follow-up')]:
+        values[key]=(label+': '+json.dumps(slot[key],ensure_ascii=False)) if slot.get(key) else ''
+    # Replace template fields once; braces in quoted code/evidence remain data.
+    import re
+    text=re.sub(r'\{(original_class|current_name|assignment_id|target|research_focus|prior_result|repair_request)\}',lambda m:values[m.group(1)],text)
     return text
 
 def completion(api,mission,original):
@@ -205,7 +230,13 @@ def run_invocation(api,db,config,artifact,root,invocation,before_session=None):
         if before_session:before_session()
         reason=boundary_reason(root,db,invocation,time.time())
         if reason:break
-        session=claim_session(db,config['models'],focus)
+        repairs=[]
+        if config.get('repair_queue'):
+            path=Path(config['repair_queue']).resolve()
+            if not path.is_relative_to(root.resolve()):raise ValueError('Repair queue must be inside the campaign root')
+            repairs=json.loads(path.read_text())
+            if not isinstance(repairs,list):raise ValueError('Repair queue must contain a list')
+        session=claim_session(db,config['models'],focus,repairs)
         if session is None:
             reason='All eligible classes have completed the coverage and quality checks'
             break
