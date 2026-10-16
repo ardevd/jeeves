@@ -179,3 +179,23 @@ Preparing a focus manifest never resets a completed invocation or starts a round
 Do not claim HIBERNATION-SAFE merely because this service file exists. Qualify
 actual execution, supervision, durable saves/results and access after SSH/client
 loss; report any remaining laptop-dependent setup, backup or cleanup step.
+
+Durable completion-pass coverage (16 October 2026)
+
+The class prompt preserves supported Kimi/K3 names and requires naming_coverage
+for every own method. Assessments are durable per actor and current inventory;
+the CLASS_RESULT counters alone never qualify a class. The coordinator writes
+coverage-before.json after all eight settle, includes each available whole-method
+inventory fingerprint in the native/live barrier, and writes coverage-after.json
+before independent semantic review. Missing/unresolved/stale assessments or
+collection errors keep the class in needs_review even if the agent and reviewer
+say complete. A method with no variables still needs an explicit empty receipt.
+The dashboard shows method and variable coverage separately from rename counts.
+
+The existing 50-item annotate batch limit remains; partial rename failures must
+be inspected and only failed entries retried. The new coverage tool has no item
+cap and accepts partial merges. No headless turn/token mission cap is added. The
+HTTP provider output/context allowances still apply. Abstract/non-rendered
+arguments without a local target remain unresolved if they need names; this
+release does not bypass the analyst-only parameter mapping guard. Deployment
+and qualification do not clear invocation.json or launch another paid session.

@@ -6,6 +6,7 @@ from pathlib import Path
 from barrier import API, ROOT, APK_SHA, ensure_target, run_barrier
 from checkpoint_backup import durable_json, sha256
 from quality import review_session
+from naming_coverage import audit_session
 
 HERE=Path(__file__).resolve().parent
 TERMINAL={'done','blocked','stopped','interrupted'}
@@ -120,7 +121,7 @@ def run_session(api,db,session,artifact,root):
                 matched=[m for m in missions if ('Campaign assignment: '+slot['assignment_id']+'.') in m.get('goal','')]
                 if len(matched)>1:raise RuntimeError('Duplicate assignment missions; reconciliation required')
                 if matched:
-                    slot.update(mission=matched[0]['id'],spawn='acknowledged');save_slots(db,sid,slots);continue
+                    slot.update(mission=matched[0]['id'],spawn='acknowledged',coverage_actor='llm:'+matched[0]['agentId']);save_slots(db,sid,slots);continue
                 if slot['spawn']=='ambiguous':
                     raise RuntimeError('Ambiguous spawn has no mission receipt; preserved for reconciliation: '+slot['assignment_id'])
                 slot['spawn']='ambiguous';save_slots(db,sid,slots)
@@ -128,17 +129,19 @@ def run_session(api,db,session,artifact,root):
                 mission=api.call('agent.spawn',target=target,scope='target:'+target,model=slot['model'],effort='max',goal=prompt(slot,target))
                 if not mission.get('turnsUnlimited') or not mission.get('budgetUnlimited'):
                     raise RuntimeError('Headless unlimited settings are not effective')
-                slot.update(mission=mission['id'],spawn='acknowledged');save_slots(db,sid,slots)
+                slot.update(mission=mission['id'],spawn='acknowledged',coverage_actor='llm:'+mission['agentId']);save_slots(db,sid,slots)
             missions=api.call('agent.missions');by_id={m['id']:m for m in missions}
             if all(settled(by_id.get(s['mission'],{})) for s in slots):break
             durable_json(root/'status.json',{'phase':'agents','session':sid,'slots':[dict(s,state=by_id.get(s['mission'],{}).get('state')) for s in slots],'updated_at':time.time()})
             time.sleep(5)
         for slot in slots:
             m=by_id[slot['mission']]
+            slot['coverage_actor']='llm:'+m['agentId']
             result=completion(api,slot['mission'],slot['original_class']) if m['state']=='done' else {'status':'needs_review','unresolved':[m.get('reason') or m['state']]}
             slot['result']=result;slot['usage']={k:m.get(k) for k in ['inputTokens','outputTokens','cacheHitTokens','turnsDone','state']}
         save_slots(db,sid,slots)
         durable_json(folder/'assignments.json',slots)
+        audit_session(api,target,slots,folder,'before')
         with db:db.execute("UPDATE sessions SET phase='barrier' WHERE id=?",(sid,))
     durable_json(root/'status.json',{'phase':'barrier','session':sid,'updated_at':time.time()})
     snapshot=sqlite3.connect(folder/'catalog-before-save.sqlite3')
@@ -146,6 +149,8 @@ def run_session(api,db,session,artifact,root):
     finally:snapshot.close()
     receipt=run_barrier(api,folder,artifact)
     if not receipt.get('ok'):raise RuntimeError('Verification barrier not complete')
+    coverage=audit_session(api,receipt['target'],slots,folder,'after')
+    covered={c['original_class']:c for c in coverage['classes']}
     with db:db.execute("UPDATE sessions SET phase='quality' WHERE id=?",(sid,))
     durable_json(root/'status.json',{'phase':'quality','session':sid,'updated_at':time.time()})
     quality=review_session(api,receipt['target'],slots,folder,artifact)
@@ -155,8 +160,10 @@ def run_session(api,db,session,artifact,root):
         for slot in slots:
             result=slot['result'];status='done' if result.get('status')=='complete' else 'needs_review'
             review=reviews.get(slot['original_class'],{})
-            if quality.get('status')!='complete' or review.get('collection_errors') or review.get('review',{}).get('verdict')!='acceptable':status='needs_review'
-            result=dict(result,quality_review=review.get('review',{}),possible_unnamed=review.get('possible_unnamed'))
+            audit=covered.get(slot['original_class'],{})
+            if audit.get('status')!='complete' or quality.get('status')!='complete' or review.get('collection_errors') or review.get('review',{}).get('verdict')!='acceptable':status='needs_review'
+            result=dict(result,quality_review=review.get('review',{}),possible_unnamed=review.get('possible_unnamed'),
+                        coverage={k:v for k,v in audit.items() if k!='methods'})
             db.execute('UPDATE classes SET state=?,result=? WHERE original=?',(status,json.dumps(result),slot['original_class']))
         db.execute("UPDATE sessions SET phase='complete',receipt=? WHERE id=?",(json.dumps(receipt),sid))
     return receipt

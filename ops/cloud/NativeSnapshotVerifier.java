@@ -110,6 +110,18 @@ public final class NativeSnapshotVerifier {
                 results.add(result);
             }
             Map<String,Object> receipt = new LinkedHashMap<>();
+            if (input.get("coverage_methods") instanceof List<?> methods) for (Object value : methods) {
+                var method=(Map<String,Object>)value; var result=new LinkedHashMap<String,Object>();
+                String original=String.valueOf(method.get("original_method"));
+                result.put("coverage_method",original); boolean ok=false;
+                try {
+                    var inventory=dev.workbench.server.NamingCoverage.inventory(engine,original);
+                    ok=((List<?>)inventory.get("inventoryErrors")).isEmpty()
+                            && Objects.equals(method.get("inventory_fingerprint"),inventory.get("inventoryFingerprint"));
+                    result.put("inventory",inventory);
+                } catch(Exception error) { result.put("error",error.toString()); }
+                result.put("ok",ok); if(!ok)failures++;results.add(result);
+            }
             receipt.put("database", db.toString()); receipt.put("native_only", true);
             receipt.put("history_replayed", false); receipt.put("engine", engine.info());
             receipt.put("checked", results.size()); receipt.put("failures", failures);

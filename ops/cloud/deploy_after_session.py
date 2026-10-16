@@ -186,7 +186,7 @@ def deploy(request,api,systemctl):
                 if sha256(Path(request['artifact']+'.workbench/history.json'))!=state['history_sha256']:
                     raise RuntimeError('Deployment changed rename history')
                 if boundary(root,session,api) is None:raise RuntimeError('Unexpected session activity after deployment')
-                phase('complete',runtime=runtime,live_checks=result['checked'],target=target)
+                phase('complete',runtime=api.call('workspace.state')['runtime'],live_checks=result['checked'],target=target)
                 publish_completion(root,folder,state)
         return state
     except Exception as error:

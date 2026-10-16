@@ -609,7 +609,8 @@ public final class AgentLoop {
                         activity.row("note", "turn " + turn + " · " + readOnlyStreak + " read-only turns — asking for the names decided so far");
                         messages.add(Map.of("role", "user", "content",
                                 "You have read for " + readOnlyStreak + " turns without filing a name. File every name you "
-                                + "have already decided now with annotate (one items[] call, a name per item), then continue."));
+                                + "have already decided now with annotate (one items[] call, a name per item), then continue. "
+                                + "Preserve supported existing names; a completion pass can record retained-name evidence with naming_coverage instead of inventing replacements."));
                         rec.put("nudge", "rename-early");
                         readOnlyStreak = 0;
                     }
@@ -914,6 +915,8 @@ public final class AgentLoop {
                             proposalsMade++;
                             readOnlyStreak = -1;                     // this turn wrote: the streak restarts after it
                         }
+                        if ("naming_coverage".equals(toolName) && "record".equals(args.get("action")) && Boolean.TRUE.equals(result.get("ok")))
+                            readOnlyStreak = -1; // durable research progress, but not a rename/proposal count
                         boolean decompileCall = isDecompile(toolName, args);
                         if (decompileCall) decompiledOnce = true;
                         turnHadCalls = true;

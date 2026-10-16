@@ -182,6 +182,8 @@ the full result and whether the response includes all of it.
 | `code.smali <symbol>` | | listing with offsets + opcode bytes (cap `smali`; native engines: disassembly) |
 | `code.hover <symbol> <offset>` | | tooltip model (kind, owner, sig, comment) |
 | `locals.list <method> [target]` | | Displayed local variables with `name`, optional `type`, and `line`. Native JEB rows also include `originalMethod` (the original method descriptor), `originalName` (the identifier’s original name), `itemId` (unsigned decimal string to avoid JSON precision loss), and `originalSymbol` (`originalMethod + "#local:" + itemId`). This is the same identity used by `resolveLocal` and rename ownership. Match both identity and name when checking a saved/reopened database; name alone can identify a different variable. |
+| `naming.coverage <symbol> [target, recordedBy]` | | Fresh per-method argument/local inventory and durable actor-specific assessments. See the naming coverage contract below. |
+| `naming.coverage.record <symbol> <inventoryFingerprint> <evidence> items:[{identity,disposition,evidence}] [target]` | ✓ | Atomically merge assessments for the caller and fresh inventory; does not edit native names. |
 | `code.outline <class>` | | method/field outline Since 2026-10-09 (the FMessage observer follow-up): every member with `origSig` (the ORIGINAL descriptor — what the phone runs; a display rename exists only here) and `access`; fields with `type` (original) / `displayType`, `static`, `final`, `declaredIn`; `collisions`: every member name shared by a FIELD and a METHOD of the class, by original name, with the field's type and the methods' original descriptors and the hook advice (a bare name selects the method wrapper in Frida — read the field by `getDeclaredField`, call the method by its descriptor), members marked `collides`; `inherited: true` adds `inherited {chain, fields (with inheritedFrom), unknown}` — the superclass chain's fields as this dex declares them (up to 6 levels; framework supers listed under unknown). Jeeves's DEX metadata is reported as it is, never changed for a consumer's syntax. |
 | `evidence.packet <method> [--entry offset\|block] [--maxInstructions N] [--question …] [--java false] [--student false]` | | the MCP `code` tool's view `packet`: ONE method's bounded evidence — `original_method` beside the display names, the code in the dex's ORIGINAL names with stable refs (`<original descriptor>+<offset>h`), the CFG blocks (regular + exceptional edges), the selection (whole method, or the blocks reachable from `entry` — never a text cut), `omitted`, `missing`, `references` {calls, fields, types, strings}, `provenance` (the analyst's display names, kept apart), the whole-method java, a `snapshot` {target, artifactSha256, historyRevision} and an optional `student` block (every block with lines/successors/exceptional); a class → E_SYNTAX; a bodiless method → `mode: no-code`. Through the facade the student block is left out unless asked for (`student: true`) The packet's `snapshot` keeps THREE identities apart (2026-10-09, the WhatsApp path investigation: a packet from a reopened .jdb2 had no artifactSha256 while its note still said that field identified the bytes): `executable` {state: measured \| recorded \| conflict \| missing \| unknown, sha256, file, bytes, basis, inputClass?} — measured from the artifact file in the store, or by RE-READING the file JEB's project record points at (JEB does not keep the APK inside the .jdb2 — measured 2026-10-09: its input is a FileInput; with that file gone the database alone cannot name its bytes); recorded = a device pull's record, not re-measured; conflict = the file beside the database is not its input (sibling_sha256 given; sha256 is the input's); missing; unknown while the target still loads, `database` {file, bytes, modified, storeKey — never the executable's identity}, `revision` {history, snapshot_id}, `runtime` {build_sha, build_dirty, built_at, built_at_basis, engine}; the compat field `artifactSha256` is present ONLY when the executable was measured, and `note` says the state in words; `method.codeItem {dex, instructionsOffset}` names the exact DEX member. The packet's symbol is resolved STRICTLY (a contradicting descriptor is E_NOTFOUND naming the original one). |
 
@@ -455,3 +457,41 @@ unique assignment tag. A failed or ambiguous persistence/spawn step admits no
 new session. Native-only verification opens a copied JDB with no edit-history
 sidecar; live verification follows reopening the source target. No host lifecycle
 or automatic checkpoint-deletion operations are included.
+
+### Durable naming coverage
+
+The loop-visible and MCP facade tool `naming_coverage` routes `action:get`
+(default) to `naming.coverage` and `action:record` to `naming.coverage.record`.
+All ordinary mutation scope checks apply to record; `recordedBy` cannot change
+its author. This is evidence storage, separate from native edits/proposals.
+
+`schema:naming-coverage-v1` returns `originalMethod`, `hasCode`, `variables`,
+`inventoryFingerprint`, `inventoryErrors`, `counts`, `recordedBy`, `record`, and
+`status` (`unreviewed|stale|needs_review|complete`). Parameter identities use the
+original method plus `#parameter:<formalIndex>`; body locals retain their exact
+`#local:<itemId>`. Rendered parameters also carry their local identity and item
+ID. `renameableLocal` describes whether annotate can target the current local
+name. Formal arguments without code are inventoried too; a missing name must be
+unresolved. Native `code.params` now includes the public SDK's `hasCode` flag.
+The fixed receiver is explicitly excluded. Unsupported/failed inventory reads
+are never converted into complete empty inventories.
+
+The fingerprint covers original identities, displayed names, argument/local
+bindings, code presence and inventory failures, not mutable rendering line
+numbers or target IDs. A stale record attempt is E_BUSY. Each decision must
+name a unique current identity, use `renamed|retained|unresolved`, and contain
+nonblank evidence; a method-level evidence string is also required. `renamed`
+requires current history provenance. Partial records merge only for the same
+actor and unchanged fingerprint; a changed inventory requires fresh assessment.
+An explicit empty items list reviews a variable-free method. No count limit is
+imposed by this tool. Atomic, fsynced sidecars preserve separate actor records;
+unreadable files produce E_IO and are retained. Names and reviews remain model
+claims; complete coverage does not certify semantic correctness.
+
+Headless in-process tool replies are not cut by the interactive 6K/16K limits.
+The external Python MCP bridge still has its own existing limits: four in-flight
+calls, 75-second call timeout, 16 MiB HTTP response maximum, and an 80,000-character
+result cut by default. These are not on the cloud in-process agent path. Provider
+context/output allowances and context maintenance still apply. Coverage records
+can be reread after conversation compaction; bounded transcript retention is not
+used as the source of per-variable completion evidence.

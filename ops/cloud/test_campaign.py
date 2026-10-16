@@ -13,7 +13,7 @@ class CatalogAPI:
             return {'items':[{'kind':'class','origSig':n,'name':n} for n in names],'truncated':False}
         raise AssertionError(op)
 class SessionAPI:
-    def __init__(self):self.missions=[];self.calls=[];self.lost=False
+    def __init__(self):self.missions=[];self.calls=[];self.lost=False;self.coverage_status='complete'
     def call(self,op,**p):
         self.calls.append(op)
         if op=='agent.missions':
@@ -21,11 +21,14 @@ class SessionAPI:
                 for m in self.missions:m['state']='done'
             return list(self.missions)
         if op=='agent.spawn':
-            m=dict(id='m'+str(len(self.missions)+1),state='running',goal=p['goal'],turnsUnlimited=True,budgetUnlimited=True)
+            m=dict(id='m'+str(len(self.missions)+1),agentId='agent-'+str(len(self.missions)+1),state='running',goal=p['goal'],turnsUnlimited=True,budgetUnlimited=True)
             self.missions.append(m)
             if self.lost:self.lost=False;raise ConnectionResetError('lost spawn acknowledgement')
             return m
         if op=='agent.turns':return [{'turn':1}]
+        if op=='code.outline':return {'symbol':{'origSig':p['class']},'methods':[{'origSig':p['class']+'->a()V'}]}
+        if op=='naming.coverage':return {'originalMethod':p['symbol'],'recordedBy':p['recordedBy'],'status':self.coverage_status,
+                'counts':{'total':3,'retained':3,'renamed':0,'missing':0,'unresolved':0},'inventoryFingerprint':'fixture','inventoryErrors':[],'variables':[]}
         if op=='agent.turn':
             m=next(x for x in self.missions if x['id']==p['mission'])
             original=m['goal'].split('You own exactly one class: ',1)[1].split('.',1)[0]
@@ -73,6 +76,19 @@ class Tests(unittest.TestCase):
         class API:
             def call(self,*a,**k):return []
         self.assertEqual(campaign.completion(API(),'m1','LA;')['status'],'needs_review')
+
+    def test_optimistic_class_claim_and_quality_cannot_hide_missing_variable_coverage(self):
+        api=SessionAPI();api.coverage_status='needs_review';session=campaign.claim_session(self.db,MODELS)
+        quality={'status':'complete','classes':[{'original_class':s['original_class'],'review':{'verdict':'acceptable'}} for s in json.loads(session['slots'])]}
+        def barrier(*a):
+            before=json.loads((self.root/'rounds/cloud-000001/coverage-before.json').read_text())
+            self.assertEqual(len(before['classes']),8)
+            self.assertTrue(all(c['actor'].startswith('llm:agent-') for c in before['classes']))
+            return {'ok':True,'target':'t2'}
+        with patch.object(campaign,'ensure_target',return_value='t1'),patch.object(campaign,'run_barrier',side_effect=barrier),patch.object(campaign,'review_session',return_value=quality):
+            campaign.run_session(api,self.db,session,self.root/'input.apk',self.root)
+        self.assertEqual(self.db.execute("SELECT count(*) FROM classes WHERE state='needs_review'").fetchone()[0],8)
+        self.assertTrue((self.root/'rounds/cloud-000001/coverage-after.json').exists())
 
     def test_terminal_label_does_not_acknowledge_inflight_work(self):
         self.assertFalse(campaign.settled({'state':'stopped','loopActive':True}))

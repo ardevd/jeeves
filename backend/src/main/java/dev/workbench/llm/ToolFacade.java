@@ -16,7 +16,7 @@ import java.util.Set;
  * external MCP client (every tool, through the `tool.call` op and the bridge).
  *
  * The registry's ops stay what the browser needs (one op per request); the facade folds
- * them into a small catalogue of verb-shaped tools — 24 in all (decision 2026-09-18:
+ * them into a small catalogue of verb-shaped tools — 26 in all (decision 2026-09-18:
  * one server, everything in it, merged calls, the cruft removed):
  *
  *   reads        symbols, code, xrefs, strings, search
@@ -189,6 +189,28 @@ public final class ToolFacade {
                         "entry", str("view packet: a branch entry — an instruction offset or a CFG block id (optional; absent = the whole method)", "\"0040\""),
                         "maxInstructions", num("view packet: cap on listed instructions (default 400; the cut is declared)", "400")),
                 "symbol");
+        Map<String,Object> coverageItem = new LinkedHashMap<>();
+        coverageItem.put("type", "object");
+        coverageItem.put("properties", props("identity", str("exact variable identity returned by naming_coverage", "Lm76/ak;->a(I)V#parameter:0"),
+                "disposition", pick("renamed | retained with evidence | unresolved", "renamed", "retained", "unresolved"),
+                "evidence", str("specific uses supporting the name, or concrete missing evidence", "used as the upper bound of the copy loop")));
+        coverageItem.put("required", List.of("identity", "disposition", "evidence"));
+        coverageItem.put("additionalProperties", false);
+        tool("naming_coverage", true, List.of("naming.coverage", "naming.coverage.record"),
+                "Audit every formal argument and body local of ONE method, including methods whose class/members were already named."
+                        + " get returns the fresh inventory, current/original identities, name provenance, inventoryFingerprint, and durable coverage."
+                        + " After research and annotate batches, get again, then record each variable as renamed, retained with evidence, or unresolved."
+                        + " record requires the fresh fingerprint, method evidence and items; partial lists merge for this actor and fingerprint."
+                        + " An empty items list explicitly reviews a method with no variables. Missing variables, failed inventory reads and unresolved entries prevent completion."
+                        + " Names/inventory changing makes prior coverage stale; reread and reassess. Records survive transcript truncation and restart."
+                        + " renamed requires actual rename provenance. Unnamed/non-rendered arguments must remain unresolved. This tool records evidence; it never renames anything.",
+                "{\"action\":\"get\",\"symbol\":\"Lm76/ak;->a(I)V\"}",
+                props("action",pick("get (default) | record", "get", "record"),
+                        "symbol",str("original method identity", "Lm76/ak;->a(I)V"),
+                        "inventoryFingerprint",str("record: exact fingerprint from the latest get", "sha256 from get"),
+                        "evidence",str("record: method-level code evidence; also required for an empty method", "returns the received message unchanged"),
+                        "items",arr("record: variable assessments; partial lists merge, with no item cap", "[{identity, disposition, evidence}]",coverageItem),
+                        "recordedBy",str("get: inspect a particular actor's record (optional; default latest)", "llm:agent-9")), "symbol");
         tool("xrefs", true, List.of("xref.to", "xref.from", "callers", "callees", "impls"),
                 "Cross-references of a symbol. direction to (default): who uses it; from: what it uses; impls: the implementations"
                         + " of an interface or abstract METHOD (a method symbol only — for a class, read its outline and follow xrefs to)."
@@ -677,6 +699,11 @@ public final class ToolFacade {
         if (t == null) throw OpException.unsupported("unknown tool: " + tool, "tools: " + String.join(", ", TOOLS.keySet()));
         String action = s(args, "action");
         switch (tool) {
+            case "naming_coverage": {
+                if (action == null || "get".equals(action)) return new Route("naming.coverage", pass(args, ACTION));
+                if ("record".equals(action)) return new Route("naming.coverage.record", pass(args, Set.of("action", "recordedBy")));
+                throw badAction(tool, action, "get", "record");
+            }
             case "symbols": {
                 /* a blank selector is an absent one: {"prefix": "com.foo", "query": ""} is a prefix call, not a
                    search that then fails on its empty query */

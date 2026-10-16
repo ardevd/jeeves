@@ -6,6 +6,7 @@ from pathlib import Path
 from barrier import API
 from checkpoint_backup import durable_json
 from quality import read
+from naming_coverage import summary as coverage_summary
 
 def counts(entries):
     names={};comments=set()
@@ -65,6 +66,8 @@ def snapshot(config,api):
         if quality is None:quality={'status':read(folder/'quality/status.json',{}).get('phase','pending'),'classes':read(folder/'quality/partial.json',[])}
         result['quality']=quality
         result['barrier']=saved
+        coverage=read(folder/'coverage-after.json') or read(folder/'coverage-before.json')
+        if coverage:result['coverage']=coverage_summary(coverage)
     edits=[r for r in history if baseline is not None and r.get('id') not in baseline]
     result['edits']=edits;result['counts']=counts(edits);result['history_entries']=len(history)
     # Read counts from durable state; do not ask a model or force a project switch.

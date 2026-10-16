@@ -4906,6 +4906,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
         List<Object> debugNames = null;
         int debugNonEmpty = 0;
         IDexCodeItem ci = md == null ? null : md.getCodeItem();
+        out.put("hasCode", ci != null);
         try {
             if (ci == null) dbg.put("status", md != null && (md.isNative() || md.isAbstract()) ? "no-code" : "absent");
             else {

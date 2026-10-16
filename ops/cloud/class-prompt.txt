@@ -15,6 +15,9 @@ may already be K3/another agent's work: inspect provenance and retain supported 
 Research and name the ENTIRE class and ALL its symbols: the class itself, every
 field, every method, every method argument, and every decompiler local variable.
 A class name and a few prominent methods are not a completed assignment.
+This is a completion pass over prior Kimi/K3 work. Preserve existing supported
+class/member names; focus research on unfinished arguments and locals. Change a
+prior name only when concrete code evidence contradicts it, and explain that evidence.
 
 Use original Dalvik identities as stable identifiers. Jeeves returns current names
 together with original identities and name provenance. Resolve the original class,
@@ -38,6 +41,22 @@ families may span classes: inspect the reported affected members and coordinate
 through current state. Re-read the class and each touched method after writes.
 
 Keep an existing meaningful name when supported by evidence and count it as retained.
+For EVERY own method, use naming_coverage(action="get", symbol=original_method).
+It returns the exact argument/local identities, fresh names, prior authors and an
+inventoryFingerprint. Research every returned variable. After annotate batches,
+get again and call naming_coverage(action="record", symbol=original_method,
+inventoryFingerprint=the_fresh_fingerprint, evidence="method-level code evidence",
+items=[{"identity":"exact returned identity","disposition":"renamed|retained|unresolved",
+"evidence":"specific uses supporting this name, or concrete missing evidence"}]).
+Use one actual disposition per item. Partial item lists merge for your current
+fingerprint; missing entries remain incomplete. Record an empty items list with
+evidence for methods with no variables. The fixed receiver "this" is excluded.
+An argument with renameableLocal=false has no supported annotate target: report
+unresolved if it still needs naming. Never impersonate a human or use analyst-only
+parameter mapping operations. A renamed class/method does NOT cover its variables.
+Recheck every method's coverage before finishing. Any stale inventory, missing
+assessment, unresolved variable or collection error means needs_review. These
+durable records, not the final counts below, determine variable coverage.
 Constructors and class initializers keep their required JVM names. Do not fabricate
 confident meanings for unclear symbols. Continue researching; if a symbol remains
 unresolved, record its original identity and concrete missing evidence. Report

@@ -187,7 +187,7 @@ targets touched, the clients seen and the first and last call.
 ### 4.4 MCP (drive the workbench from an LLM client)
 
 ```bash
-python3 mcp/workbench_mcp.py            # stdio MCP server "jeeves", 25 tools
+python3 mcp/workbench_mcp.py            # stdio MCP server "jeeves", 26 tools
 python3 mcp/workbench_mcp.py --selftest # smoke test
 ```
 
@@ -282,11 +282,12 @@ name what it understands, `history {action: undo}` to take a name back, and
 `mission {action: turns | turn}` reads its transcript.
 
 The server advertises the workbench's **tool facade** (`ops.tools`; source
-`dev.workbench.llm.ToolFacade`): 25 verb-shaped tools with strict schemas
+`dev.workbench.llm.ToolFacade`): 26 verb-shaped tools with strict schemas
 and worked examples, each folding one or more registry ops behind an
 `action` (or `view` / `direction`) selector. Reads: `symbols`, `code`,
 `xrefs`, `strings`, `search`. Writes: `annotate` (rename, comment and tag
-in one `items[]` call) and `map_verdict`. Maps: `map`, `map_edit`, `flow`.
+in one `items[]` call) and `map_verdict`. Coverage: `naming_coverage` reads or
+records method-variable assessments. Maps: `map`, `map_edit`, `flow`.
 Dynamic: `devices`, `runs`, `run`, `breakpoints`. Operator: `project`,
 `target`, `mission`, `review`, `llm`, `reversing_agent`, `index`,
 `workspace`, `history`, `presence`, `audit`. Every call goes through the backend's
@@ -598,6 +599,35 @@ arguments with their original/current identities. Submit changes with `annotate`
 in batches of up to 50 items and inspect every per-item result. Human-owned names
 and analyst-mapped arguments remain protected. An entire class inventory must
 include its methods, fields, arguments and locals, not just its class/method names.
+
+For a completion pass over previously named classes, use `naming_coverage` for
+each own method. `action:get` returns every formal argument and displayed body
+local, current/original names, available rename provenance, and an
+`inventoryFingerprint`. The fixed `this` receiver is excluded. After research
+and `annotate` batches, read again and use `action:record` with that fingerprint,
+method `evidence`, and `items:[{identity,disposition,evidence}]`. Disposition is
+`renamed`, `retained`, or `unresolved`; each entry needs concrete code evidence.
+`renamed` requires active rename provenance. An unnamed argument cannot be
+retained. Arguments with `renameableLocal:false` have no supported `annotate`
+target; this audit does not add an agent-accessible parameter-mapping operation.
+
+Partial item lists merge for the same actor and fingerprint, without an item
+cap. Empty methods require an explicit record with `items:[]` and evidence.
+Missing entries, unresolved variables and collection errors prevent completion;
+changed names or inventories make old records stale. Records for other actors
+are retained separately. They are durably written under the artifact's
+`.workbench/naming-coverage/`, independent of bounded mission transcripts.
+`recordedBy` on get selects a particular actor; writes always use the operation
+actor. Recording coverage never renames symbols or bypasses review.
+
+The cloud controller checks all own methods for each of the eight assigned
+agents before saving and after reopening. Its independent native verifier also
+compares the whole available variable inventory, including untouched locals,
+without history or coverage sidecars. A class can be marked done only with
+complete actor-specific coverage, a complete final claim, and an acceptable
+independent semantic review. Coverage proves accounting and persistence, not
+that a model's interpretation is correct. No extra inference session is launched
+by this audit or by deploying it.
 
 Attribution checks first exclude historical names absent from the returned
 text and identities. Possible matches still resolve against current native

@@ -167,7 +167,13 @@ def verify_live(api,target,expected):
                 if actual.get('original_method')!=symbol or parameters!=item['parameters']:
                     raise RuntimeError('Parameter names or indices changed after reopen')
         except Exception as error: failures.append({'original_symbol':symbol,'error':str(error)})
-    return {'ok':not failures,'checked':len(expected['symbols']),'failures':failures}
+    for method in expected.get('coverage_methods',[]):
+        try:
+            current=api.call('naming.coverage',target=target,symbol=method['original_method'])
+            if current.get('inventoryErrors') or current.get('inventoryFingerprint')!=method['inventory_fingerprint']:
+                raise RuntimeError('Complete argument/local inventory changed after reopen')
+        except Exception as error:failures.append({'coverage_method':method['original_method'],'error':str(error)})
+    return {'ok':not failures,'checked':len(expected['symbols'])+len(expected.get('coverage_methods',[])),'failures':failures}
 
 def wait_ready(api,target):
     while True:
@@ -256,7 +262,12 @@ def run_barrier(api, round_dir, artifact):
             target=ensure_target(api,artifact);info=wait_ready(api,target)
             history=json.loads(Path(str(artifact)+'.workbench/history.json').read_text())
             durable_json(folder/'history-before-save.json',history)
-            capture_expected(api,target,history,folder/'expected.json')
+            expected=capture_expected(api,target,history,folder/'expected.json')
+            coverage_path=round_dir/'coverage-before.json'
+            if coverage_path.exists():
+                from naming_coverage import native_expectations
+                expected['coverage_methods']=native_expectations(json.loads(coverage_path.read_text()))
+                durable_json(folder/'expected.json',expected)
             phase('save',target=target,db=info['jdb2'],history_entries=len(history))
         if state['phase']=='save':
             target=ensure_target(api,artifact)

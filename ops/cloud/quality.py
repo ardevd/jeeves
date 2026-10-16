@@ -13,6 +13,9 @@ No tools or mutations are available. Compare the changed names with actual code,
 types, control flow, constants and argument/local uses. Check the whole inventory
 for missing naming work. Constructor names and meaningful existing/library names
 may properly remain unchanged. Obfuscation flags are heuristics, not proof.
+The naming_coverage section contains per-variable assessments checked against the
+fresh inventory. Inspect retained names and their evidence as carefully as renamed
+ones. Coverage completeness proves accounting only; it does not prove meaning.
 Distinguish supported names, misleading/overconfident names, generic names and
 uncertain cases needing caller/context evidence. Do not accept the first agent's
 completion claim as proof. Explain concrete examples using original identities,
@@ -148,6 +151,7 @@ def review_session(api,target,slots,folder,artifact):
     delta=[r for r in history if r.get('id') not in baseline_ids and not r.get('undone') and not r.get('discarded')]
     durable_json(root/'changes.json',delta)
     results=[]
+    coverage={c['original_class']:c for c in read(Path(folder)/'coverage-after.json',{}).get('classes',[])}
     for index,slot in enumerate(slots,1):
         directory=root/f'class-{index:02d}';directory.mkdir(exist_ok=True)
         durable_json(root/'status.json',{'phase':'reviewing','class':slot['original_class'],'completed':len(results),'total':len(slots),'at':time.time()})
@@ -156,6 +160,7 @@ def review_session(api,target,slots,folder,artifact):
             evidence=inventory(api,target,slot['original_class'])
             evidence.update(original_class=slot['original_class'],agent_claim=slot.get('result'),
                             research_focus=slot.get('research_focus'),
+                            naming_coverage=coverage.get(slot['original_class']),
                             changes=[r for r in delta if affects_class(r,slot['original_class'])])
             durable_json(evidence_path,evidence)
         evidence=read(evidence_path)

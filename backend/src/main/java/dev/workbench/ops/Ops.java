@@ -60,7 +60,7 @@ public final class Ops {
             if (dispatcher == null) throw OpException.busy("the dispatcher is not up yet", "ops.active");
             return Map.of("observedAt", java.time.Instant.now().toString(), "calls", dispatcher.activeCalls());
         }));
-        // meta: the tool facade (dev.workbench.llm.ToolFacade) — the 24 tools an LLM sees,
+        // meta: the tool facade (dev.workbench.llm.ToolFacade) — the 26 tools an LLM sees,
         // each with a strict schema, the ops it routes to and whether the mission loop may call it
         r.register(new Op("ops.tools", "", false, Cost.cheap,
                 req -> dev.workbench.llm.AgentLoop.curatedTools()));
@@ -599,6 +599,10 @@ public final class Ops {
         r.register(new Op("locals.auto", "rename", true, Cost.cheap, req ->
                 ws.autoNameLocals(req.str("target"), req.require("symbol"), req.bool("all", false), req.actor())));
         r.register(new Op("locals.list", "", false, Cost.cheap, req -> engine(ws, req).locals(noteResolution(ws, req))));
+        r.register(new Op("naming.coverage", "", false, Cost.scan, req ->
+                dev.workbench.server.NamingCoverage.get(ws, req.str("target"), req.require("symbol"), req.str("recordedBy"))));
+        r.register(new Op("naming.coverage.record", "", true, Cost.scan, req ->
+                dev.workbench.server.NamingCoverage.record(ws, req.str("target"), req.require("symbol"), req.actor(), req.params())));
         // ---- tags (VIEWS_SPEC §4 — workspace-level, sidecar-persisted)
         r.register(new Op("tag.add", "", true, Cost.cheap, req -> {
             Integer line = req.str("line") == null ? null : req.num("line", -1);

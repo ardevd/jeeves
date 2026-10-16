@@ -225,6 +225,7 @@ tasks.register('searchIndexPersistenceIT', JavaExec) {
     concurrentRenameIT: ['dev.workbench.it.ConcurrentRenameIT', 'params/params-fixture.dex'],
     renameCollisionIT: ['dev.workbench.it.RenameCollisionIT', 'params/params-fixture.dex'],
     localNameProvenanceIT: ['dev.workbench.it.LocalNameProvenanceIT', 'params/params-fixture.dex'],
+    namingCoverageIT: ['dev.workbench.it.NamingCoverageIT', 'params/params-fixture.dex'],
     renameFamilyIT: ['dev.workbench.it.RenameFamilyIT', 'rename-family/rename-family.dex'],
     callSiteCalleeIT: ['dev.workbench.it.CallSiteCalleeIT', 'rename-family/rename-family.dex'],
 ].each { taskName, fixture ->
