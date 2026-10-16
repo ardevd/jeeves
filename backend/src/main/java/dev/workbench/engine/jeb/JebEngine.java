@@ -818,6 +818,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
         message = "Open in " + (System.nanoTime() - t0) / 1_000_000 + " ms";
         // persisted gz corpus: warm-load when valid; re-index only classes the
         // history says were edited since the build.
+        java.util.Set<String> recovery = searchIndex.recoveryCandidates();
         long builtAt = searchIndex.tryWarmLoad();
         List<String> replay = replaySince(builtAt);
         // Foreign-edit detection, exact form: the corpus records the jdb2 mtime
@@ -847,10 +848,23 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                         + searchIndex.warmRejectReason() + "); building search index");
             }
             if (!"on-demand".equals(System.getenv("WORKBENCH_INDEX_MODE"))) searchIndex.start();
-            else message += "; text index is on-demand (partial coverage until search.index build)";
+            else {
+                recovery.addAll(indexReplay.keySet());
+                java.util.Set<String> classes = new java.util.LinkedHashSet<>();
+                for (String address : recovery) {
+                    IDexClass cls = findClass(address);
+                    if (cls != null) classes.add(cls.getAddress());
+                }
+                searchIndex.invalidateAll(classes);
+                message += "; on-demand text index recovering " + classes.size() + " classes (partial coverage)";
+            }
         } else {
             java.util.Set<String> replayClasses = new java.util.LinkedHashSet<>();
-            for (String a : replay) replayClasses.add(classAddrOf(a));
+            for (String a : replay) {
+                IDexClass cls = findClass(a);
+                if (cls != null) replayClasses.add(cls.getAddress());
+                replayClasses.addAll(referrerClasses(a));
+            }
             searchIndex.invalidateAll(replayClasses);   // one pass + one pending write (fix-4 X1)
         }
     }

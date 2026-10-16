@@ -221,6 +221,7 @@ public final class ToolFacade {
         anchorsProp.put("description", "cross-build lookup by several fallible anchors (instead of query): ranked candidates with the anchors each matched and missed, status located | ambiguous | partial | not_located (never \"absent\")");
         tool("search", true, List.of("search", "symbol.locate"),
                 "Full-text search over decompiled code, strings and comments. kind narrows the hit classes (default: all three);"
+                        + " query returns {groups, coverage}; partialCoverage means zero matches do not establish absence."
                         + " limit caps the rows. With `anchors` instead of `query`: locate a method across builds by several fallible anchors"
                         + " (a diagnostic string, a table name, an API it calls, a class/method name, a prototype shape) — ranked candidates"
                         + " with matched/unmatched anchors and an honest status (not_located = not found by these queries, not absent).",
@@ -960,6 +961,14 @@ public final class ToolFacade {
             return err(e.code, e.getMessage(), "call " + tool + " with " + exampleFor(tool));
         }
         Map<String, Object> res = d.dispatch(r.op(), r.params(), actor);
+        if ("search".equals(r.op()) && Boolean.TRUE.equals(res.get("ok"))
+                && res.get("meta") instanceof Map<?, ?> meta && meta.get("searchCoverage") instanceof Map<?, ?> coverage) {
+            res = new LinkedHashMap<>(res);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("coverage", coverage); // precede hits so bridge result truncation retains the warning
+            data.put("groups", res.get("data"));
+            res.put("data", data);
+        }
         if ("target".equals(tool)) res = targetRow(res, args);
         res = withResolution(res);
         return withCandidates(d, res, args, actor);

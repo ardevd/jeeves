@@ -376,6 +376,9 @@ export interface SearchGroup {
 }
 
 export interface SearchIndexInfo {
+  partialCoverage?: boolean;
+  pendingReindex?: number;
+  indexedClasses?: number;
   state?: string;
   built?: number;
   total?: number;

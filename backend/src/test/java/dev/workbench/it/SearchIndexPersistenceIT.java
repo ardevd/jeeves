@@ -52,7 +52,7 @@ public final class SearchIndexPersistenceIT {
             return A.equals(address)?"fixture.A":"fixture.B";
         }
         @Override public void evictDecompiled(String address){}
-        @Override public Map<String,Object> indexSourceIdentity(){return Map.of("measured",true,"fixture","pending-index");}
+        @Override public Map<String,Object> indexSourceIdentity(){return Map.of("measured",true,"fixture","pending-index","analysis_classes_at_open",2);}
         @Override public long jdb2Mtime(){return 1L;}
     }
     private static SearchIndex built(Host host,Path dir) throws Exception {
@@ -150,9 +150,63 @@ public final class SearchIndexPersistenceIT {
         heals(dir,2);
     }
 
+    private static void onDemand(Path root) throws Exception {
+        Path dir=root.resolve("on-demand"); Host host=new Host();
+        SearchIndex index=new SearchIndex(host,"first-edit",dir.toFile(),"test");
+        index.invalidate(A,A); stopped();
+        Map<?,?> header=(Map<?,?>)Json.parse(Files.readString(dir.resolve("header.json")));
+        check(host.indexSourceIdentity().equals(header.get("sourceIdentity")),"first on-demand edit records measured source identity without a full build");
+        check(Boolean.FALSE.equals(header.get("completeCoverage")),"on-demand header explicitly records incomplete coverage");
+        index.kill(); stopped();
+        SearchIndex reopened=new SearchIndex(host,"second-session",dir.toFile(),"test");
+        check(reopened.tryWarmLoad()>0,"edit-only corpus survives reopen");
+        check(current(reopened,1),"prior session text is searchable after reopen");
+        check(Boolean.TRUE.equals(reopened.status().get("partialCoverage")),"warm adoption does not promote partial corpus to complete");
+        check(((Number)reopened.status().get("total")).intValue()==2,"reopen retains full analysis class count");
+        host.version.set(2); reopened.invalidate(A,A); stopped();
+        check(current(reopened,2) && !current(reopened,1),"second session edit replaces old cached text");
+        reopened.kill(); stopped();
+        // Legacy identity must be regenerated, never blessed with a new hash.
+        Map<String,Object> broken=new java.util.LinkedHashMap<>();
+        ((Map<?,?>)Json.parse(Files.readString(dir.resolve("header.json")))).forEach((k,v)->broken.put(k.toString(),v));
+        broken.put("sourceIdentity",Map.of()); Files.writeString(dir.resolve("header.json"),Json.write(broken));
+        SearchIndex rejected=new SearchIndex(host,"legacy",dir.toFile(),"test");
+        check(rejected.recoveryCandidates().contains(A),"rejected header preserves addresses as regeneration candidates");
+        check(rejected.tryWarmLoad()<0 && rejected.entries().isEmpty(),"identity-less corpus cannot hydrate stale text");
+        host.version.set(3); rejected.invalidateAll(rejected.recoveryCandidates()); stopped();
+        check(current(rejected,3) && !current(rejected,2),"legacy recovery decompiles current model text");
+        rejected.kill(); stopped();
+        heals(dir,3);
+    }
+
+    private static void missingGzip(Path root) throws Exception {
+        Path dir=root.resolve("missing-gzip"); Host host=new Host(); SearchIndex index=built(host,dir);
+        index.kill(); stopped();
+        Files.delete(dir.resolve("classes").resolve(SearchIndex.encodeAddr(A)+".gz"));
+        SearchIndex reopened=new SearchIndex(host,"missing",dir.toFile(),"test");
+        check(reopened.tryWarmLoad()>0,"missing gzip is detected during hydration, not hidden by header adoption");
+        host.blockCall=host.calls.get()+1;
+        reopened.entries(); await(host.entered,"missing gzip is queued for regeneration");
+        check(Boolean.TRUE.equals(reopened.status().get("partialCoverage")),"missing text reports partial coverage while recovering");
+        host.release.countDown(); stopped();
+        check(current(reopened,1),"missing gzip is regenerated from the current model");
+        reopened.kill(); stopped();
+    }
+
+    private static void rejectedWorker(Path root) throws Exception {
+        Path dir=root.resolve("rejected-worker"); Host host=new Host(); SearchIndex index=built(host,dir);
+        host.version.set(2); host.blockCall=host.calls.get()+1;
+        index.invalidate(A,A); await(host.entered,"old generation is in flight before warm rejection");
+        index.rejectWarm("fixture foreign database change");
+        host.version.set(3); index.invalidateAll(List.of(A,B)); host.release.countDown(); stopped();
+        check(current(index,3) && !current(index,2),"rejected generation cannot commit old text or steal new recovery work");
+        check(pending(dir).isEmpty(),"new recovery worker receives the queue after superseded worker exits");
+        index.kill(); stopped();
+    }
+
     public static void main(String[] args) throws Exception {
         Path root=Files.createTempDirectory("jeeves-index-persistence-");
-        try { interrupted(root); failedText(root); failedWrite(root); newerInvalidation(root); failedHeader(root); }
+        try { interrupted(root); failedText(root); failedWrite(root); newerInvalidation(root); failedHeader(root); onDemand(root); missingGzip(root); rejectedWorker(root); }
         catch(Exception|AssertionError failure){failure.printStackTrace(System.out);throw failure;}
         System.out.println("Search-index persistence checks passed: "+checks);
     }

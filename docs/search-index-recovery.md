@@ -1,5 +1,24 @@
 # Search-index interruption recovery
 
+An on-demand corpus records executable identity on its first edit, without
+requiring a full build. Headers also record `totalClasses` and
+`completeCoverage`; a partial corpus stays partial after reopen. Legacy headers
+without identity are rejected. In on-demand mode, Jeeves regenerates current
+text for resolvable classes from that header, its pending queue and edit history
+(including original identities and virtual-method family members). Rejected
+gzip text is never adopted just by attaching the current APK hash. This is
+selected recovery, not a full-project index. Classes not selected remain outside
+text search. Direct decompilation still does not populate this corpus.
+
+The raw search API retains its group list and adds `meta.searchCoverage`.
+The search tool returns `{groups, coverage}` so the MCP bridge and model retain
+coverage even when there are no groups. Coverage includes indexed/total class
+counts, pending work, and whether the observed index revision changed during
+search. Zero matches with partial coverage do not establish absence. Search
+and a concurrent edit are not a transactional snapshot. The browser displays
+the same partial-coverage warning. Missing or unreadable gzip entries detected
+during hydration are queued for regeneration.
+
 The search corpus is a derived cache, separate from the native database and edit
 history. A rename or comment invalidates affected class text and records its
 address in `search-index/pending.json`. The background worker rebuilds that text.
@@ -27,6 +46,7 @@ for compilation:
 
 ```sh
 JEB_HOME=/path/to/activated-jeb gradle -p backend searchIndexPersistenceIT
+JEB_HOME=/path/to/activated-jeb gradle -p backend onDemandSearchIT
 ```
 
 The fixture uses a controlled fake index host; it opens no JEB engine or model.

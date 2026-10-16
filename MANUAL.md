@@ -1,5 +1,12 @@
 # Workbench Manual
 
+Text search reports partial coverage while its class corpus is incomplete or
+has pending edits. A zero-match result in that state is not proof of absence;
+resolve a known symbol and decompile it to read its current text. On-demand
+indexes retain their identified class corpus across reopen and regenerate
+selected classes from legacy caches and edit history. They do not automatically
+index the whole project. See [search-index recovery](docs/search-index-recovery.md).
+
 A reverse-engineering workbench for Android (and beyond): JEB-powered
 decompilation, xref navigation, live frida dynamic analysis, project-level
 flow maps, and supervised LLM agents — one op registry driving the GUI,

@@ -110,6 +110,7 @@ public final class Dispatcher {
                 if (op.mutating() && scopeChecker != null)
                     scopeChecker.check(actor, opName, params);
                 Object data = op.handler().handle(new Op.Request(opName, params, actor));
+                if (data instanceof SearchResults search) meta.put("searchCoverage", search.coverage);
                 if (decorator != null)
                     try { Object d2 = decorator.decorate(opName, params, actor, data); if (d2 != null) data = d2; }
                     catch (Exception ignored) {}

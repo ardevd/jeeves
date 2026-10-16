@@ -2792,6 +2792,11 @@ public final class Workspace {
             long ts = HistoryJournal.time(e.get("ts")).toEpochMilli();
             if (e.get("addr") != null) out.merge(String.valueOf(e.get("addr")), ts, Math::max);
             if (e.get("newAddr") != null) out.merge(String.valueOf(e.get("newAddr")), ts, Math::max);
+            if (e.get("originalSymbol") != null) out.merge(String.valueOf(e.get("originalSymbol")), ts, Math::max);
+            if (e.get("renameTargets") instanceof List<?> family)
+                for (Object member : family)
+                    if (member instanceof Map<?, ?> row && row.get("originalSymbol") != null)
+                        out.merge(String.valueOf(row.get("originalSymbol")), ts, Math::max);
         }
         return out;
     }

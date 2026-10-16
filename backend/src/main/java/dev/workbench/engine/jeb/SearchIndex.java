@@ -112,6 +112,7 @@ final class SearchIndex {
     private volatile Map<String, String> live = new LinkedHashMap<>();
     private volatile String state = "idle";                   // idle|building|built|cancelled|failed
     private volatile int built, total;
+    private volatile boolean fullScanComplete;
     private volatile long startedAt, finishedAt;
     private volatile long builtAtMs;
     private volatile boolean persisted, warm = true;          // warm=false: corpus on disk only
@@ -130,9 +131,42 @@ final class SearchIndex {
 
     /** Reject a warm corpus without starting expensive replacement work. */
     public synchronized void rejectWarm(String reason) {
+        ++generation; // a drainer started during adoption must not commit rejected text
+        entries.clear(); reindexQueue.clear(); pending.clear(); readyForHeader.clear();
+        invalidations.clear();
         live = new LinkedHashMap<>();
         state = "stale"; built = total = 0;
+        fullScanComplete = false; warm = true;
+        sourceIdentity = Map.of(); builderRuntime = Map.of();
         warmRejectReason = reason; adoptedFromDisk = false; persisted = false;
+    }
+
+    /** A rejected corpus supplies addresses to regenerate, NEVER text to adopt. */
+    Set<String> recoveryCandidates() {
+        Set<String> out = new LinkedHashSet<>();
+        if (dir == null) return out;
+        try {
+            Object parsed = Json.parse(Files.readString(new File(dir, "header.json").toPath()));
+            if (parsed instanceof Map<?, ?> h && h.get("classes") instanceof Map<?, ?> classes)
+                for (Object addr : classes.keySet()) out.add(String.valueOf(addr));
+        } catch (Exception ignored) { /* validation reports the rejection separately */ }
+        out.addAll(loadPending());
+        return out;
+    }
+
+    /** First edit in on-demand mode must establish the same identity as a full build.
+     * Host calls stay outside the index monitor (engine -> index lock order). */
+    private void initializeIdentity() {
+        if (!sourceIdentity.isEmpty()) return;
+        Map<String, Object> identity = host.indexSourceIdentity();
+        Map<String, Object> runtime = dev.workbench.server.Workspace.runtimeIdentity();
+        synchronized (this) {
+            if (sourceIdentity.isEmpty()) {
+                sourceIdentity = identity; builderRuntime = runtime;
+                if (identity.get("analysis_classes_at_open") instanceof Number n) total = n.intValue();
+                if ("idle".equals(state) || "stale".equals(state)) state = "partial";
+            }
+        }
     }
 
     SearchIndex(Host host, String ticket, File dir, String engineVersion) {
@@ -370,9 +404,12 @@ final class SearchIndex {
                 builderRuntime = copy;
             }
             builtAtMs = built;
-            this.built = total = map.size();
+            this.built = map.size();
+            total = h.get("totalClasses") instanceof Number count ? count.intValue()
+                    : expectedIdentity.get("analysis_classes_at_open") instanceof Number count ? count.intValue() : map.size();
+            fullScanComplete = Boolean.TRUE.equals(h.get("completeCoverage"));
             startedAt = finishedAt = builtAtMs;
-            state = "built";
+            state = fullScanComplete ? "built" : "partial";
             persisted = true;
             adoptedFromDisk = true;
             corpusBuiltAtMs = builtAtMs;                      // original stamp survives drains
@@ -409,6 +446,8 @@ final class SearchIndex {
         h.put("format", CORPUS_FORMAT);
         h.put("builtAtMs", finishedAt);
         h.put("classes", snapshot);                       // post-edit state, not the snapshot
+        h.put("totalClasses", total);
+        h.put("completeCoverage", fullScanComplete && snapshot.size() == total);
         /* atomic + loud (fix-1 review F3): header.json is THE index-freshness
            record — a torn or silently-skipped write misrepresents staleness.
            The witness advances ONLY when the header landed (fix-1-r2 review F1:
@@ -483,9 +522,11 @@ final class SearchIndex {
                 snapshot = new LinkedHashMap<>(live);         // CME guard: copy under the monitor
             }
             List<Entry> loaded = new ArrayList<>(snapshot.size());
+            Set<String> missing = new LinkedHashSet<>();
             for (Map.Entry<String, String> e : snapshot.entrySet()) {
                 String text = readGz(e.getKey());
                 if (text != null) loaded.add(new Entry(e.getKey(), e.getValue(), text.split("\n", -1)));
+                else missing.add(e.getKey());
             }
             synchronized (this) {
                 if (warm) return;
@@ -493,14 +534,21 @@ final class SearchIndex {
                 for (Entry en : entries) present.add(en.addr());
                 List<Entry> toAdd = new ArrayList<>(loaded.size());
                 for (Entry en : loaded)
-                    if (!pending.contains(en.addr()) && present.add(en.addr()))
+                    if (live.containsKey(en.addr()) && !pending.contains(en.addr()) && present.add(en.addr()))
                         toAdd.add(en);
                 /* ONE bulk add: per-element add() on a CopyOnWriteArrayList is a
                    full-array copy per class — O(N²) memcpy at GMS scale
                    (app-review-opus P1-1) */
                 entries.addAll(toAdd);
+                for (String addr : missing) {
+                    if (!live.containsKey(addr) || present.contains(addr) || pending.contains(addr)) continue;
+                    pending.add(addr); invalidations.put(addr, ++invalidationSequence);
+                    reindexQueue.offer(addr);
+                }
+                if (!missing.isEmpty()) savePending();
                 warm = true;
             }
+            ensureDrainer();
         } finally {
             synchronized (hydLock) {
                 hydrating = false;
@@ -550,6 +598,7 @@ final class SearchIndex {
            not the wipe) */
         built = 0;
         total = 0;
+        fullScanComplete = false;
         error = null;
         startedAt = System.currentTimeMillis();
         finishedAt = 0;
@@ -578,6 +627,7 @@ final class SearchIndex {
      * engine lock OUTSIDE this class's monitor (lock order: engine → index).
      */
     void invalidate(String staleAddr, String freshAddr) {
+        initializeIdentity();
         String label = freshAddr == null ? null : host.classLabel(freshAddr); // engine lock first
         synchronized (this) {
             if (staleAddr != null) {
@@ -609,6 +659,7 @@ final class SearchIndex {
         java.util.Set<String> set = new java.util.LinkedHashSet<>(addrs);
         set.remove(null);
         if (set.isEmpty()) return;
+        initializeIdentity();
         Map<String,String> labels = new LinkedHashMap<>();
         for (String a : set) labels.put(a, host.classLabel(a)); // engine lock first
         synchronized (this) {
@@ -648,6 +699,7 @@ final class SearchIndex {
             String classAddr;
             long revision;
             synchronized (this) {
+                if (cancel || dead || gen != generation) return;
                 classAddr = reindexQueue.poll();
                 revision = invalidations.getOrDefault(classAddr, 0L);
             }
@@ -687,7 +739,7 @@ final class SearchIndex {
     private synchronized void workerFinished(int gen) {
         if (thread != Thread.currentThread()) return;
         thread = null;
-        if (gen == generation) ensureDrainer();
+        ensureDrainer(); // a rejected warm generation may have queued fresh recovery work
     }
 
     private boolean beginCommit(int gen, boolean completingBuild) {
@@ -779,11 +831,7 @@ final class SearchIndex {
             synchronized (this) { dir.renameTo(oldDir); }
             deleteRecursively(oldDir);
         }
-        Map<String, String> snapshot = new LinkedHashMap<>();
-        for (String[] c : classes) snapshot.put(c[0], c[1]);
-        live = snapshot;
-        sourceIdentity = host.indexSourceIdentity();
-        builderRuntime = dev.workbench.server.Workspace.runtimeIdentity();
+        initializeIdentity();
         // WORKBENCH_PROF=1: per-class decompile cost + corpus size (monster hunt)
         long profCount = 0, profSumMs = 0, profMaxMs = 0, profChars = 0;
         String profMaxAddr = "";
@@ -837,6 +885,7 @@ final class SearchIndex {
                     if (text != null && writeGz(c[0], text)) {
                         entries.removeIf(e -> e.addr().equals(c[0]));
                         entries.add(new Entry(c[0], c[1], text.split("\n", -1)));
+                        live.put(c[0], c[1]);
                         if (pending.contains(c[0])) readyForHeader.add(c[0]);
                     } else {
                         pending.add(c[0]); readyForHeader.remove(c[0]);
@@ -880,6 +929,7 @@ final class SearchIndex {
             try {
                 finishedAt = System.currentTimeMillis();
                 state = "built";
+                fullScanComplete = true;
                 builtAtMs = finishedAt;
                 corpusBuiltAtMs = finishedAt;
                 persisted = writeHeader() && dir != null;
@@ -894,7 +944,7 @@ final class SearchIndex {
         return entries;
     }
 
-    Map<String, Object> status() {
+    synchronized Map<String, Object> status() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("state", state);
         m.put("sourceIdentity", sourceIdentity);
@@ -902,7 +952,9 @@ final class SearchIndex {
         m.put("engineVersion", engineVersion);
         int pendingCount;
         synchronized (this) { pendingCount = pending.size(); }
-        m.put("partialCoverage", !"built".equals(state) || pendingCount > 0);
+        m.put("partialCoverage", !fullScanComplete || live.size() != total || pendingCount > 0);
+        m.put("indexedClasses", live.keySet().stream().filter(a -> !pending.contains(a)).count());
+        m.put("revision", generation + ":" + invalidationSequence + ":" + builtAtMs);
         m.put("warmRejectReason", warmRejectReason);
         m.put("mode", System.getenv().getOrDefault("WORKBENCH_INDEX_MODE", "automatic"));
         m.put("built", built);
@@ -912,6 +964,7 @@ final class SearchIndex {
         m.put("warm", warm);                                  // corpus resident in memory
         m.put("adoptedFromDisk", adoptedFromDisk);            // warm-load adoption (the proof)
         m.put("loadedClasses", entries.size());
+        m.put("workerRunning", thread != null && thread.isAlive());
         if (corpusBuiltAtMs > 0) m.put("corpusBuiltAtMs", corpusBuiltAtMs);
         if (builtAtMs > 0) m.put("builtAtMs", builtAtMs);
         if (error != null) m.put("error", error);

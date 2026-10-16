@@ -148,6 +148,11 @@ async function updateStats(ms: number, nGroups: number, nHits: number, opts?: { 
   } else if (d.state) {
     line += ' · index: ' + d.state + ' · <span class="rblink" id="sreindex">REBUILD</span>';
   }
+  if (d.partialCoverage) {
+    line += ' · PARTIAL text coverage: ' + (d.indexedClasses || 0).toLocaleString('en-US') + '/' + (d.total || 0).toLocaleString('en-US')
+      + ' classes · ' + (d.pendingReindex || 0) + ' pending · zero matches do not establish absence';
+    if (d.pendingReindex) scheduleIndexPoll();
+  }
   st.innerHTML = line;
   st.querySelectorAll<HTMLElement>('.scap').forEach(function(el){
     el.addEventListener('click', function(){ CAP = parseInt(el.dataset.cap || '200', 10) || 200; runSearch(); });

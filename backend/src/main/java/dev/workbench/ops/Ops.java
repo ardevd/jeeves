@@ -386,13 +386,21 @@ public final class Ops {
                 // target + engine badges. A target that can't search (not ready)
                 // is skipped, not fatal to the rest.
                 List<Object> all = new ArrayList<>();
+                Map<String, Object> targets = new LinkedHashMap<>();
+                boolean partial = false;
                 for (String tid : ws.openTargetIds()) {
-                    try { all.addAll(ws.engineFor(tid).search(req.require("query"), opts)); }
-                    catch (OpException ignored) {}
+                    try {
+                        var result = dev.workbench.registry.SearchResults.search(ws.engineFor(tid), req.require("query"), opts);
+                        all.addAll(result); targets.put(tid, result.coverage);
+                        partial |= Boolean.TRUE.equals(result.coverage.get("partialCoverage"));
+                    } catch (OpException failure) {
+                        partial = true; targets.put(tid, Map.of("partialCoverage", true, "error", failure.toMap()));
+                    }
                 }
-                return all;
+                return new dev.workbench.registry.SearchResults(all, Map.of("partialCoverage", partial,
+                        "targets", targets, "note", "Inspect each target's coverage; missing matches are not proof of absence."));
             }
-            return engine(ws, req).search(req.require("query"), opts);
+            return dev.workbench.registry.SearchResults.search(engine(ws, req), req.require("query"), opts);
         }));
         r.register(new Op("search.index", "", false, Cost.cheap,
                 req -> engine(ws, req).searchIndexStatus()));

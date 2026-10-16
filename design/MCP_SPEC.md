@@ -159,6 +159,14 @@ the full result and whether the response includes all of it.
 | `impls <symbol>` | | implementations/overrides |
 
 ### 4.5 Strings & search
+
+`search` keeps its raw API group-list data and includes `meta.searchCoverage`.
+Facade/MCP `search {query}` returns `{groups, coverage}` to preserve coverage in
+data-only clients, including zero matches. `coverage.partialCoverage` concerns
+the decompiled-code/comment corpus; string-pool searches are separate. Coverage
+includes indexed/total class counts, pending work and index revision observations.
+Partial coverage and concurrent edits prevent interpreting no matches as absence.
+The `search {anchors}` response remains `anchor-locate-v1`.
 | Op | M | Purpose |
 |---|---|---|
 | `strings [target] [--filter] [--type] [--unreachable] [--sort priority\|xrefs\|order]` | | table rows: value, types+confidence, xref count, first referrer. Sorted BEFORE paging: `priority` (default — usage-confirmed crypto/url/intent/permission/content-uri/path first, lexical guesses under them, plain last; ties by xref count) · `xrefs` · `order` (the dex pool's enumeration, the pre-audit default) |

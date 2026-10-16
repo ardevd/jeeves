@@ -192,6 +192,7 @@ tasks.register('searchIndexPersistenceIT', JavaExec) {
 
 // Native rename fixtures: no HTTP server or model, fresh homes and databases on each run.
 [
+    onDemandSearchIT: ['dev.workbench.it.OnDemandSearchIT', 'rename-family/rename-family.dex'],
     nativeHistoryRecoveryIT: ['dev.workbench.it.NativeHistoryRecoveryIT', 'params/params-fixture.dex'],
     nativeSaveIT: ['dev.workbench.it.NativeSaveIT', 'params/params-fixture.dex'],
     nativeRecoveryIT: ['dev.workbench.it.NativeRecoveryIT', 'params/params-fixture.dex'],
@@ -208,6 +209,7 @@ tasks.register('searchIndexPersistenceIT', JavaExec) {
         dependsOn 'compileTestJava'
         environment 'WORKBENCH_MOCK', '0'
         environment 'WORKBENCH_COURSE', '0'
+        if (taskName == 'onDemandSearchIT') environment 'WORKBENCH_INDEX_MODE', 'on-demand'
         environment 'WORKBENCH_REVIEW_MODE', 'auto'
         if (hasEngine) {
             classpath += engineJars
