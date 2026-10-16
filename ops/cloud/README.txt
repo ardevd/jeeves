@@ -103,6 +103,25 @@ findings. The old K3 dashboard files/history remain separate and intact.
 Local dashboard relay is NOT HIBERNATION-SAFE; it catches up after reconnect.
 Cloud campaign/review/exporter are separately supervised by systemd.
 
+Prepared maintenance can use deploy_after_session.py and the supplied systemd
+unit. Stage a complete source/backend/web release under /opt/jeeves/releases,
+with release-manifest.json containing its clean revision and each file's SHA256.
+Copy the deployment script to the stable campaign/maintenance directory and
+write campaign/deployment-request.json with root, source, release, revision,
+session, artifact, project and loopback url. The unit's Python path points to
+the current cloud modules. Enable the unit only for an authorized deployment.
+It waits without a deadline for the requested invocation to finish, all agents
+and writes to drain, the save/native/live verification receipt, and all eight
+quality records. Findings may require review; they do not trigger new agents.
+It checks unchanged history, preserves any additional read-only decompilation
+through another verified save if needed, and closes the clean database before
+restarting Jeeves. The prior release stays on disk. Activation/reopen stages
+are durable and restartable; the running build and all saved names are checked
+after activation. A changed history, unsaved work, bad release hash or failed
+verification retains an error and prevents a success claim. No provider calls,
+new session, dollar cap or teardown are added by maintenance. Cloud supervision
+survives laptop loss; the local dashboard still requires the laptop connection.
+
 Operating limits and persistence:
 - Exactly eight API agents per session (operator requirement), sharing one JEB.
 - No headless turn or mission-token ceiling. Explicit provider context/output

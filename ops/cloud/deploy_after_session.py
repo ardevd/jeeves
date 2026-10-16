@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""Activate a prepared release only after the requested session/save/review ends.
+
+No model calls, agent launches, turn limits or polling deadlines. Run this under
+systemd, with a durable request and a prebuilt release. Existing releases and
+databases are retained. A failed check leaves a durable error and retries the
+same deployment stage, never another campaign session.
+"""
+from __future__ import annotations
+import argparse, fcntl, json, os, sqlite3, subprocess, time
+from pathlib import Path
+from barrier import API, ROOT, ensure_target, run_barrier, verify_live
+from checkpoint_backup import durable_json, sha256
+
+TERMINAL={'done','blocked','stopped','interrupted'}
+
+def read(path):
+    return json.loads(Path(path).read_text())
+
+def boundary(root,session,api):
+    invocation=read(root/'invocation.json')
+    if invocation.get('phase')!='complete':return None
+    with sqlite3.connect('file:'+str(root/'catalog.sqlite3')+'?mode=ro',uri=True) as db:
+        sessions=db.execute('SELECT id,phase FROM sessions ORDER BY id').fetchall()
+    if not sessions or sessions[-1][0]!=session or any(phase!='complete' for _,phase in sessions):return None
+    folder=root/'rounds'/f'cloud-{session:06d}'
+    receipt=read(folder/'barrier/receipt.json');quality=read(folder/'quality/receipt.json')
+    if not receipt.get('ok') or receipt.get('phase')!='complete':return None
+    if quality.get('status')!='complete' or not quality.get('read_only') or not quality.get('history_unchanged'):return None
+    if len(quality.get('classes',[]))!=8:return None
+    missions=api.call('agent.missions')
+    if any(m.get('state') not in TERMINAL or m.get('loopActive') or m.get('cancellationUnconfirmed') for m in missions):return None
+    calls=api.call('ops.active')
+    if isinstance(calls,dict):calls=calls.get('calls',[])
+    if any(str(call.get('actor','')).startswith(('agent:','llm:')) or call.get('mutating') for call in calls):return None
+    return folder,receipt,quality
+
+def verify_release(release,revision):
+    manifest=read(release/'release-manifest.json')
+    if manifest['revision']!=revision:raise RuntimeError('Release revision mismatch')
+    for relative,digest in manifest['files'].items():
+        path=release/relative
+        if not path.resolve().is_relative_to(release.resolve()) or path.is_symlink() or sha256(path)!=digest:
+            raise RuntimeError('Release file mismatch: '+relative)
+    properties=(release/'backend/build/classes/java/main/build-info.properties').read_text()
+    if 'git.sha='+revision+'\n' not in properties or 'git.dirty=false\n' not in properties:
+        raise RuntimeError('Compiled build is not the requested clean revision')
+
+def activate(source,release,previous):
+    """Recoverable directory-to-symlink migration; never delete the old release."""
+    if source.is_symlink():
+        if source.resolve()==release.resolve():return
+        if source.resolve()!=previous.resolve():raise RuntimeError('Unexpected active release')
+    elif source.exists():
+        if previous.exists():raise RuntimeError('Previous release destination already exists')
+        source.rename(previous)
+    elif not previous.exists():raise RuntimeError('Neither active nor previous release exists')
+    link=source.with_name(source.name+'.next')
+    if link.is_symlink():link.unlink()
+    elif link.exists():raise RuntimeError('Unexpected activation staging path')
+    link.symlink_to(release,target_is_directory=True);os.replace(link,source)
+    fd=os.open(source.parent,os.O_RDONLY)
+    try:os.fsync(fd)
+    finally:os.close(fd)
+
+def deployment_note(root,**fields):
+    path=root/'deployment.json';current=read(path);owner=path.stat()
+    current.update(fields)
+    tmp=path.with_name(path.name+'.maintenance-tmp')
+    with tmp.open('w') as output:
+        os.chmod(tmp,0o600);os.chown(tmp,owner.st_uid,owner.st_gid)
+        json.dump(current,output,indent=2);output.write('\n');output.flush();os.fsync(output.fileno())
+    os.replace(tmp,path)
+
+def publish_completion(root,folder,state):
+    durable_json(folder/'receipt.json',state)
+    deployment_note(root,revision=state['revision'],pending_revision=None,
+        performance_note='Current-name attribution resolves relevant identities only; the optimized backend is active.',
+        naming_audit_note='Collision diagnostics and local/argument attribution/lookup fixes are deployed. The completed session and its quality findings are preserved; no additional reversing session was started.',
+        maintenance={'phase':'complete','revision':state['revision'],'receipt':str(folder/'receipt.json')})
+
+def deploy(request,api,systemctl):
+    root=Path(request['root']).resolve();release=Path(request['release']).resolve()
+    source=Path(request['source']);revision=request['revision'];session=request['session']
+    if root!=ROOT:raise ValueError('Request must use the configured campaign root')
+    folder=root/'maintenance'/('deploy-'+revision);folder.mkdir(parents=True,exist_ok=True)
+    state_path=folder/'state.json'
+    state=read(state_path) if state_path.exists() else {'phase':'waiting','revision':revision,'session':session}
+    if not state_path.exists():durable_json(state_path,state)
+    if state['phase']=='complete':
+        publish_completion(root,folder,state)
+        return state
+    def phase(name,**fields):
+        state.update(phase=name,at=time.time(),**fields);state.pop('error',None);durable_json(state_path,state)
+    try:
+        verify_release(release,revision)
+        # Never compete with a campaign coordinator. This lock is also held
+        # across activation/reopen so a manual coordinator cannot race it.
+        with (root/'controller.lock').open('a') as lock:
+            if state['phase']=='waiting':
+                while True:
+                    if read(root/'invocation.json').get('phase')!='complete':time.sleep(5);continue
+                    try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                    except BlockingIOError:time.sleep(5);continue
+                    ended=boundary(root,session,api)
+                    if ended:break
+                    fcntl.flock(lock,fcntl.LOCK_UN);time.sleep(5)
+                ended_folder,receipt,quality=ended
+                artifact=Path(request['artifact'])
+                history=Path(str(artifact)+'.workbench/history.json')
+                if sha256(history)!=quality['history_sha256']:raise RuntimeError('Edits changed after quality review')
+                target=ensure_target(api,artifact)
+                changes=api.call('target.changes',target=target)
+                if changes.get('dirty') or changes.get('symbols'):raise RuntimeError('Unexpected unsaved edits after session verification')
+                if changes.get('decompiled'):
+                    # Preserve analysis produced by read-only review too. This
+                    # is a save/reopen barrier, never a new reversing session.
+                    maintenance=root/'maintenance'/('presave-'+revision)
+                    receipt=run_barrier(api,maintenance,artifact)
+                    expected=maintenance/'barrier/expected.json'
+                else:expected=ended_folder/'barrier/expected.json'
+                previous=source.resolve() if source.is_symlink() else source.parent/'releases'/('before-'+revision)
+                previous.parent.mkdir(parents=True,exist_ok=True)
+                phase('closing',previous=str(previous),target=receipt['target'],db=receipt['db'],
+                      database_sha256=receipt['database_sha256'],history_sha256=quality['history_sha256'],
+                      expected=str(expected),barrier=receipt)
+            else:fcntl.flock(lock,fcntl.LOCK_EX)
+            if state['phase']=='closing':
+                if boundary(root,session,api) is None:raise RuntimeError('Session no longer quiescent before deployment')
+                for target in api.call('target.list'):
+                    if target.get('path')==request['artifact'] and target.get('state')!='closed':
+                        changes=api.call('target.changes',target=target['id'])
+                        if changes.get('dirty') or changes.get('symbols') or changes.get('decompiled'):
+                            raise RuntimeError('New unsaved work appeared before close')
+                        api.call('target.close',target=target['id'],save=True,**{'async':False})
+                if Path(state['db']+'.lock').exists():raise RuntimeError('Database remains locked')
+                if sha256(Path(state['db']))!=state['database_sha256']:raise RuntimeError('Database changed after verification')
+                phase('switching')
+            if state['phase']=='switching':
+                systemctl('stop','jeeves.service')
+                activate(source,release,Path(state['previous']))
+                phase('verifying')
+            if state['phase']=='verifying':
+                systemctl('start','jeeves.service')
+                while True:
+                    try:runtime=api.call('workspace.state')['runtime'];break
+                    except (OSError,RuntimeError):time.sleep(2)
+                if runtime['build_sha']!=revision or runtime.get('build_dirty') is not False:
+                    raise RuntimeError('Unexpected running backend build: '+str(runtime))
+                api.call('project.open',name=request['project'])
+                target=ensure_target(api,request['artifact'])
+                result=verify_live(api,target,read(state['expected']))
+                durable_json(folder/'live-verification.json',result)
+                if not result.get('ok'):raise RuntimeError('Saved names differ after release activation')
+                if sha256(Path(request['artifact']+'.workbench/history.json'))!=state['history_sha256']:
+                    raise RuntimeError('Deployment changed rename history')
+                if boundary(root,session,api) is None:raise RuntimeError('Unexpected session activity after deployment')
+                phase('complete',runtime=runtime,live_checks=result['checked'],target=target)
+                publish_completion(root,folder,state)
+        return state
+    except Exception as error:
+        state.update(error=str(error),at=time.time());durable_json(state_path,state)
+        deployment_note(root,maintenance={'phase':state['phase'],'revision':revision,'error':str(error)})
+        raise
+
+def main():
+    parser=argparse.ArgumentParser();parser.add_argument('--request',required=True);args=parser.parse_args()
+    request=read(args.request)
+    def systemctl(*args):subprocess.run(['systemctl',*args],check=True)
+    deploy(request,API(request['url']),systemctl)
+
+if __name__=='__main__':main()

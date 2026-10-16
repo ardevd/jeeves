@@ -1,0 +1,20 @@
+[Unit]
+Description=Deploy the prepared Jeeves fix after the authorized session and review
+After=network-online.target jeeves.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/jeeves/runtime.env
+Environment=PYTHONPATH=/opt/jeeves/source/ops/cloud
+ExecStart=/usr/bin/python3 /var/lib/jeeves/campaign/maintenance/deploy-after-session.py --request /var/lib/jeeves/campaign/deployment-request.json
+Restart=on-failure
+RestartSec=30
+TimeoutStartSec=infinity
+TimeoutStopSec=infinity
+TasksMax=infinity
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
