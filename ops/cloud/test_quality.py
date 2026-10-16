@@ -32,6 +32,11 @@ class Tests(unittest.TestCase):
         self.assertFalse(quality.generic('message','local'))
         self.assertFalse(quality.generic('<init>','method'))
 
+    def test_propagated_family_change_is_reviewed_on_affected_class(self):
+        row={'originalSymbol':'LA;->a()I','renameTargets':[{'originalSymbol':'LB;->a()I'}]}
+        self.assertTrue(quality.affects_class(row,'LB;'))
+        self.assertFalse(quality.affects_class(row,'LC;'))
+
     def test_actual_http_stream_retains_full_evidence_and_native_max(self):
         requests=[]
         class Handler(BaseHTTPRequestHandler):

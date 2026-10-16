@@ -44,6 +44,10 @@ def snapshot(config,api):
         result['active_tools']=[{k:r.get(k) for k in ('op','actor','startedAt','elapsedMs','target')} for r in calls]
     except Exception as error:result['errors'].append(str(error))
     history=read(Path(str(config['artifact'])+'.workbench/history.json'),[])
+    current_names={}
+    for edit in history:
+        if edit.get('op')=='rename' and edit.get('kind')=='class' and not edit.get('undone') and not edit.get('discarded'):
+            current_names[edit.get('originalSymbol') or edit.get('addr')]=edit.get('newName')
     baseline=None
     for session in sessions:
         folder=root/'rounds'/f"cloud-{session['id']:06d}"
@@ -55,7 +59,7 @@ def snapshot(config,api):
         for slot in json.loads(session['slots']):
             mission=missions.get(slot.get('mission'),{})
             worker={k:mission.get(k) for k in ('id','agentId','state','displayState','loopActive','cancellationUnconfirmed','turnsDone','inputTokens','outputTokens','cacheHitTokens','writes','reason','stopReason','progress','startedAt')}
-            worker.update(original_class=slot['original_class'],current_name=slot['current_name'],model=slot['model'],result=slot.get('result'))
+            worker.update(original_class=slot['original_class'],current_name=current_names.get(slot['original_class']) or slot['current_name'],model=slot['model'],result=slot.get('result'))
             result['workers'].append(worker)
         quality=read(folder/'quality/receipt.json')
         if quality is None:quality={'status':read(folder/'quality/status.json',{}).get('phase','pending'),'classes':read(folder/'quality/partial.json',[])}

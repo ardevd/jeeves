@@ -33,6 +33,9 @@ def read(path, fallback=None):
 def entry_owner(row):
     return str(row.get('originalMethod') or row.get('original_method') or row.get('originalSymbol') or row.get('addr','')).split('->')[0].split('#local:')[0]
 
+def affects_class(row,original):
+    return entry_owner(row)==original or any(entry_owner(target)==original for target in row.get('renameTargets',[]))
+
 def generic(name, kind):
     if name in ('this','<init>','<clinit>'):return False
     if re.fullmatch(r'(?:arg|v|p)\d+(?:_\d+)?',str(name)):return True
@@ -152,7 +155,7 @@ def review_session(api,target,slots,folder,artifact):
         if not evidence_path.exists():
             evidence=inventory(api,target,slot['original_class'])
             evidence.update(original_class=slot['original_class'],agent_claim=slot.get('result'),
-                            changes=[r for r in delta if entry_owner(r)==slot['original_class']])
+                            changes=[r for r in delta if affects_class(r,slot['original_class'])])
             durable_json(evidence_path,evidence)
         evidence=read(evidence_path)
         reviewer='zai' if slot['model'].startswith('deepseek:') else 'deepseek'
