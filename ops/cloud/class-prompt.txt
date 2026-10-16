@@ -34,7 +34,7 @@ findings in code comments so another session can recover them.
 The coordinator saves and independently verifies the native JDB after ALL eight
 agents finish. You must not save, close, reopen or switch the shared target.
 
-Finish with one compact JSON object on a line beginning CLASS_RESULT:
-{"original_class":"{original_class}","status":"complete|needs_review","fields_seen":0,"methods_seen":0,"arguments_seen":0,"locals_seen":0,"renamed":0,"retained":0,"unresolved":["original identity and reason"],"evidence":"brief concrete evidence"}
+Finish with one compact JSON object in exactly this line format:
+CLASS_RESULT: {"original_class":"{original_class}","status":"complete|needs_review","fields_seen":0,"methods_seen":0,"arguments_seen":0,"locals_seen":0,"renamed":0,"retained":0,"unresolved":["original identity and reason"],"evidence":"brief concrete evidence"}
 This is your completion claim. The coordinator separately verifies persistence;
 passing that verification does not prove your semantic names correct.
