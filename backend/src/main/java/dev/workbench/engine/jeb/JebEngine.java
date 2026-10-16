@@ -5046,8 +5046,8 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             try { collectIdentifiers(jm.getBody(), want, localIds); } catch (Throwable ignored) {}
             IPropertyManager pm = ju.getPropertyManager();
             Map<String, Object> saved = setCleanRender(pm);
+            JavaDocument doc = new JavaDocument(ju);
             try {
-                JavaDocument doc = new JavaDocument(ju);
                 String text = doc.format();
                 ITextDocumentPart part = doc.getDocumentPart(doc.getFirstAnchor(), countLines(text) + 5);
                 if (part != null) {
@@ -5067,7 +5067,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                         if (k != null) out.set(k, shown); else locals.add(shown);
                     }
                 }
-            } finally { restoreRender(pm, saved); }
+            } finally { doc.dispose(); restoreRender(pm, saved); }
             for (Map.Entry<IJavaIdentifier, Integer> w : want.entrySet()) if (out.get(w.getValue()) == null) out.set(w.getValue(), w.getKey().getName());   // never shown in the text (unused): the AST's own name
             resolved = true;
         } catch (Throwable ignored) {}
@@ -5287,7 +5287,19 @@ public final class JebEngine implements Engine, SearchIndex.Host {
 
     /** One occurrence of a local in a method's decompiled text: the name as shown, the AST
      *  identifier's own name (its original), the declared type signature, JEB's text-item id. */
-    private record LocalRef(String shown, String ident, String type, long itemId, int line, Integer parameterIndex) {}
+    private record LocalRef(String shown, String ident, String type, long itemId, int line, int column, Integer parameterIndex,
+                            IJavaIdentifier identifier) {}
+
+    private static final String NO_LOCAL_RENAME = "JEB generated this identifier without an actionable item; "
+            + "its public API does not support persisting a rename. Keep an unresolved naming assessment when a better name is needed.";
+
+    private static OpException unavailableLocal(LocalRef ref, String method) {
+        OpException error = OpException.unsupported(NO_LOCAL_RENAME, "method=" + method + ", local=" + ref.shown());
+        error.extra.put("reason", "JEB_NO_ACTIONABLE_ITEM");
+        error.extra.put("local", ref.shown()); error.extra.put("method", method);
+        error.extra.put("renameableLocal", false);
+        return error;
+    }
 
     /** Every identifier occurrence inside a method, in text order (declarations first by nature). */
     private List<LocalRef> localRefs(IJavaSourceUnit ju, IDexClass cls, String methodAddr) {
@@ -5336,12 +5348,13 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                 if (itemId == null || shown.isEmpty()) continue;
                 String type = null;
                 try { type = ident.getType() == null ? null : currentTypeSig(ident.getType().getSignature()); } catch (Exception ignored) {}
-                out.add(new LocalRef(shown, ident.getName(), type, itemId, lb + 1, parameters.get(ident)));
+                out.add(new LocalRef(shown, ident.getName(), type, itemId, lb + 1, start, parameters.get(ident), ident));
             }
         } finally {
             doc.dispose();
             restoreRender(pm, savedProps);
         }
+        out.sort(java.util.Comparator.comparingInt(LocalRef::line).thenComparingInt(LocalRef::column));
         return out;
     }
 
@@ -5429,6 +5442,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
         synchronized (this) {
             MethodUnit mu = methodUnit(methodSymbol);
             LocalRef ref = selectedLocal(mu, local);
+            if (ref.itemId() == 0) throw unavailableLocal(ref, mu.r().addr());
             IDexMethod method = findAnyMethod(mu.r().addr());
             String originalMethod = method == null ? mu.r().addr() : method.getSignature(false);
             return Map.of("name", ref.shown(), "originalMethod", originalMethod,
@@ -5452,6 +5466,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             MethodUnit mu = methodUnit(methodSymbol);
             LocalRef selected = selectedLocal(mu, local);
             long itemId = selected.itemId();
+            if (itemId == 0) throw unavailableLocal(selected, mu.r().addr());
             boolean applied;
             try { applied = renameIdentifier(mu.ju(), itemId, newName); }
             catch (OpException refusal) {
@@ -5478,7 +5493,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
         }
     }
 
-    /** Locals as displayed, with the same stable original identity used by resolveLocal. */
+    /** Locals as displayed; actionable IDs match resolveLocal, generated ones have inventory-only labels. */
     @Override
     public List<Object> locals(String methodSymbol) throws OpException {
         requireReady();
@@ -5486,21 +5501,39 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             MethodUnit mu = methodUnit(methodSymbol);
             IDexMethod method = findAnyMethod(mu.r().addr());
             String originalMethod = method == null ? mu.r().addr() : method.getSignature(false);
-            Map<Long, Map<String, Object>> byIdentity = new LinkedHashMap<>();
+            Map<String, Map<String, Object>> byIdentity = new LinkedHashMap<>();
+            // Zero is JEB's "no item" sentinel, not one shared variable. Keep every
+            // distinct AST identifier. Ordinals are inventory labels, never native
+            // rename targets; preserve the legacy first #local:0 label for checkpoints.
+            java.util.IdentityHashMap<IJavaIdentifier, String> generated = new java.util.IdentityHashMap<>();
             for (LocalRef ref : localRefs(mu.ju(), mu.cls(), mu.r().addr())) {
-                if (byIdentity.containsKey(ref.itemId())) continue;
+                String itemId = Long.toUnsignedString(ref.itemId());
+                String suffix = itemId;
+                if (ref.itemId() == 0) {
+                    suffix = generated.get(ref.identifier());
+                    if (suffix == null) {
+                        int ordinal = generated.size() + 1;
+                        suffix = ordinal == 1 ? "0" : "0:rendered:" + ordinal;
+                        generated.put(ref.identifier(), suffix);
+                    }
+                }
+                if (byIdentity.containsKey(suffix)) continue;
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("name", ref.shown());
                 if (ref.type() != null) row.put("type", ref.type());
                 row.put("line", ref.line());
                 // String encoding preserves every bit when a JavaScript client parses JSON.
-                String itemId = Long.toUnsignedString(ref.itemId());
                 row.put("originalMethod", originalMethod);
-                row.put("originalSymbol", originalMethod + "#local:" + itemId);
+                row.put("originalSymbol", originalMethod + "#local:" + suffix);
                 row.put("originalName", ref.ident());
                 row.put("itemId", itemId);
+                row.put("renameableLocal", ref.itemId() != 0);
+                if (ref.itemId() == 0) {
+                    row.put("identityKind", "rendered-only");
+                    row.put("renameUnavailableReason", NO_LOCAL_RENAME);
+                }
                 if (ref.parameterIndex() != null) row.put("parameterIndex", ref.parameterIndex());
-                byIdentity.put(ref.itemId(), row);
+                byIdentity.put(suffix, row);
             }
             return new ArrayList<>(byIdentity.values());
         }
@@ -5527,6 +5560,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             }
             for (LocalRef v : vars.values()) {
                 if ("this".equals(v.shown())) continue;
+                if (v.itemId() == 0) { skipped.add(Map.of("local", v.shown(), "why", NO_LOCAL_RENAME)); continue; }
                 if (!all && !GENERATED_LOCAL.matcher(v.shown()).matches()) continue;   // a name somebody chose stays
                 String base = TypeNames.nameForType(v.type());
                 if (base == null) { skipped.add(Map.of("local", v.shown(), "why", v.type() == null ? "no type" : "primitive " + v.type())); continue; }

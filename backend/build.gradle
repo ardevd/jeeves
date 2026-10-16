@@ -237,6 +237,7 @@ tasks.register('searchIndexPersistenceIT', JavaExec) {
     renameCollisionIT: ['dev.workbench.it.RenameCollisionIT', 'params/params-fixture.dex'],
     localNameProvenanceIT: ['dev.workbench.it.LocalNameProvenanceIT', 'params/params-fixture.dex'],
     namingCoverageIT: ['dev.workbench.it.NamingCoverageIT', 'params/params-fixture.dex'],
+    generatedLocalIT: ['dev.workbench.it.GeneratedLocalIT', 'params/params-fixture.dex'],
     renameFamilyIT: ['dev.workbench.it.RenameFamilyIT', 'rename-family/rename-family.dex'],
     callSiteCalleeIT: ['dev.workbench.it.CallSiteCalleeIT', 'rename-family/rename-family.dex'],
 ].each { taskName, fixture ->
@@ -249,7 +250,7 @@ tasks.register('searchIndexPersistenceIT', JavaExec) {
         dependsOn 'compileTestJava'
         environment 'WORKBENCH_MOCK', '0'
         environment 'WORKBENCH_COURSE', '0'
-        if (taskName == 'onDemandSearchIT') environment 'WORKBENCH_INDEX_MODE', 'on-demand'
+        if (taskName in ['onDemandSearchIT','generatedLocalIT']) environment 'WORKBENCH_INDEX_MODE', 'on-demand'
         environment 'WORKBENCH_REVIEW_MODE', 'auto'
         if (hasEngine) {
             classpath += engineJars

@@ -608,8 +608,12 @@ and `annotate` batches, read again and use `action:record` with that fingerprint
 method `evidence`, and `items:[{identity,disposition,evidence}]`. Disposition is
 `renamed`, `retained`, or `unresolved`; each entry needs concrete code evidence.
 `renamed` requires active rename provenance. An unnamed argument cannot be
-retained. Arguments with `renameableLocal:false` have no supported `annotate`
-target; this audit does not add an agent-accessible parameter-mapping operation.
+retained. Variables with `renameableLocal:false` have no supported `annotate`
+target; this includes formal arguments without a rendered local and JEB-generated
+variables without an actionable identifier. The latter carry
+`renameUnavailableReason`; attempts return `E_UNSUPPORTED`, not a collision.
+Keep an unresolved assessment if such a variable still needs a meaningful name.
+This audit does not add an agent-accessible parameter-mapping operation.
 
 Partial item lists merge for the same actor and fingerprint, without an item
 cap. Empty methods require an explicit record with `items:[]` and evidence.
@@ -801,6 +805,14 @@ verdicts arrive as proposals). `map.export` renders md/json posters.
 ## Database save durability
 
 `locals.list` includes each native local’s original method, original name, and identifier. Its `originalSymbol` stays the same through a local rename and containing-class rename; `itemId` is a decimal string so JSON clients do not round it. A saved-name check should compare this identity and the displayed name together.
+
+JEB sometimes introduces a rendered variable with `itemId:"0"` (no actionable
+item). It remains visible with `identityKind:"rendered-only"` and
+`renameableLocal:false`. Distinct zero-ID variables get distinct inventory labels:
+the first retains `#local:0`, further ones use `#local:0:rendered:<ordinal>` in
+rendered occurrence order. These labels track the current inventory, not native
+rename targets. They must be checked again after native reopening or inventory
+changes; the complete coverage fingerprint detects changed labels or names.
 
 See [Saving edits and recovering interrupted writes](docs/persistence.md) for the asynchronous save completion rule, verified native checkpoints, recovery after interruption, durable undo/redo across restart, and independent backup/reopen checks. A failed recovery cannot overwrite the native checkpoint with partial state. A closed target alone is not a save-success receipt.
 

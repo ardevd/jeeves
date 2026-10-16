@@ -480,7 +480,15 @@ class completion still requires the whole inventory and independent review.
 original method plus `#parameter:<formalIndex>`; body locals retain their exact
 `#local:<itemId>`. Rendered parameters also carry their local identity and item
 ID. `renameableLocal` describes whether annotate can target the current local
-name. Formal arguments without code are inventoried too; a missing name must be
+name. JEB's zero item ID means no actionable item: such locals carry
+`identityKind:rendered-only`, `renameableLocal:false`, and `renameUnavailableReason`.
+Rename and rename-ownership lookup return `E_UNSUPPORTED` with
+`reason:JEB_NO_ACTIONABLE_ITEM`. They cannot be repaired by trying collision suffixes.
+All distinct zero-ID AST identifiers remain visible: the first keeps `#local:0`,
+subsequent ones use `#local:0:rendered:<ordinal>` in rendered occurrence order.
+These are inventory labels, not native item IDs or rename targets; fingerprint
+and save/reopen verification must check them. A needed but unavailable rename
+stays unresolved. Formal arguments without code are inventoried too; a missing name must be
 unresolved. Native `code.params` now includes the public SDK's `hasCode` flag.
 The fixed receiver is explicitly excluded. Unsupported/failed inventory reads
 are never converted into complete empty inventories.

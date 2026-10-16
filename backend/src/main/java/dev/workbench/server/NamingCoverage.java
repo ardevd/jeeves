@@ -71,13 +71,17 @@ public final class NamingCoverage {
                 String identity = original + "#parameter:" + index.intValue();
                 Map<String,Object> row = variables.get(identity);
                 if (row == null) { errors.add("Local names an unknown argument: " + localIdentity); continue; }
-                if (Boolean.TRUE.equals(row.get("renameableLocal"))) errors.add("Duplicate local for argument: " + identity);
+                if (row.containsKey("originalSymbol")) errors.add("Duplicate local for argument: " + identity);
                 if (!Objects.equals(row.get("name"), local.get("name"))) errors.add("Argument/local name disagreement: " + identity);
                 row.put("originalSymbol", localIdentity); row.put("itemId", local.get("itemId"));
-                row.put("originalName", local.get("originalName")); row.put("renameableLocal", true);
+                row.put("originalName", local.get("originalName"));
+                row.put("renameableLocal", !Boolean.FALSE.equals(local.get("renameableLocal")));
+                for (String key : List.of("identityKind", "renameUnavailableReason"))
+                    if (local.containsKey(key)) row.put(key, local.get(key));
             } else {
                 Map<String,Object> row = new LinkedHashMap<>(local);
-                row.put("identity", localIdentity); row.put("kind", "local"); row.put("renameableLocal", true);
+                row.put("identity", localIdentity); row.put("kind", "local");
+                row.put("renameableLocal", !Boolean.FALSE.equals(local.get("renameableLocal")));
                 if (variables.put(localIdentity, row) != null) errors.add("Duplicate local: " + localIdentity);
             }
         }
