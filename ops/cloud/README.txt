@@ -131,6 +131,30 @@ new session, dollar cap or teardown are added by maintenance. Cloud supervision
 survives laptop loss; the local dashboard still requires the laptop connection.
 
 Operating limits and persistence:
+For a focused campaign, set focus_manifest to an absolute path ending in
+manifest.json and optionally focus_first_classes to the ordered original class
+identities for the next session. Run focus.py --config CONFIG while paused.
+It discovers current FMessage-named classes and all direct incoming references
+to their classes, fields and methods, with uncapped xref.to responses. The full
+class catalog remains intact. It records stable original identities and all
+reference-site evidence, rejects truncated/ambiguous results, and resumes read
+collection from an APK/history-pinned cache. It does not decompile, rename or call
+a provider. This is a direct-reference scope, not a whole-program transitive walk.
+
+The runner selects only this focused queue; a missing/invalid manifest prevents
+new assignments instead of falling back to generic classes. Eight distinct class
+owners still run per session. Tail verification uses already-completed focused
+classes only. Assignments include the FMessage relationship and entry symbols;
+agents read reference bodies, preserve supported earlier names and batch ready
+local/argument/member edits with annotate(items). The independent review retains
+the same assignment context; a graph relationship alone is not semantic proof.
+Preparing a focus manifest never resets a completed invocation or starts a round.
+
+- Existing inherited-field outline traversal stops at six superclass levels;
+  impls has an internal 500-result ceiling. Focus discovery uses neither: it
+  reads own-member outlines and uncapped incoming references. Unknown subclasses
+  are included when referenced directly; this is not proof of an exhaustive
+  transitive subtype inventory.
 - Exactly eight API agents per session (operator requirement), sharing one JEB.
 - No headless turn or mission-token ceiling. Explicit provider context/output
   bounds still apply: configured 1,000,000 context; DS 393,216 output; GLM 131,072.

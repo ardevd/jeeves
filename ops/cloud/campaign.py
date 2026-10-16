@@ -47,21 +47,34 @@ def catalog(api,target,db):
             db.execute('INSERT INTO classes(original,name) VALUES(?,?) ON CONFLICT(original) DO UPDATE SET name=excluded.name',(original,name))
     return expected
 
-def claim_session(db,models):
+def claim_session(db,models,focus=None):
     if len(models)!=8:raise ValueError('This campaign requires exactly eight model slots')
     # One transaction reserves all eight; binary original descriptors never fold case.
     with db:
         existing=db.execute("SELECT * FROM sessions WHERE phase!='complete' ORDER BY id LIMIT 1").fetchone()
         if existing:return dict(existing)
-        rows=db.execute("SELECT * FROM classes WHERE state IN ('pending','needs_review') ORDER BY attempts, original COLLATE BINARY LIMIT 8").fetchall()
+        focused={r['original_class']:r for r in focus} if focus is not None else None
+        if focused is not None:
+            rank={s:i for i,s in enumerate(focused)}
+            eligible=[db.execute('SELECT * FROM classes WHERE original=?',(s,)).fetchone() for s in focused]
+            if any(r is None for r in eligible):raise RuntimeError('Focus contains an unknown class')
+            eligible.sort(key=lambda r:(r['attempts'],rank[r['original']]))
+            rows=[r for r in eligible if r['state'] in ('pending','needs_review')][:8]
+        else:rows=db.execute("SELECT * FROM classes WHERE state IN ('pending','needs_review') ORDER BY attempts, original COLLATE BINARY LIMIT 8").fetchall()
         if not rows:return None
         if len(rows)<8:
             # Finish the last partial page with distinct previously completed
             # classes for a verification pass, retaining exactly eight agents.
-            rows+=db.execute("SELECT * FROM classes WHERE state='done' ORDER BY attempts, original COLLATE BINARY LIMIT ?",(8-len(rows),)).fetchall()
+            rows+=([r for r in eligible if r['state']=='done'][:8-len(rows)] if focused is not None else
+                   db.execute("SELECT * FROM classes WHERE state='done' ORDER BY attempts, original COLLATE BINARY LIMIT ?",(8-len(rows),)).fetchall())
             if len(rows)!=8:raise RuntimeError('The target itself contains fewer than eight classes')
         slots=[{'original_class':r['original'],'current_name':r['name'],'model':models[i],
                 'assignment_id':str(uuid.uuid4()),'spawn':'prepared','mission':None} for i,r in enumerate(rows)]
+        if focused is not None:
+            from focus import context
+            for slot in slots:
+                row=focused[slot['original_class']]
+                slot.update(current_name=row['current_name'],research_focus=context(row))
         cursor=db.execute("INSERT INTO sessions(phase,slots,created) VALUES('agents',?,?)",(json.dumps(slots),time.time()))
         sid=cursor.lastrowid
         db.executemany("UPDATE classes SET state='claimed',attempts=attempts+1,session=? WHERE original=?",[(sid,r['original']) for r in rows])
@@ -72,6 +85,8 @@ def save_slots(db,sid,slots):
 
 def prompt(slot,target):
     text=(HERE/'class-prompt.txt').read_text()
+    focus=slot.get('research_focus')
+    text=text.replace('{research_focus}',('FMessage assignment context: '+json.dumps(focus,ensure_ascii=False)) if focus else '')
     for key,value in dict(slot,target=target).items():text=text.replace('{'+key+'}',str(value))
     return text
 
@@ -176,7 +191,11 @@ def main():
         invocation={'phase':'running','start_completed':baseline,'rounds':args.rounds};durable_json(invocation_path,invocation)
     while db.execute("SELECT count(*) FROM sessions WHERE phase='complete'").fetchone()[0]<invocation['start_completed']+invocation['rounds']:
         if (root/'stop-after-session').exists() and not db.execute("SELECT 1 FROM sessions WHERE phase!='complete'").fetchone():break
-        session=claim_session(db,config['models'])
+        focus=None
+        if config.get('focus_manifest'):
+            from focus import load
+            focus=load(config['focus_manifest'],db,APK_SHA)
+        session=claim_session(db,config['models'],focus)
         if session is None:break
         try:
             # Target ops are scoped to the selected project, even with an explicit

@@ -1,5 +1,16 @@
 You own exactly one class: {original_class}. Current display name at assignment: {current_name}.
 Campaign assignment: {assignment_id}. Work against target {target}.
+{research_focus}
+
+When FMessage assignment context is present, investigate how this class builds,
+parses, converts, stores or uses FMessages. Start at the supplied entry symbols,
+then follow actual incoming references to the FMessage class and each relevant
+field/method. Read the reference-site method bodies and trace arguments, fields,
+returns and callers. Do not infer a role from a class name alone. Record the
+original FMessage and reference-site identities and the code supporting each claim.
+Keep writes within your assigned class; read related classes as evidence and
+document unresolved work there for a future assignment. Previously named symbols
+may already be K3/another agent's work: inspect provenance and retain supported names.
 
 Research and name the ENTIRE class and ALL its symbols: the class itself, every
 field, every method, every method argument, and every decompiler local variable.
@@ -15,11 +26,14 @@ be misleading or reordered; verify their binding against actual use. Re-read aft
 renaming: local lookup uses the CURRENT local name, while originalSymbol and
 originalMethod identify it durably. Sibling agents can rename shared dependencies.
 
-Use annotate(items=[...]) to apply evidence-backed names and concise rationale.
+Collect the ready names for a method or class and submit them together with
+annotate(items=[...]), with evidence and concise rationale for each item. Batch
+locals and arguments as well as class/member names in the same MCP/tool call.
 For a local or argument, set symbol to its original method and local to its current
 local name. Split writes into batches of at most 50 items, inspect EVERY result,
-and resolve any failed/conflicting item before claiming it was renamed. Preserve
-human-owned names and explain a conflict instead of overriding them. Virtual-method
+and resolve any failed/conflicting item before claiming it was renamed. Keep
+successful items when retrying a partially failed batch; retry only failed items.
+Preserve human-owned names and explain a conflict instead of overriding them. Virtual-method
 families may span classes: inspect the reported affected members and coordinate
 through current state. Re-read the class and each touched method after writes.
 

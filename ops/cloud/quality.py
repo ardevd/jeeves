@@ -155,6 +155,7 @@ def review_session(api,target,slots,folder,artifact):
         if not evidence_path.exists():
             evidence=inventory(api,target,slot['original_class'])
             evidence.update(original_class=slot['original_class'],agent_claim=slot.get('result'),
+                            research_focus=slot.get('research_focus'),
                             changes=[r for r in delta if affects_class(r,slot['original_class'])])
             durable_json(evidence_path,evidence)
         evidence=read(evidence_path)
