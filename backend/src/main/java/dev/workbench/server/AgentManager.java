@@ -41,6 +41,7 @@ public final class AgentManager {
                                    an http provider's reasoning_effort; null = the provider's own */
         public int maxTurns;    /* an explicit turn cap (task settings / agent.spawn turns); 0 =
                                    the depth's default per mode (llm.Depth) */
+        public boolean turnsUnlimited; // headless execution overrides every configured turn cap
         public String target;   /* the target id the mission is PINNED to — the spawn's own,
                                    else the active one at spawn time; every tool call the http
                                    loop / the MCP bridge makes carries it, so a chip click
@@ -82,6 +83,7 @@ public final class AgentManager {
             m.id = str(r.get("id")); m.goal = str(r.get("goal")); m.mode = str(r.get("mode")); m.model = str(r.get("model"));
             m.scope = str(r.get("scope")); m.depth = str(r.get("depth")); m.effort = str(r.get("effort"));
             m.maxTurns = num(r.get("maxTurns")); m.target = str(r.get("target")); m.project = str(r.get("project"));
+            m.turnsUnlimited = Boolean.TRUE.equals(r.get("turnsUnlimited"));
             m.agentId = str(r.get("agentId")); m.state = str(r.get("state")); m.reason = str(r.get("reason"));
             m.budget = num(r.get("budget")); m.tokensUsed = num(r.get("tokensUsed"));
             m.tokensRaw = r.get("tokensRaw") instanceof Number n1 ? n1.longValue() : 0L; m.cacheHitTokens = r.get("cacheHitTokens") instanceof Number n2 ? n2.longValue() : 0L;
@@ -106,7 +108,8 @@ public final class AgentManager {
             m.put("scope", scope);
             if (depth != null) m.put("depth", depth);
             if (effort != null) m.put("effort", effort);
-            if (maxTurns > 0) m.put("maxTurns", maxTurns);
+            if (turnsUnlimited) m.put("turnsUnlimited", true);
+            else if (maxTurns > 0) m.put("maxTurns", maxTurns);
             if (target != null) m.put("target", target);
             if (project != null) m.put("project", project);
             m.put("agentId", agentId);
@@ -116,7 +119,7 @@ public final class AgentManager {
             m.put("tokensUsed", tokensUsed);
             if (tokensRaw > 0) { m.put("tokensRaw", tokensRaw); m.put("cacheHitTokens", cacheHitTokens); }
             if (budgetNeeded > 0) { m.put("budgetNeeded", budgetNeeded); m.put("budgetFloor", budgetFloor); }
-            if (turnCap > 0) m.put("turnCap", turnCap);
+            if (turnsUnlimited || turnCap > 0) m.put("turnCap", turnsUnlimited ? 0 : turnCap);
             m.put("turnsDone", turnsDone);
             if (turnsNeeded > 0) m.put("turnsNeeded", turnsNeeded);
             if (stopReason != null) m.put("stopReason", stopReason);
@@ -704,6 +707,9 @@ public final class AgentManager {
         if (model == null || model.isBlank())
             model = "scripted".equals(m.mode) ? "builtin:triage" : "claude-code";
         m.model = model;
+        m.turnsUnlimited = dev.workbench.llm.Depth.unlimitedTurns()
+                && ("http".equals(m.mode) || "cli".equals(m.mode));
+        if (m.turnsUnlimited) m.maxTurns = 0;
         if (resolved == null && !modelGiven) resolved = llm.resolve(model);   // the mode-explicit hatch still gets its provider label (settings r3 L3)
         if (resolved != null) {
             dev.workbench.llm.LlmRegistry.Provider pr = llm.get(resolved[0]);
@@ -731,6 +737,7 @@ public final class AgentManager {
                 + (m.depth == null ? "" : " · depth " + m.depth)
                 + (m.effort == null || "scripted".equals(m.mode) ? "" : " · effort " + m.effort)
                 + (m.maxTurns > 0 && !"scripted".equals(m.mode) ? " · turns " + m.maxTurns : "")
+                + (m.turnsUnlimited ? " · no turn limit (headless)" : "")
                 + (m.scope.isBlank() ? "" : " · scope " + m.scope)
                 + (m.target == null ? "" : " · target " + m.target)
                 + ("http".equals(m.mode) && resolved != null
@@ -824,6 +831,11 @@ public final class AgentManager {
      *  at the cap pause. Future missions are the task settings' business (task.configure {turns}). */
     public synchronized Map<String, Object> setTurns(String id, int turns) throws OpException {
         Mission m = requireMission(id);
+        if (m.turnsUnlimited) {
+            Map<String, Object> out = m.toMap();
+            out.put("note", "Headless missions have no turn limit; turns was ignored");
+            return out;
+        }
         if (turns <= 0) throw OpException.syntax("turns must be positive", "");
         m.maxTurns = turns;
         return m.toMap();
@@ -1824,7 +1836,8 @@ public final class AgentManager {
                     @Override public void turn(int n) { cur = n; }
                     @Override public void record(Map<String, Object> rec) { recordTurn(m, rec); }
                 },
-                m.maxTurns > 0 ? m.maxTurns : dev.workbench.llm.Depth.loopTurns(m.depth, 14), extras, pr.contextTokens, wire);
+                m.turnsUnlimited ? 0 : m.maxTurns > 0 ? m.maxTurns
+                        : dev.workbench.llm.Depth.loopTurns(m.depth, 14), extras, pr.contextTokens, wire);
         /* a configured capture that cannot attach blocks the mission: nothing dispatches uncaptured
            because a factory threw (the operator asked for capture) */
         if (captureFactory != null) {
@@ -1885,9 +1898,12 @@ public final class AgentManager {
                     // explicit curated tool list, NOT a registry-wide wildcard:
                     // mission / review / llm must stay unreachable for missions
                     // (agents propose, humans dispose)
-                    "--allowedTools", dev.workbench.llm.AgentLoop.curatedMcpTools(),
-                    "--max-turns", String.valueOf(m.maxTurns > 0 ? m.maxTurns
-                            : dev.workbench.llm.Depth.cliTurns(m.depth, 40))));
+                    "--allowedTools", dev.workbench.llm.AgentLoop.curatedMcpTools()));
+            if (!m.turnsUnlimited) {
+                cmd.add("--max-turns");
+                cmd.add(String.valueOf(m.maxTurns > 0 ? m.maxTurns
+                        : dev.workbench.llm.Depth.cliTurns(m.depth, 40)));
+            }
             /* the model: "claude-code" is the CLI's own default (no flag); an
                alias / full name from the provider's list goes as --model.
                The effort is the CLI's --effort (low … max). */

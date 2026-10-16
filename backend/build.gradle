@@ -119,6 +119,32 @@ tasks.register('parityTest', JavaExec) {
     mustRunAfter 'test'
 }
 
+// Unlimited headless turns and ordinary controls, without JEB or paid model calls.
+['agentTurnsHeadlessTest': '1', 'agentTurnsBoundedTest': '0'].each { taskName, headless ->
+    tasks.register(taskName, JavaExec) {
+        group = 'verification'
+        description = 'Headless unlimited turns and ordinary bounded controls over synthetic HTTP/CLI providers'
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = 'dev.workbench.server.AgentTurnsTest'
+        workingDir = repoRoot
+        dependsOn 'compileTestJava'
+        environment 'WORKBENCH_MOCK', '1'
+        environment 'WORKBENCH_QA', '1'
+        environment 'WORKBENCH_REVIEW_MODE', 'auto'
+        environment 'WORKBENCH_HEADLESS', headless
+        environment 'WORKBENCH_PORT', headless == '1' ? '7820' : '7822'
+        jvmArgs '-Djava.awt.headless=true'
+        doFirst {
+            def parent = file("${buildDir}/tmp")
+            parent.mkdirs()
+            def run = java.nio.file.Files.createTempDirectory(parent.toPath(), taskName + '-').toFile()
+            new File(run, 'java-home').mkdirs()
+            environment 'WORKBENCH_HOME', new File(run, 'home').absolutePath
+            systemProperty 'user.home', new File(run, 'java-home').absolutePath
+        }
+    }
+}
+
 // Deterministic concurrent writers through the public facade, without JEB or model calls.
 tasks.register('concurrentRenameTest', JavaExec) {
     group = 'verification'

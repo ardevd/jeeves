@@ -6,6 +6,7 @@
 # The install is $JEB_HOME when that is set — any licensed JEB, used in place, nothing copied or
 # changed — else a copy of an install under backend/engine when that exists.
 # WORKBENCH_RUN_ONLY=1 starts what is already built (no npm, no gradle).
+# WORKBENCH_HEADLESS=1 runs HTTP/CLI agents without turn limits (including saved task caps).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

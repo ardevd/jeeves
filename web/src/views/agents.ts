@@ -396,11 +396,13 @@ function paintMissionCtrl(m: Mission){
     : atTurns ? 'Paused at the turn cap — raises the cap to the amount in the TURNS box and resumes (agent.resume {turns})'
     : m.state === 'paused' ? 'Resume mission (agent.resume)' : 'Pause mission (agent.pause)');
   const turnsEl = document.getElementById('agm-turns');
-  if (turnsEl) turnsEl.textContent = (m.turnsDone || 0) + ' / ' + (m.turnCap || m.maxTurns || '—') + ' turns · the mission\'s own cap';
+  if (turnsEl) turnsEl.textContent = m.turnsUnlimited
+    ? (m.turnsDone || 0) + ' turns · no turn limit (headless)'
+    : (m.turnsDone || 0) + ' / ' + (m.turnCap || m.maxTurns || '—') + ' turns · the mission\'s own cap';
   const trow = document.getElementById('agm-turnup-row'), tinp = document.getElementById('agm-turnup') as HTMLInputElement | null;
   const tbtn = document.getElementById('agm-turnup-btn'), thint = document.getElementById('agm-turnup-hint'), tdflt = document.getElementById('agm-turnup-default');
   if (trow && tinp && tbtn && thint){
-    trow.hidden = !live;
+    trow.hidden = !live || !!m.turnsUnlimited;
     const tkey = m.id + ':' + (m.turnsNeeded || 0);
     if (live && tinp.dataset.for !== tkey){
       tinp.dataset.for = tkey;
@@ -436,7 +438,7 @@ function isTerminal(m: Mission): boolean { return m.state === 'done' || m.state 
 
 /** Paused AT the turn cap with the cap not raised — a plain resume would only re-park it. */
 function pausedAtTurns(m: Mission): boolean {
-  return m.state === 'paused' && !!m.turnsNeeded && (m.maxTurns || 0) <= (m.turnCap || 0);
+  return !m.turnsUnlimited && m.state === 'paused' && !!m.turnsNeeded && (m.maxTurns || 0) <= (m.turnCap || 0);
 }
 /** Paused AT the budget ceiling with the budget still spent — a plain resume would only re-park it. */
 function pausedAtBudget(m: Mission): boolean {
@@ -1999,11 +2001,17 @@ async function renderTaskGrid(){
     const d = depths.find(function(x){ return x.depth === depth; })!;
     const turns = grid.querySelector<HTMLInputElement>('.tturns[data-depth="' + depth + '"]');
     const budget = grid.querySelector<HTMLInputElement>('.tbudget[data-depth="' + depth + '"]');
-    if (turns) turns.placeholder = 'default: ' + (driver === 'cli' ? d.defaults.turnsCli + ' (CLI tool calls)' : driver ? d.defaults.turnsLoop + ' (http loop turns)' : d.defaults.turnsCli + ' CLI / ' + d.defaults.turnsLoop + ' http');
+    if (turns){
+      turns.disabled = !!d.turnsUnlimited;
+      if (d.turnsUnlimited) turns.value = '';
+      turns.placeholder = d.turnsUnlimited ? 'no turn limit (headless)' : 'default: ' + (driver === 'cli' ? d.defaults.turnsCli + ' (CLI tool calls)' : driver ? d.defaults.turnsLoop + ' (http loop turns)' : d.defaults.turnsCli + ' CLI / ' + d.defaults.turnsLoop + ' http');
+    }
     if (budget){
       budget.placeholder = 'default: ' + d.defaults.budget + (driver === 'cli' ? ' — not metered on the CLI' : '');
       budget.classList.toggle('dim', driver === 'cli');
-      budget.title = driver === 'cli' ? 'the claude CLI reports no token usage: this budget is advisory text in its prompt, the turn cap is what stops it' : '';
+      budget.title = driver === 'cli'
+        ? 'the claude CLI reports no token usage: this budget is advisory text in its prompt' + (d.turnsUnlimited ? '; headless missions have no turn limit' : ', the turn cap is what stops it')
+        : '';
     }
   };
   const mark = function(depth: string){ taskDirty.add(depth); };
@@ -2087,6 +2095,7 @@ function openTaskDialog(){
         turns: parseInt(q('tturns').value, 10) || 0,
         budget: parseInt(q('tbudget').value, 10) || 0,
       };
+      if (q('tturns').disabled) delete params.turns; // preserve the stored value while headless overrides it
       const rs = await tryOp('task.configure', params);
       if (rs.error){ err.textContent = depth + ': ' + rs.error.message; note.textContent = ''; return; }
     }

@@ -639,6 +639,7 @@ export interface Mission {
   budgetNeeded?: number;   // >0 while paused at the ceiling: the raise the next turn needs (RAISE & RESUME prefills it)
   budgetFloor?: number;    // the least budget that lets the loop send the next request; below it a resume is refused
   turnCap?: number;        // the effective turn cap (explicit maxTurns or the depth default)
+  turnsUnlimited?: boolean; // headless execution: turnCap=0, no turn ceiling
   turnsDone?: number;      // turns completed so far
   displayState?: string;   // the workflow name for the state: queued/running/paused/draining/cancelled/failed/completed
   stopReason?: string;     // why the run ended or stands where it does, in words (AgentLoop)
@@ -735,6 +736,7 @@ export interface TaskDepth {
   model: string | null;      // provider:model, null = the server default
   effort: string | null;
   turns: number;             // 0 = default
+  turnsUnlimited?: boolean; // headless execution overrides stored turns
   budget: number;            // 0 = default
   defaults: { turnsCli: number; turnsLoop: number; budget: number };
   resolved: { provider?: string; providerLabel?: string; model?: string; driver?: string; local?: boolean; configured?: boolean; unconfigured?: boolean; unresolved?: boolean; unlisted?: boolean };   // unlisted: the pinned model was dropped from its provider's list (llm-config §6.4)

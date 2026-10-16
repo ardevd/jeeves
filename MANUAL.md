@@ -516,6 +516,18 @@ MCP tools `task_list` / `task_configure`); `agent.spawn` takes the same
 `depth: quick|deep` (the prompt's brief, the caps), `effort`, `turns` and
 a `target` to pin to.
 
+For unattended execution, start the server with `WORKBENCH_HEADLESS=1`
+(or `true`). HTTP and CLI missions then have **no turn limit**: default,
+depth-specific, saved task and explicit spawn turn caps are ignored. This is
+an unlimited loop, not a larger numeric cap. `agent.setturns` reports that its
+value was ignored in this mode. Mission records expose `turnsUnlimited: true`
+and `turnCap: 0`; the inspector shows the completed turns without a ceiling.
+Manual pause, resume and stop still work. Token budgets, provider timeouts,
+output allowances and terminal provider errors remain separate controls;
+removing turn limits does not remove those or make interrupted missions resumable.
+The flag applies to the server process and is independent of Java's
+`java.awt.headless` setting, which the browser-backed server also uses.
+
 ## 7. Dynamic analysis (Runs view)
 
 Runs, breakpoints and proposals are PROJECT-scoped (since 2026-09-10): they live under

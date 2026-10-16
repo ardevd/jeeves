@@ -152,6 +152,7 @@ public final class TaskSettings {
         row.put("model", e == null ? null : e.model);
         row.put("effort", e == null ? null : e.effort);
         row.put("turns", e == null ? 0 : e.turns);
+        if (Depth.unlimitedTurns()) row.put("turnsUnlimited", true);
         row.put("budget", e == null ? 0 : e.budget);
         Map<String, Object> defaults = new LinkedHashMap<>();
         defaults.put("turnsCli", Depth.cliTurns(depth, 40));

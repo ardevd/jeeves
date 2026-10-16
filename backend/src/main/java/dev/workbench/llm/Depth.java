@@ -14,6 +14,13 @@ public final class Depth {
 
     private Depth() {}
 
+    /** Explicit unattended execution. java.awt.headless also applies to the browser-backed
+     *  server, so it must not be used to infer this operator-selected policy. */
+    public static boolean unlimitedTurns() {
+        String value = System.getenv("WORKBENCH_HEADLESS");
+        return "1".equals(value) || "true".equalsIgnoreCase(value);
+    }
+
     /** null/blank → null; quick|deep (any case) → canonical; else E_SYNTAX —
      *  a typo must not silently spawn an unbounded mission. */
     public static String normalize(String depth) throws OpException {
@@ -37,6 +44,7 @@ public final class Depth {
 
     /** http loop turns (one chat request each) */
     public static int loopTurns(String depth, int dflt) {
+        if (unlimitedTurns()) return 0;
         if (QUICK.equals(depth)) return 10;
         if (DEEP.equals(depth)) return 100;   // 2026-09-18 (John): a deep run gets 100 turns
         return dflt;
@@ -44,6 +52,7 @@ public final class Depth {
 
     /** claude -p --max-turns (a turn there is one tool call or answer) */
     public static int cliTurns(String depth, int dflt) {
+        if (unlimitedTurns()) return 0;
         if (QUICK.equals(depth)) return 20;
         if (DEEP.equals(depth)) return 100;
         return dflt;

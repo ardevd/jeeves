@@ -130,7 +130,7 @@ public final class AgentLoop {
     private final ChatClient client;
     private final String model;
     private final Activity activity;
-    private int maxTurns;   // raised in place by agent.resume {turns} while parked at the cap (pauseAtTurnCap)
+    private int maxTurns;   // 0 = unlimited; positive caps can be raised by agent.resume {turns}
     /** The symbol the mission is about (first JVM signature in the goal, e.g. "reverse method
      *  LX/0dP;->A01(...)"): its decompile results are never elided from the history. */
     private final String subject;
@@ -556,7 +556,7 @@ public final class AgentLoop {
             int turn = 1;
             capLoop:
             while (true) {
-            for (; turn <= maxTurns; turn++) {
+            for (; maxTurns == 0 || turn <= maxTurns; turn++) {
                 activity.turn(turn);
                 Map<String, Object> rec = new LinkedHashMap<>();   // the turn transcript (agent.turn) — what the rows below summarize
                 List<Map<String, Object>> calls = new ArrayList<>();
@@ -766,7 +766,7 @@ public final class AgentLoop {
                         }
                         reasoningOnly = 0;
                         // (4) proposal protocol: a mission that only CHATTED gets one nudge
-                        if (proposalsMade == 0 && !nudged && turn < maxTurns) {
+                        if (proposalsMade == 0 && !nudged && (maxTurns == 0 || turn < maxTurns)) {
                             nudged = true;
                             rec.put("outcome", "nudged");
                             activity.row("note", "turn " + turn + " · final text with 0 proposals — nudging");

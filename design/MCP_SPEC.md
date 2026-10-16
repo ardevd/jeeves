@@ -320,6 +320,19 @@ background fetches are not navigation, which is why the browser pings explicitly
 | `task.list` | | the built-in task catalogue — today `reverse` with its `quick` / `deep` depths: each depth's configured `{model, effort, turns, budget}` (null / 0 = default), the defaults it falls back to, and the provider/model the next spawn resolves to |
 | `task.configure <task> <depth> [--model] [--effort] [--turns] [--budget]` | ✓ | MERGE one depth's settings: an absent param keeps the stored value, a blank string / 0 resets the field. `model` is `provider:model`, must resolve (the scripted agent is refused) and has NO default — an unconfigured depth spawns nothing (`agent.spawn {depth}` is E_SYNTAX until it is set); `effort` is `low\|medium\|high\|xhigh\|max` (the claude CLI's `--effort`; http providers get `reasoning_effort` clamped to `high`); turn cap and budget default per depth. `agent.spawn {depth}` with no explicit model runs on these (backend/.workbench/tasks.json); `llm.remove` resets the depths that named the removed provider. Operator-only: a mission actor gets E_SCOPE, an unmissioned MCP client (the user's assistant) may call it — MCP tools `task_list` / `task_configure` carry strict schemas |
 
+With `WORKBENCH_HEADLESS=1` (also `true`), HTTP and CLI agent missions have no
+turn ceiling. This overrides depth defaults, saved `task.configure` turns and
+explicit `agent.spawn` turns without rewriting the saved task settings.
+`agent.setturns` is a reported no-op for these missions. Their records carry
+`turnsUnlimited: true`, `turnCap: 0`, and no `maxTurns`/`turnsNeeded` ceiling;
+`turnsDone` continues to count requests. `task.list` depths carry
+`turnsUnlimited: true` and zero `defaults.turnsLoop`/`defaults.turnsCli`, while
+`turns` preserves the stored configuration. Manual pause/resume/stop and token
+budget enforcement remain effective. The CLI runner omits `--max-turns`.
+No mission restart/resumption semantics change. With the flag absent or false,
+the existing bounded behavior applies. Java's headless rendering flag does not
+select this execution policy.
+
 ### 4.16 System (prerequisites)
 | Op | M | Purpose |
 |---|---|---|
