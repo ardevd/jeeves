@@ -8,6 +8,13 @@ from checkpoint_backup import durable_json
 from quality import read
 from naming_coverage import summary as coverage_summary
 
+def agent_owner(actor):
+    if not isinstance(actor,str) or not actor.startswith(('llm:','agent:')):return None
+    for suffix in (' (follows class rename)',' auto-applied',' accepted by human'):
+        actor=actor.removesuffix(suffix)
+    while actor.startswith(('llm:','agent:')):actor=actor.split(':',1)[1]
+    return actor
+
 def counts(entries):
     names={};comments=set()
     for row in entries:
@@ -57,10 +64,16 @@ def snapshot(config,api):
         result['sessions'].append(row)
         if baseline is None:baseline={r.get('id') for r in read(folder/'baseline-history.json',history)}
         if session['id']!=sessions[-1]['id']:continue
+        session_baseline={r.get('id') for r in read(folder/'baseline-history.json',history)}
+        session_edits=[r for r in history if r.get('id') not in session_baseline and not r.get('undone') and not r.get('discarded')]
         for slot in json.loads(session['slots']):
             mission=missions.get(slot.get('mission'),{})
             worker={k:mission.get(k) for k in ('id','agentId','state','displayState','loopActive','cancellationUnconfirmed','turnsDone','inputTokens','outputTokens','cacheHitTokens','writes','reason','stopReason','progress','startedAt')}
             worker.update(original_class=slot['original_class'],current_name=current_names.get(slot['original_class']) or slot['current_name'],model=slot['model'],result=slot.get('result'))
+            owner=mission.get('agentId') or agent_owner(slot.get('coverage_actor'))
+            applied=[r for r in session_edits if owner and agent_owner(r.get('actor'))==owner]
+            worker.update(apiWrites=worker.get('writes'),writes=len(applied),localWrites=sum(r.get('kind')=='local' for r in applied),
+                          writesBasis='current-session durable history; excludes undone/discarded edits')
             result['workers'].append(worker)
         quality=read(folder/'quality/receipt.json')
         if quality is None:quality={'status':read(folder/'quality/status.json',{}).get('phase','pending'),'classes':read(folder/'quality/partial.json',[])}

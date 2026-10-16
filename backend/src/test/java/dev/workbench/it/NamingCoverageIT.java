@@ -112,6 +112,21 @@ public final class NamingCoverageIT {
             var corrupted=d.dispatch("naming.coverage",Map.of("target",tid,"symbol",METHOD),ACTOR);
             check(!Boolean.TRUE.equals(corrupted.get("ok"))&&"{broken".equals(Files.readString(receipt)),"corrupt coverage fails loudly and preserves evidence");
             Files.writeString(receipt,saved);
+            check(ws.writesBy(tid,"coverage-owner")==4,"agent write count includes direct class/method and argument/local renames after reopen");
+            check(ws.writesBy(tid,"coverage")==0,"agent attribution uses exact identity, not an agent-ID prefix");
+            var recorded=ws.historyList(tid,100).stream().map(NamingCoverageIT::map).filter(r->"local".equals(r.get("kind"))).toList();
+            check(recorded.size()==2 && recorded.stream().allMatch(r->Set.of("loop bound","accumulation").contains(r.get("rationale"))),
+                    "local/argument rationale persists in durable history across reopen");
+            ws.renameSymbol(tid,"Lfixture/Params;","OtherAgentFixture","agent:coverage-owner-more auto-applied",null,null);
+            var reverted=ws.revertBy(tid,"coverage-owner");
+            check(((Number)reverted.get("reverted")).intValue()==4 && ((List<?>)reverted.get("failed")).isEmpty(),
+                    "agent revert includes direct local/argument writes and applies newest first");
+            check(ws.writesBy(tid,"coverage-owner")==0 && ws.writesBy(tid,"coverage-owner-more")==1,
+                    "revert clears this agent's writes and preserves the other agent");
+            check("loop".equals(ws.engineFor(tid).resolve(METHOD).get("name")),"mission revert restores the method's native name");
+            check(initial.get("inventoryFingerprint").equals(get(d,tid,METHOD,ACTOR).get("inventoryFingerprint")),
+                    "mission revert restores exact original argument/local names");
+            check(Boolean.TRUE.equals(ws.saveTarget(tid).get("saved")),"reverted names save natively");
             System.out.println("NamingCoverageIT: "+checks+" checks passed");
         }catch(Exception|AssertionError error){error.printStackTrace(System.out);throw error;}
         finally{ws.closeAll();JebCore.shutdown();}

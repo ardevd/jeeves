@@ -466,6 +466,10 @@ The loop-visible and MCP facade tool `naming_coverage` routes `action:get`
 (default) to `naming.coverage` and `action:record` to `naming.coverage.record`.
 All ordinary mutation scope checks apply to record; `recordedBy` cannot change
 its author. This is evidence storage, separate from native edits/proposals.
+Mission write counts/revert include direct local/argument renames under the
+normalized exact actor identity. Local rename rationale persists in history.
+An HTTP mission cannot be reverted while its loop is alive or stop is unconfirmed;
+this also guards a paused label while its last provider/tool call is still active.
 Successful records count as research progress for loop completion without forcing
 unnecessary renames. Failed records and coverage reads do not suppress that nudge;
 class completion still requires the whole inventory and independent review.

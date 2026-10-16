@@ -619,6 +619,11 @@ are retained separately. They are durably written under the artifact's
 `.workbench/naming-coverage/`, independent of bounded mission transcripts.
 `recordedBy` on get selects a particular actor; writes always use the operation
 actor. Recording coverage never renames symbols or bypasses review.
+Agent write counts and mission revert include directly applied local/argument
+renames as well as accepted proposals, using the exact agent identity. Local
+rename rationale and confidence are retained in history. Reverting an HTTP
+mission requires its loop to have returned; a paused or stopped label alone is
+insufficient while its provider/tool turn is still in flight.
 Successful coverage records count as research progress in the agent loop, so an
 audited class with suitable existing names can finish without a forced rename.
 A failed record or a read alone does not count as recorded coverage. The full

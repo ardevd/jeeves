@@ -191,6 +191,9 @@ before independent semantic review. Missing/unresolved/stale assessments or
 collection errors keep the class in needs_review even if the agent and reviewer
 say complete. A method with no variables still needs an explicit empty receipt.
 The dashboard shows method and variable coverage separately from rename counts.
+Per-worker writes are counted from current-session durable history, including
+direct local/argument renames and accepted proposals, excluding undone/discarded
+edits. The old API counter is retained separately for diagnostic comparison.
 
 The existing 50-item annotate batch limit remains; partial rename failures must
 be inspected and only failed entries retried. The new coverage tool has no item

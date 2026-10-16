@@ -41,11 +41,14 @@ public final class AgentTurnsTest {
     @SuppressWarnings("unchecked") private static Map<String, Object> map(Object o) { return (Map<String, Object>) o; }
     private static int number(Object n) { return n instanceof Number v ? v.intValue() : 0; }
 
-    private static Object op(String name, Map<String, Object> params) throws Exception {
+    private static Map<String,Object> rawOp(String name, Map<String, Object> params) throws Exception {
         var req = HttpRequest.newBuilder(URI.create(BASE + "/api/" + name))
                 .timeout(Duration.ofSeconds(20)).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(Json.write(Map.of("params", params)))).build();
-        Map<String, Object> result = Json.parseObject(HTTP.send(req, HttpResponse.BodyHandlers.ofString()).body());
+        return Json.parseObject(HTTP.send(req, HttpResponse.BodyHandlers.ofString()).body());
+    }
+    private static Object op(String name, Map<String, Object> params) throws Exception {
+        Map<String,Object> result = rawOp(name, params);
         if (!Boolean.TRUE.equals(result.get("ok"))) throw new AssertionError(name + ": " + result);
         return result.get("data");
     }
@@ -155,15 +158,22 @@ public final class AgentTurnsTest {
 
         String held = spawn("stop-held", Map.of());
         check(STOP_ENTERED.await(15, TimeUnit.SECONDS), "stop test holds a real provider response in flight");
+        op("agent.pause", Map.of("id", held));
+        check("E_BUSY".equals(map(rawOp("agent.revert",Map.of("id",held)).get("error")).get("code")),
+                "a paused label cannot permit revert while a provider turn remains in flight");
         op("agent.stop", Map.of("id", held));
         Map<String, Object> draining = mission(held);
         check(Boolean.TRUE.equals(draining.get("loopActive")) && Boolean.TRUE.equals(draining.get("cancellationUnconfirmed"))
                 && "draining".equals(draining.get("displayState")), "stop remains visibly draining until the provider returns");
+        check("E_BUSY".equals(map(rawOp("agent.revert",Map.of("id",held)).get("error")).get("code")),
+                "revert waits for confirmed stop and drained HTTP work");
         STOP_RELEASE.countDown();
         Map<String, Object> settled = await(held, m -> !Boolean.TRUE.equals(m.get("loopActive")));
         check("stopped".equals(settled.get("state")) && !Boolean.TRUE.equals(settled.get("cancellationUnconfirmed"))
                 && number(settled.get("inputTokens")) == 1 && number(settled.get("outputTokens")) == 1
                 && COUNTS.get("stop-held").get() == 1, "settled stop retains actual paid usage and starts no next request");
+        check(number(map(op("agent.revert",Map.of("id",held))).get("reverted"))==0,
+                "revert is available after the stopped loop has actually returned");
     }
 
     private static void boundedChecks() throws Exception {

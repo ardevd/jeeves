@@ -467,6 +467,7 @@ public final class Ops {
                     h.put("oldName", res.get("oldName"));
                     h.put("newName", res.get("newName"));
                     h.put("owner", historyOwner(res));
+                    if (req.str("rationale") != null) h.put("rationale", req.str("rationale"));
                     if (argHit != null) h.put("argument", argHit.get("index"));
                     if (retained != null) {
                         h.put("matchesRetainedName", true); h.put("retainedEntry", retained);

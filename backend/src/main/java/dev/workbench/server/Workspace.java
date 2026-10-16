@@ -4994,13 +4994,16 @@ public final class Workspace {
     }
 
     private static boolean byAgent(Map<String, Object> e, String agentId) {
-        return String.valueOf(e.get("actor")).startsWith("agent:" + agentId + " ");   // "agent:agent-2 auto-applied" / "… accepted by human"
+        String actor = String.valueOf(e.get("actor"));
+        return agentId != null && !agentId.isBlank() && "agent".equals(EventBus.actorKind(actor))
+                && agentId.equals(RenameCoordinator.owner(actor));
     }
 
     /** How many applied (not undone) History entries an agent's writes account for on a target. */
     public int writesBy(String tid, String agentId) {
         int n = 0;
-        for (Map<String, Object> e : historyFor(tid)) if (!Boolean.TRUE.equals(e.get("undone")) && byAgent(e, agentId)) n++;
+        for (Map<String, Object> e : historyFor(tid))
+            if (!Boolean.TRUE.equals(e.get("undone")) && !Boolean.TRUE.equals(e.get("discarded")) && byAgent(e, agentId)) n++;
         return n;
     }
 
@@ -5010,7 +5013,7 @@ public final class Workspace {
     public Map<String, Object> revertBy(String tid, String agentId) {
         List<String> ids = new ArrayList<>();
         for (Map<String, Object> e : historyFor(tid))
-            if (!Boolean.TRUE.equals(e.get("undone")) && byAgent(e, agentId)) ids.add(String.valueOf(e.get("id")));
+            if (!Boolean.TRUE.equals(e.get("undone")) && !Boolean.TRUE.equals(e.get("discarded")) && byAgent(e, agentId)) ids.add(String.valueOf(e.get("id")));
         java.util.Collections.reverse(ids);
         int ok = 0;
         List<Object> failed = new ArrayList<>();

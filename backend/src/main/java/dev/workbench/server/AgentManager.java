@@ -550,8 +550,10 @@ public final class AgentManager {
         Mission m;
         synchronized (this) { m = missions.get(id); }
         if (m == null) throw OpException.notFound("no such mission: " + id, "");
-        if ("running".equals(m.state) || "queued".equals(m.state))
-            throw OpException.busy("mission " + id + " is " + m.state + " — pause or stop it before reverting its writes", "id=" + id);
+        Thread loop = loopThreads.get(id);
+        if ("running".equals(m.state) || "queued".equals(m.state) || m.cancellationUnconfirmed
+                || (loop != null && loop.isAlive()))
+            throw OpException.busy("mission " + id + " still has active work — stop it and wait for its loop to finish before reverting its writes", "id=" + id);
         int reverted = 0;
         List<Object> failed = new ArrayList<>();
         List<String> tids = new ArrayList<>();
