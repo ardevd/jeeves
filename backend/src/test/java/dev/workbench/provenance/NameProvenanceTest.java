@@ -32,6 +32,7 @@ public final class NameProvenanceTest {
         final Workspace ws = new Workspace();
         final Map<String,Map<String,Object>> symbols = new LinkedHashMap<>();
         final List<Map<String,Object>> history = new ArrayList<>();
+        final java.util.concurrent.atomic.AtomicInteger resolveCalls = new java.util.concurrent.atomic.AtomicInteger();
         @SuppressWarnings("unchecked") Fixture() throws Exception {
             if (!"1".equals(System.getenv("WORKBENCH_MOCK"))) throw new AssertionError("Run with the mock explicitly enabled");
             var hf = Workspace.class.getDeclaredField("history"); hf.setAccessible(true);
@@ -39,6 +40,7 @@ public final class NameProvenanceTest {
             var ef = Workspace.class.getDeclaredField("engines"); ef.setAccessible(true);
             ((Map<String,Engine>)ef.get(ws)).put("t1", (Engine)Proxy.newProxyInstance(Engine.class.getClassLoader(), new Class<?>[]{Engine.class}, (proxy,method,args) -> {
                 if ("resolve".equals(method.getName())) {
+                    resolveCalls.incrementAndGet();
                     Map<String,Object> row = symbols.get(String.valueOf(args[0]));
                     if (row == null) throw OpException.notFound("fixture symbol missing", String.valueOf(args[0]));
                     return new LinkedHashMap<>(row);
@@ -111,6 +113,26 @@ public final class NameProvenanceTest {
         f.read(METHOD,"currentParser();");
         check(Dispatcher.RESOLUTION.get()==marker,"provenance lookups do not replace the operation resolution metadata"); Dispatcher.RESOLUTION.remove();
         check(f.ws.decorateForAgent("code.decompile",Map.of("target","t1"),"human",Map.of("text","parse();"))==null,"human reads retain their existing undecorated contract");
+
+        // A full campaign history must not turn each of eight reads into thousands
+        // of serialized native lookups. All relevant family identities still resolve.
+        for (int i=0;i<2500;i++) {
+            String original="Lfixture/Other"+i+";->a()V", name="unrelatedName"+i;
+            f.current(original,"Lfixture/Other"+i+";->"+name+"()V",name);
+            f.history.add(rename("large"+i,original,original,original,name,"agent:other auto-applied",3));
+        }
+        f.resolveCalls.set(0);
+        var pool=java.util.concurrent.Executors.newFixedThreadPool(8);
+        try {
+            var jobs=new ArrayList<java.util.concurrent.Callable<Boolean>>();
+            for(int i=0;i<8;i++) jobs.add(()->f.names(f.read(METHOD,"currentParser();"),"agentNames").size()==2);
+            for(var result:pool.invokeAll(jobs)) check(result.get(),"concurrent reader keeps complete current family attribution");
+        } finally {pool.shutdownNow();}
+        check(f.resolveCalls.get()==16,"eight reads resolve only their two relevant identities, not 2500 unrelated names each");
+        f.current(METHOD,"Lfixture/NamedChild;->freshParser(I)V","freshParser");
+        f.history.add(rename("fresh",METHOD,METHOD,"Lfixture/NamedChild;->freshParser(I)V","freshParser","agent:fresh auto-applied",5));
+        var fresh=f.names(f.read(METHOD,"freshParser();"),"agentNames");
+        check(fresh.size()==1 && "fresh".equals(fresh.get(0).get("by")),"next read uses a newly renamed name without an attribution cache delay");
         System.out.println("Name provenance: " + checks + " checks passed");
     }
 }

@@ -370,6 +370,12 @@ interactive payload cuts remain unchanged. Context-window maintenance still
 applies. `annotate` accepts batches of 1–50 items; full classes may require several.
 Native text search overlays fresh renders for pending invalidated classes, so a
 completed rename is visible to the next search before durable reindexing finishes.
+
+Agent-name attribution conservatively excludes historical names absent from all
+returned string values before native resolution. Every remaining possible match
+is checked against the current engine, including affected method-family members,
+human ownership, undo/redo order and original identities. No attribution state is
+cached across reads; unrelated history does not add native lookups to each read.
 Original descriptors/local identities accompany current names in the existing
 symbol, locals and agent-provenance contracts. Failed renders remain explicitly
 partial; a query overlay does not claim successful durable cache persistence.

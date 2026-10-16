@@ -4690,7 +4690,7 @@ public final class Workspace {
     /** Current attribution, keyed by original identity before display addresses are attached.
      * History may predate owner renames or omit an SDK-propagated method rename. Such a row
      * must not label an obsolete name as current merely because that word appears in code. */
-    private NameLedgers currentNameLedgers(String tid) {
+    private NameLedgers currentNameLedgers(String tid, String resultText) {
         List<Map<String,Object>> entries;
         synchronized (this) {
             entries = historyFor(tid).stream().map(LinkedHashMap<String,Object>::new)
@@ -4707,6 +4707,11 @@ public final class Workspace {
             if (!"rename".equals(entry.get("op")) || Boolean.TRUE.equals(entry.get("undone"))
                     || Boolean.TRUE.equals(entry.get("discarded")) || entry.get("newName") == null
                     || "local".equals(entry.get("kind")) || "parameters".equals(entry.get("kind"))) continue;
+            // Attribution can only decorate a name/address present in this answer.
+            // Avoid resolving the entire historical rename corpus for every read.
+            // This is a conservative substring filter, not cached native state:
+            // every possible match still resolves against the current engine.
+            if (!resultText.contains(String.valueOf(entry.get("newName")))) continue;
             List<String> originals = renameOriginals(entry);
             boolean stable = !originals.isEmpty();
             if (!stable) {
@@ -4763,6 +4768,15 @@ public final class Workspace {
         return owner.substring(end >= 0 ? end + 1 : owner.startsWith("L") ? 1 : 0);
     }
 
+    private static void appendProvenanceStrings(Object value, StringBuilder text) {
+        if (value instanceof String string) text.append(string).append('\n');
+        else if (value instanceof Map<?,?> map) {
+            for (Object item : map.values()) appendProvenanceStrings(item, text);
+        } else if (value instanceof List<?> list) {
+            for (Object item : list) appendProvenanceStrings(item, text);
+        }
+    }
+
     @SuppressWarnings("unchecked")
     public Object decorateForAgent(String opName, Map<String, Object> params, String actor, Object data) {
         if (!PROVENANCE_OPS.contains(opName) || !"agent".equals(EventBus.actorKind(actor)) || data == null) return null;
@@ -4770,7 +4784,9 @@ public final class Workspace {
         try { tid = resolveTargetIdOrActive(params == null || params.get("target") == null ? null : String.valueOf(params.get("target"))); }
         catch (Exception e) { return null; }
         if (tid == null) return null;
-        NameLedgers namesByActor = currentNameLedgers(tid);
+        StringBuilder resultText = new StringBuilder();
+        appendProvenanceStrings(data, resultText);
+        NameLedgers namesByActor = currentNameLedgers(tid, resultText.toString());
         Map<String, Map<String, Object>> ledger = namesByActor.agents();
         Map<String, Map<String, Object>> humans = namesByActor.humans();
         if (ledger.isEmpty() && humans.isEmpty()) return null;

@@ -571,6 +571,11 @@ in batches of up to 50 items and inspect every per-item result. Human-owned name
 and analyst-mapped arguments remain protected. An entire class inventory must
 include its methods, fields, arguments and locals, not just its class/method names.
 
+Attribution checks first exclude historical names absent from the returned
+text and identities. Possible matches still resolve against current native
+state on every read. This avoids resolving unrelated campaign history for each
+concurrent reader without introducing a cache delay after a rename.
+
 Text search regenerates pending renamed owners for the current query if the
 background index writer has not caught up. A search immediately after a successful
 rename can therefore see the fresh text; it does not depend on a polling delay.
