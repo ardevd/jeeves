@@ -22,6 +22,7 @@ import com.pnfsoftware.jeb.core.units.code.android.dex.IDexAddress;
 import com.pnfsoftware.jeb.core.units.code.android.dex.IDalvikInstruction;
 import com.pnfsoftware.jeb.core.units.code.android.dex.IDexClass;
 import com.pnfsoftware.jeb.core.units.code.android.dex.IDexCodeItem;
+import com.pnfsoftware.jeb.core.units.code.android.dex.IDexItem;
 import com.pnfsoftware.jeb.core.units.code.android.dex.IDexField;
 import com.pnfsoftware.jeb.core.units.code.android.dex.IDexMethod;
 import com.pnfsoftware.jeb.core.units.code.android.dex.IDexMethodData;
@@ -4550,10 +4551,87 @@ public final class JebEngine implements Engine, SearchIndex.Host {
      *  twin in the package, a member overload) must fail the op, or the workbench records a
      *  rename that never happened and a proposal shows ACCEPTED with the old name still on
      *  screen (2026-09-13: two class-rename proposals collided on one new name). */
-    private static void requireApplied(String old, String now, String wanted, String addr) throws OpException {
-        if (wanted.equals(now)) return;
-        throw OpException.busy("rename refused by JEB: '" + old + "' → '" + wanted + "' did not apply — the name is already taken in this scope (or reserved)",
-                "symbol=" + addr + " name=" + wanted);
+    private void requireApplied(IDexItem item, String old, String wanted) throws OpException {
+        if (wanted.equals(item.getName(true))) return;
+        List<Map<String,Object>> conflicts = new ArrayList<>();
+        String diagnosticError = null;
+        try { conflicts = renameNameOccupants(item, wanted); }
+        catch (RuntimeException | OpException error) { diagnosticError = error.toString(); }
+        throw renameRefused(old, wanted, item.getSignature(false), item.getAddress(), conflicts, diagnosticError);
+    }
+
+    /** Diagnostics only, AFTER JEB refuses; never invent a uniqueness policy or auto-suffix a name. */
+    private static OpException renameRefused(String old, String wanted, String original, String addr,
+                                             List<Map<String,Object>> conflicts, String diagnosticError) {
+        String occupied = conflicts.stream().map(row -> String.valueOf(row.get("originalSymbol"))
+                + " (current: " + row.get("addr") + ", name: " + row.get("currentName") + ")")
+                .collect(java.util.stream.Collectors.joining("; "));
+        OpException error = OpException.busy("rename refused by JEB: '" + old + "' → '" + wanted + "' did not apply — "
+                + (conflicts.isEmpty() ? "no occupying symbol could be identified; the name may be reserved or JEB may have another restriction"
+                        : "the requested name is used by " + occupied), "symbol=" + addr + " name=" + wanted);
+        error.extra.put("originalSymbol", original);
+        error.extra.put("currentName", old);
+        error.extra.put("requestedName", wanted);
+        error.extra.put("conflicts", conflicts);
+        error.extra.put("collisionLookup", diagnosticError != null ? "incomplete" : conflicts.isEmpty() ? "unresolved" : "matched");
+        if (diagnosticError != null) error.extra.put("collisionLookupError", diagnosticError);
+        error.extra.put("hint", conflicts.isEmpty()
+                ? "Read the current scope and check the requested identifier; do not retry the same refused name unchanged."
+                : "Inspect conflicts by originalSymbol; choose a distinct evidence-backed name for your symbol. Do not rename the occupying symbol merely to free its name.");
+        return error;
+    }
+
+    private static Map<String,Object> nameOccupant(IDexItem item, String kind, String match) {
+        Map<String,Object> row = new LinkedHashMap<>();
+        row.put("kind", kind); row.put("originalSymbol", item.getSignature(false));
+        row.put("addr", item.getAddress()); row.put("currentName", item.getName(true));
+        row.put("originalName", item.getName(false)); row.put("match", match);
+        if (!"class".equals(kind)) row.put("owner", classAddrOf(item.getAddress()));
+        return row;
+    }
+
+    private List<Map<String,Object>> renameNameOccupants(IDexItem selected, String wanted) throws OpException {
+        Map<String,Map<String,Object>> found = new LinkedHashMap<>();
+        if (selected instanceof IDexClass cls) {
+            String signature = cls.getSignature(true), current = cls.getName(true);
+            // getName may include the outer class name; use exactly the part setName replaces.
+            String destination = signature.substring(0, signature.length() - current.length() - 1) + wanted + ";";
+            for (IDexUnit dex : dexUnits) {
+                IDexClass other = dex.getClass(destination);
+                IDexItem occupant = other != null ? other : dex.getType(destination);
+                // JEB also resolves old aliases: a stale alias is not a current occupant.
+                if (occupant != null && destination.equals(occupant.getSignature(true))
+                        && !selected.getSignature(false).equals(occupant.getSignature(false)))
+                    found.put(occupant.getSignature(false), nameOccupant(occupant, "class", "destination_class"));
+            }
+        } else if (selected instanceof IDexField field) {
+            IDexClass owner = findClass(field.getAddress());
+            if (owner != null) for (IDexField other : owner.getFields())
+                if (wanted.equals(other.getName(true)) && !field.getSignature(false).equals(other.getSignature(false)))
+                    found.put(other.getSignature(false), nameOccupant(other, "field", "same_class_field"));
+        } else if (selected instanceof IDexMethod) {
+            // A refusal may originate on an override/sibling, not the explicitly selected method.
+            List<Map<String,Object>> family = renameTargets(selected.getSignature(false));
+            java.util.Set<String> familyIds = new java.util.HashSet<>();
+            for (Map<String,Object> member : family) familyIds.add(String.valueOf(member.get("origSig")));
+            for (Map<String,Object> member : family) {
+                IDexMethod method = findAnyMethod(String.valueOf(member.get("origSig")));
+                if (method == null) continue;
+                IDexClass owner = findClass(method.getAddress());
+                if (owner == null) continue;
+                String signature = method.getSignature(true);
+                String descriptor = signature.substring(signature.indexOf('('));
+                for (IDexMethod other : owner.getMethods()) {
+                    if (!wanted.equals(other.getName(true)) || familyIds.contains(other.getSignature(false))) continue;
+                    String otherSignature = other.getSignature(true);
+                    if (!descriptor.equals(otherSignature.substring(otherSignature.indexOf('(')))) continue;
+                    Map<String,Object> row = nameOccupant(other, "method", "same_class_method_descriptor");
+                    row.put("affectedOriginalSymbol", method.getSignature(false));
+                    found.put(other.getSignature(false), row);
+                }
+            }
+        }
+        return new ArrayList<>(found.values());
     }
 
     /** JEB setName propagates through virtual definitions/overrides, including sibling
@@ -4624,7 +4702,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                         if (c == null) continue;
                         old = c.getName(true);
                         c.setName(name);
-                        requireApplied(old, c.getName(true), name, addr);   // JEB keeps the old name silently when the new one is taken
+                        requireApplied(c, old, name);   // JEB keeps the old name silently when the new one is taken
                         newAddr = c.getAddress();
                         done = true;
                     }
@@ -4633,7 +4711,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                         if (m == null) continue;
                         old = m.getName(true);
                         m.setName(name);
-                        requireApplied(old, m.getName(true), name, addr);   // JEB keeps the old name silently when the new one is taken
+                        requireApplied(m, old, name);   // JEB keeps the old name silently when the new one is taken
                         newAddr = m.getAddress();
                         done = true;
                     }
@@ -4642,7 +4720,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                         if (f == null) continue;
                         old = f.getName(true);
                         f.setName(name);
-                        requireApplied(old, f.getName(true), name, addr);   // JEB keeps the old name silently when the new one is taken
+                        requireApplied(f, old, name);   // JEB keeps the old name silently when the new one is taken
                         newAddr = f.getAddress();
                         done = true;
                     }
@@ -5261,6 +5339,38 @@ public final class JebEngine implements Engine, SearchIndex.Host {
         try { return ju.executeAction(ctx, data); } catch (Exception e) { throw OpException.busy("rename refused by JEB: " + e.getMessage(), "item=" + itemId); }
     }
 
+    private OpException localRenameRefused(MethodUnit mu, LocalRef selected, String wanted) {
+        Map<String,Map<String,Object>> found = new LinkedHashMap<>();
+        String originalMethod = mu.r().addr(), diagnosticError = null;
+        try {
+            IDexMethod method = findAnyMethod(mu.r().addr());
+            if (method != null) originalMethod = method.getSignature(false);
+            for (LocalRef other : localRefs(mu.ju(), mu.cls(), mu.r().addr())) {
+                if (other.itemId() == selected.itemId() || !wanted.equals(other.shown())) continue;
+                String itemId = Long.toUnsignedString(other.itemId());
+                String identity = originalMethod + "#local:" + itemId;
+                Map<String,Object> row = new LinkedHashMap<>();
+                row.put("kind", "local"); row.put("originalSymbol", identity);
+                row.put("originalMethod", originalMethod); row.put("itemId", itemId);
+                row.put("addr", mu.r().addr()); row.put("currentName", other.shown());
+                row.put("originalName", other.ident()); row.put("line", other.line());
+                row.put("match", "same_method_identifier");
+                found.putIfAbsent(identity, row);
+            }
+            // A field can also reserve a source identifier. Include inherited fields, without a depth cap.
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (IDexClass owner = mu.cls(); owner != null && seen.add(owner.getSignature(false));
+                    owner = findAnyClass(owner.getSupertypeSignature(false))) {
+                for (IDexField field : owner.getFields()) if (wanted.equals(field.getName(true)))
+                    found.put(field.getSignature(false), nameOccupant(field, "field", "same_name_field"));
+                if (owner.getSupertypeSignature(false) == null) break;
+            }
+        } catch (RuntimeException error) { diagnosticError = error.toString(); }
+        return renameRefused(selected.shown(), wanted,
+                originalMethod + "#local:" + Long.toUnsignedString(selected.itemId()), mu.r().addr(),
+                new ArrayList<>(found.values()), diagnosticError);
+    }
+
     private record MethodUnit(Resolved r, IDexClass cls, IJavaSourceUnit ju) {}
     private MethodUnit methodUnit(String methodSymbol) throws OpException {
         Resolved r = lookup(methodSymbol);
@@ -5315,8 +5425,15 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             MethodUnit mu = methodUnit(methodSymbol);
             LocalRef selected = selectedLocal(mu, local);
             long itemId = selected.itemId();
-            if (!renameIdentifier(mu.ju(), itemId, newName))
-                throw OpException.busy("rename refused by JEB: '" + local + "' → '" + newName + "' did not apply — the name is already taken in this method (or reserved)", "symbol=" + methodSymbol);
+            boolean applied;
+            try { applied = renameIdentifier(mu.ju(), itemId, newName); }
+            catch (OpException refusal) {
+                if (!"E_BUSY".equals(refusal.code)) throw refusal;
+                OpException diagnostic = localRenameRefused(mu, selected, newName);
+                diagnostic.extra.put("jebReason", refusal.getMessage());
+                throw diagnostic;
+            }
+            if (!applied) throw localRenameRefused(mu, selected, newName);
             dirty = true;
             searchIndex.invalidate(mu.cls().getAddress(), mu.cls().getAddress());
             namesChanged();

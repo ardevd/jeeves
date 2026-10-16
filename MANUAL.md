@@ -350,6 +350,19 @@ available. Read the assigned name and continue the analysis; repeating the same
 conflicting rename will not overwrite it. A batch may partly succeed, so inspect
 `applied`, `failed` and every item before deciding what to retry.
 
+A taken destination name is a separate error from another actor owning the same
+symbol. The native adapter keeps `E_BUSY`, but now includes `requestedName`, the
+losing symbol's `originalSymbol` and `currentName`, and `conflicts[]`. Each match
+identifies the other symbol by original identity, current name and current address;
+a local/argument also includes its method and identifier item id. The readable
+message includes those identities too. Method diagnostics inspect the override
+family and match descriptors, so a legal overload is not treated as a conflict.
+This lookup runs only after JEB refuses; it changes no naming or overwrite rules.
+`collisionLookup: matched|unresolved|incomplete` distinguishes found occupants
+from an unexplained refusal or failed diagnostic lookup. A reserved name does not
+have an invented occupying symbol. Inspect the reported symbols and choose a
+distinct meaningful name; do not rename another symbol just to free the name.
+
 Automatic local naming (`locals.auto`) checks all affected locals before its bulk
 write. It records stable identities and claims every applied name before writing
 history, so a failed journal write cannot leave later bulk items unprotected.
@@ -372,7 +385,7 @@ The model-free regression checks can run independently of an analysis project:
 ```sh
 gradle -p backend classes concurrentRenameTest opsActiveTest
 python3 -B mcp/test_concurrent_rename.py
-JEB_HOME=/path/to/activated-jeb gradle -p backend concurrentRenameIT renameFamilyIT searchIndexPersistenceIT
+JEB_HOME=/path/to/activated-jeb gradle -p backend concurrentRenameIT renameFamilyIT renameCollisionIT searchIndexPersistenceIT
 ```
 
 The Python test starts five real MCP bridge processes and its own temporary mock

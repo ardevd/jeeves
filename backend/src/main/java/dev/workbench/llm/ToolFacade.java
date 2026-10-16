@@ -261,7 +261,9 @@ public final class ToolFacade {
                         + " Returns {applied, pending, failed, results[]}; a failed write carries its reason (a taken name, a symbol"
                         + " a human named, outside your write-scope). Another agent's unsaved name is protected: RENAME_CONFLICT"
                         + " names its currentName and currentActor; use that name and continue reading. expectedName refuses a stale"
-                        + " rename even after a save. Failed writes keep error text and structured errorDetails.",
+                        + " rename even after a save. A taken-name refusal includes conflicts[] with the other symbols'"
+                        + " originalSymbol, currentName and addr; inspect those identities and choose a distinct name."
+                        + " Failed writes keep error text and structured errorDetails.",
                 "{\"items\": [{\"symbol\": \"Lm76/ak;->a()V\", \"name\": \"handleLifecycleEvent\", \"comment\": \"forwards the state enum to Lifecycle.handleEvent\", \"tags\": [{\"name\": \"entry:lifecycle\", \"note\": \"the Activity's onResume is its only caller\"}], \"confidence\": 0.8}]}",
                 props("items", annotateItems),
                 "items");

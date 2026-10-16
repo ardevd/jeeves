@@ -223,6 +223,7 @@ tasks.register('searchIndexPersistenceIT', JavaExec) {
     nativeSaveIT: ['dev.workbench.it.NativeSaveIT', 'params/params-fixture.dex'],
     nativeRecoveryIT: ['dev.workbench.it.NativeRecoveryIT', 'params/params-fixture.dex'],
     concurrentRenameIT: ['dev.workbench.it.ConcurrentRenameIT', 'params/params-fixture.dex'],
+    renameCollisionIT: ['dev.workbench.it.RenameCollisionIT', 'params/params-fixture.dex'],
     renameFamilyIT: ['dev.workbench.it.RenameFamilyIT', 'rename-family/rename-family.dex'],
     callSiteCalleeIT: ['dev.workbench.it.CallSiteCalleeIT', 'rename-family/rename-family.dex'],
 ].each { taskName, fixture ->
@@ -252,6 +253,7 @@ tasks.register('searchIndexPersistenceIT', JavaExec) {
             systemProperty 'java.io.tmpdir', new File(run, 'tmp').absolutePath
             environment 'WORKBENCH_HOME', new File(run, 'home').absolutePath
             args file('src/test/fixtures/' + fixture[1]).absolutePath, run.absolutePath
+            if (taskName == 'renameCollisionIT') args file('src/test/fixtures/name-collision/name-collision.dex').absolutePath
         }
     }
 }

@@ -85,6 +85,19 @@ compare-and-set mismatch. Batch results preserve the readable `error` and add
 `errorDetails` containing the full typed error; the facade forwards both.
 `annotate` remains a per-item result envelope and may partly succeed.
 
+A native destination-name refusal retains `E_BUSY` and adds `requestedName`,
+`currentName`, `originalSymbol`, `conflicts[]`, and
+`collisionLookup: matched|unresolved|incomplete`. Each conflict has `kind`,
+`originalSymbol`, `originalName`, `currentName`, `addr`, and `match`; member rows
+include `owner`, method rows identify `affectedOriginalSymbol` when looking through
+the rename family, and local/argument rows include `originalMethod`, `itemId` and
+source `line`. Locals and arguments both use `kind: local`, as in rename history.
+The readable message identifies the same occupants. Lookup follows a native refusal
+and does not impose new uniqueness checks; it uses current names, not stale aliases.
+Method matching uses the full descriptor. Unresolved/reserved refusals do not
+fabricate an occupant; an incomplete lookup includes `collisionLookupError`.
+These fields survive the per-item `errorDetails` in both rename batches and annotate.
+
 Ownership clears only after both the recovery history and native database save
 succeed. Undo/redo rebuilds active unsaved claims, and original signatures keep
 member claims valid when the owner class's display name changes. A persistence
