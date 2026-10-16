@@ -724,3 +724,11 @@ verdicts arrive as proposals). `map.export` renders md/json posters.
 See [Saving edits and recovering interrupted writes](docs/persistence.md) for the asynchronous save completion rule, verified native checkpoints, recovery after interruption, durable undo/redo across restart, and independent backup/reopen checks. A failed recovery cannot overwrite the native checkpoint with partial state. A closed target alone is not a save-success receipt.
 
 See [Search-index interruption recovery](docs/search-index-recovery.md) for the derived search corpus, pending-work ordering, and failure-injection checks.
+
+### Private cloud access
+
+The HTTP listener remains on loopback. For an authenticated local reverse proxy
+(such as Tailscale Serve, without Funnel), set `WORKBENCH_PROXY_HOSTS` to its exact
+external host authority, including a port when the browser uses one. Comma-separated
+authorities are accepted; wildcards are not. The browser Origin must still match
+Host. This setting does not add authentication: the proxy must restrict access.

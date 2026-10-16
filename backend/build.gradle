@@ -132,6 +132,7 @@ tasks.register('cloudProvidersTest', JavaExec) {
     environment 'WORKBENCH_HEADLESS', '1'
     environment 'WORKBENCH_UNLIMITED_BUDGET', '1'
     environment 'WORKBENCH_PORT', '7824'
+    environment 'WORKBENCH_PROXY_HOSTS', 'jeeves.fixture.ts.net'
     jvmArgs '-Djava.awt.headless=true'
     doFirst {
         def parent = file("${buildDir}/tmp")

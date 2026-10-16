@@ -395,3 +395,7 @@ partial; a query overlay does not claim successful durable cache persistence.
 A target save is serialized with its edit transaction. Async completion requires `saving:false`, `last.at >= startedAt`, and `last.ok:true`; failures before the native write also produce a fresh failed outcome. Rename ownership clears only after history and native state are persisted. Undo/redo events have durable revisions and replay in execution order across a restart; discard includes pending reversals of saved entries. Failed replay prevents saving a partially recovered project. Close waits for active target edits and refuses a failed history flush before detaching; a native synchronous close-save failure reports `closed:true, saved:false`. See [persistence contract](../docs/persistence.md) for checkpoint, recovery, and verification semantics.
 
 The search corpus is derived state. Its pending recovery entry clears only after replacement text and the header persist; see [search-index recovery](../docs/search-index-recovery.md).
+
+Cloud proxy authorities: `WORKBENCH_PROXY_HOSTS` adds explicit exact Host values to
+the existing loopback Host set. The server still binds 127.0.0.1, and matching Origin
+is required when supplied. Authentication remains the local reverse proxy’s duty.

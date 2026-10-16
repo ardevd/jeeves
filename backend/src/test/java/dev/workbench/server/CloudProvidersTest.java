@@ -39,6 +39,18 @@ public final class CloudProvidersTest {
         require(Boolean.TRUE.equals(result.get("ok")), name + ": " + result);
         return result.get("data");
     }
+    private static void proxyCheck(String host, String origin, int status) throws Exception {
+        try (var socket = new java.net.Socket("127.0.0.1", WorkbenchServer.PORT)) {
+            socket.setSoTimeout(10000);
+            String body = "{\"params\":{}}";
+            String request = "POST /api/agent.missions HTTP/1.1\r\nHost: " + host
+                    + "\r\nOrigin: " + origin + "\r\nContent-Type: application/json\r\nContent-Length: "
+                    + body.length() + "\r\nConnection: close\r\n\r\n" + body;
+            socket.getOutputStream().write(request.getBytes(StandardCharsets.UTF_8));
+            var reader = new java.io.BufferedReader(new java.io.InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            check(reader.readLine().startsWith("HTTP/1.1 " + status + " "), "proxy Host/Origin guard: " + host + " / " + origin);
+        }
+    }
     private static Map<String, Object> mission(String id) throws Exception {
         for (Object row : (List<?>) op("agent.missions", Map.of())) if (id.equals(map(row).get("id"))) return map(row);
         throw new AssertionError("missing mission " + id);
@@ -109,6 +121,10 @@ public final class CloudProvidersTest {
         });
         provider.start();
         var server = new WorkbenchServer(Path.of("web")); server.start();
+        proxyCheck("jeeves.fixture.ts.net", "https://jeeves.fixture.ts.net", 200);
+        proxyCheck("jeeves.fixture.ts.net", "https://attacker.invalid", 403);
+        proxyCheck("attacker.invalid", "https://attacker.invalid", 403);
+        proxyCheck("127.0.0.1:" + WorkbenchServer.PORT, BASE, 200);
         try {
             for (String id : List.of("cloud-ds", "cloud-glm")) {
                 boolean glm = id.endsWith("glm");

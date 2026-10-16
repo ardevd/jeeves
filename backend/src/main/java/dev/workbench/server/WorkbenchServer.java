@@ -263,12 +263,22 @@ public final class WorkbenchServer {
         return java.net.URLDecoder.decode(s, StandardCharsets.UTF_8);
     }
 
-    /** Origin/Host check (old Jeeves CSRF guard): loopback Host only; Origin, if sent, must match Host. */
+    /** Explicit authorities for a trusted local reverse proxy. The listener stays loopback-only. */
+    static boolean allowedHost(String host) {
+        if (host == null) return false;
+        if (host.equals("127.0.0.1:" + PORT) || host.equals("localhost:" + PORT)
+                || host.equals("[::1]:" + PORT)) return true;
+        String configured = System.getenv("WORKBENCH_PROXY_HOSTS");
+        if (configured != null) for (String authority : configured.split(","))
+            if (!authority.isBlank() && host.equals(authority.trim())) return true;
+        return false;
+    }
+
+    /** Accepted Host only; Origin, if sent, must still match Host, including behind a proxy. */
     private boolean checkOrigin(HttpExchange ex) throws IOException {
         String host = ex.getRequestHeaders().getFirst("Host");
-        if (host == null || !(host.equals("127.0.0.1:" + PORT) || host.equals("localhost:" + PORT)
-                || host.equals("[::1]:" + PORT))) {
-            send(ex, 403, err("E_SYNTAX", "bad Host: " + host, "loopback only"));
+        if (!allowedHost(host)) {
+            send(ex, 403, err("E_SYNTAX", "bad Host: " + host, "unconfigured authority"));
             return false;
         }
         String origin = ex.getRequestHeaders().getFirst("Origin");
