@@ -128,7 +128,8 @@ picked where the task is, and nothing is assumed: the NEW MISSION card
 (provider → a model within its family → effort → budget) for a custom
 goal, and the ⚡ REVERSING AGENT window for the built-in reversing routine
 (§6). Effort is the Claude Code CLI's `--effort` (`low`…`max`) or an
-http provider's `reasoning_effort` (`low`…`high`; the picker offers only
+http provider's `reasoning_effort` (`low`…`high`, or native `max` for
+DeepSeek V4 Pro / Flash and GLM-5.3; the picker offers only
 what the provider takes). The **Anthropic** provider offers two connections: **Claude Code
 login** (`claude auth login`) needs no key — the server strips `ANTHROPIC_API_KEY` from that
 mission's environment so the subscription pays, unless `ANTHROPIC_BASE_URL` points at a
@@ -534,6 +535,42 @@ output allowances and terminal provider errors remain separate controls;
 removing turn limits does not remove those or make interrupted missions resumable.
 The flag applies to the server process and is independent of Java's
 `java.awt.headless` setting, which the browser-backed server also uses.
+
+An unattended HTTP campaign can additionally set `WORKBENCH_UNLIMITED_BUDGET=1`
+(or `true`). This only takes effect together with `WORKBENCH_HEADLESS`. Its
+missions report `budgetUnlimited: true` and `budget: 0`; saved/default/explicit
+mission token budgets do not pause them. `agent.setbudget` explains that the
+value was ignored. The interface shows input, output and cached-input usage,
+without a budget meter. `inputTokens`, `outputTokens`, `cacheHitTokens` and the
+per-turn `usage` object retain provider-reported accounting; the older weighted
+token counter is not a dollar invoice. This option supplies no spending cap:
+provider credit, billing and operator stop controls remain external to it.
+
+For DeepSeek V4 Pro and GLM-5.3, request `effort: max`, enable streaming and
+configure `reasoningField: reasoning_content` with `reasoningReplay: all`.
+Use `extraParams.thinking: {type: enabled}`; GLM preserved thinking also needs
+`clear_thinking: false` inside that object. Set the provider's documented output
+allowance with `maxOutputTokens` (393216 for DeepSeek V4 Pro; 131072 for GLM-5.3,
+checked 16 October 2026). The loop uses that allowance, or the mission's explicit
+`maxOutput` if supplied, rather than imposing its old 4096-token default on a
+configured provider. Unconfigured providers still fall back to 4096. Provider
+context limits and context maintenance still apply; a long reasoning trace
+consumes output tokens. Terminal provider errors remain visible as blocked runs.
+
+In headless execution the loop preserves complete tool payloads and all matching
+name-provenance rows instead of applying its 6K/16K character and 60-name display
+cuts. Ask `code {symbol: originalMethod, view: locals}` for the native locals and
+arguments with their original/current identities. Submit changes with `annotate`
+in batches of up to 50 items and inspect every per-item result. Human-owned names
+and analyst-mapped arguments remain protected. An entire class inventory must
+include its methods, fields, arguments and locals, not just its class/method names.
+
+Text search regenerates pending renamed owners for the current query if the
+background index writer has not caught up. A search immediately after a successful
+rename can therefore see the fresh text; it does not depend on a polling delay.
+Persistence continues in the background. Unrenderable or concurrently invalidated
+classes remain pending and retain the partial-coverage warning. On-demand coverage
+still does not mean that every class in a target has been indexed.
 
 ## 7. Dynamic analysis (Runs view)
 

@@ -119,6 +119,30 @@ tasks.register('parityTest', JavaExec) {
     mustRunAfter 'test'
 }
 
+tasks.register('cloudProvidersTest', JavaExec) {
+    group = 'verification'
+    description = 'Eight concurrent Max reasoning providers, SSE usage, replay and unattended token policy'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.server.CloudProvidersTest'
+    workingDir = repoRoot
+    dependsOn 'compileTestJava'
+    environment 'WORKBENCH_MOCK', '1'
+    environment 'WORKBENCH_QA', '1'
+    environment 'WORKBENCH_REVIEW_MODE', 'auto'
+    environment 'WORKBENCH_HEADLESS', '1'
+    environment 'WORKBENCH_UNLIMITED_BUDGET', '1'
+    environment 'WORKBENCH_PORT', '7824'
+    jvmArgs '-Djava.awt.headless=true'
+    doFirst {
+        def parent = file("${buildDir}/tmp")
+        parent.mkdirs()
+        def run = java.nio.file.Files.createTempDirectory(parent.toPath(), 'cloud-providers-').toFile()
+        new File(run, 'java-home').mkdirs()
+        environment 'WORKBENCH_HOME', new File(run, 'home').absolutePath
+        systemProperty 'user.home', new File(run, 'java-home').absolutePath
+    }
+}
+
 // Unlimited headless turns and ordinary controls, without JEB or paid model calls.
 ['agentTurnsHeadlessTest': '1', 'agentTurnsBoundedTest': '0'].each { taskName, headless ->
     tasks.register(taskName, JavaExec) {
@@ -132,6 +156,7 @@ tasks.register('parityTest', JavaExec) {
         environment 'WORKBENCH_QA', '1'
         environment 'WORKBENCH_REVIEW_MODE', 'auto'
         environment 'WORKBENCH_HEADLESS', headless
+        environment 'WORKBENCH_UNLIMITED_BUDGET', '0'
         environment 'WORKBENCH_PORT', headless == '1' ? '7820' : '7822'
         jvmArgs '-Djava.awt.headless=true'
         doFirst {

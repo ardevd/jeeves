@@ -4348,7 +4348,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
         int totalHits = 0;
 
         if (kinds.contains("code") || kinds.contains("comments")) {
-            for (SearchIndex.Entry e : searchIndex.entries()) {
+            for (SearchIndex.Entry e : searchIndex.queryEntries()) {
                 if (groups.size() >= groupCap || totalHits >= hitCap) break;
                 List<Object> hits = new ArrayList<>();
                 String[] lines = e.lines();

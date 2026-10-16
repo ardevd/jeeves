@@ -224,7 +224,9 @@ async function loadMissions(){
       '</span></div>' +
       '<div class="mc-goal">' + esc(m.goal) + '</div>' +
       /* the meter is for a run in flight; a finished run states what it spent (a bar parked at 78% reads as "still going") */
-      (isTerminal(m)
+      (m.budgetUnlimited
+        ? '<div class="mc-line mc-spent">' + (m.inputTokens || 0).toLocaleString('en-US') + ' input · ' + (m.outputTokens || 0).toLocaleString('en-US') + ' output tokens · no mission budget limit</div>'
+        : isTerminal(m)
         ? '<div class="mc-line mc-spent">' + (m.tokensUsed || 0).toLocaleString('en-US') + ' of ' + (m.budget || 0).toLocaleString('en-US') + ' tokens</div>'
         : '<div class="mc-line"><span class="mbar' + (budgetPct >= 90 ? ' hot' : '') + '"><i style="width:' + budgetPct + '%"></i></span><span>' + budgetPct + '%</span></div>') +
       '<div><span class="mc-scope">' + esc(m.scope || 'no write-scope') + '</span></div>' +
@@ -419,7 +421,7 @@ function paintMissionCtrl(m: Mission){
   const row = document.getElementById('agm-topup-row'), inp = document.getElementById('agm-topup') as HTMLInputElement | null;
   const btn = document.getElementById('agm-topup-btn'), hint = document.getElementById('agm-topup-hint');
   if (row && inp && btn && hint){
-    row.hidden = !live;
+    row.hidden = !live || !!m.budgetUnlimited;
     const key = m.id + ':' + (m.budgetNeeded || 0);
     if (live && inp.dataset.for !== key){
       inp.dataset.for = key;
@@ -442,7 +444,7 @@ function pausedAtTurns(m: Mission): boolean {
 }
 /** Paused AT the budget ceiling with the budget still spent — a plain resume would only re-park it. */
 function pausedAtBudget(m: Mission): boolean {
-  return m.state === 'paused' && !!m.budgetNeeded && (m.budget || 0) < (m.budgetFloor || m.budgetNeeded || 0);
+  return !m.budgetUnlimited && m.state === 'paused' && !!m.budgetNeeded && (m.budget || 0) < (m.budgetFloor || m.budgetNeeded || 0);
 }
 /* act: pause | stop | raise — 'pause' on a paused mission resumes; a mission paused AT the
    budget resumes WITH the raise in the box (agent.resume {budget}); 'raise' on a running
@@ -511,7 +513,9 @@ function showMissionInspector(m: Mission){
   setText('agm-goal', m.goal);
   setText('agm-model', m.model + ' · ' + ((m.mode === 'cli' || m.mode === 'claude') ? 'Claude Code CLI' : m.mode === 'http' ? 'API' : m.mode) + (m.depth ? ' · ' + m.depth : '') + (m.effort ? ' · effort ' + m.effort : '')
     + (m.maxTurns ? ' · ≤' + m.maxTurns + ' turns' : '') + (m.target ? ' · ' + m.target : ''));
-  setText('agm-budget', (m.tokensUsed || 0).toLocaleString('en-US') + ' / ' + (m.budget || 0).toLocaleString('en-US') + ' tokens (cost-weighted: cache hits count 1/10) · the mission\'s own ceiling'
+  setText('agm-budget', m.budgetUnlimited
+    ? (m.inputTokens || 0).toLocaleString('en-US') + ' input · ' + (m.outputTokens || 0).toLocaleString('en-US') + ' output · ' + (m.cacheHitTokens || 0).toLocaleString('en-US') + ' cached input tokens · no mission budget limit'
+    : (m.tokensUsed || 0).toLocaleString('en-US') + ' / ' + (m.budget || 0).toLocaleString('en-US') + ' tokens (cost-weighted: cache hits count 1/10) · the mission\'s own ceiling'
     + (m.tokensRaw ? ' · raw ' + m.tokensRaw.toLocaleString('en-US') + ', ' + Math.round(100 * (m.cacheHitTokens || 0) / Math.max(1, m.tokensRaw)) + '% cached' : ''));
   setText('agm-scope', m.scope || '(no write-scope)');
   /* P0.3: REASON section — the card's gate (blocked state + reason). One
@@ -1381,8 +1385,7 @@ function showAgSummary(){
 ================================================================== */
 let providersCache: Provider[] = [];
 
-/* effort levels: the claude CLI's five; an http provider's reasoning_effort
-   stops at high (the backend clamps, the picker does not offer — settings r1 H3) */
+/* CLI effort levels and the native Max contract of DeepSeek V4 / GLM 5.3. */
 const EFFORTS: { v: string; label: string; cliOnly?: boolean }[] = [
   { v: '', label: 'effort: default' }, { v: 'low', label: 'effort: low' }, { v: 'medium', label: 'effort: medium' },
   { v: 'high', label: 'effort: high' }, { v: 'xhigh', label: 'effort: xhigh', cliOnly: true }, { v: 'max', label: 'effort: max', cliOnly: true },
@@ -1477,14 +1480,16 @@ function fillModelSel(sel: HTMLSelectElement, providerId: string, current: strin
   sel.value = models.includes(current) ? current : (p.model && models.includes(p.model) ? p.model : models[0]);
 }
 
-function fillEffortSel(sel: HTMLSelectElement, current: string, driver?: string){
+function fillEffortSel(sel: HTMLSelectElement, current: string, driver?: string, model?: string){
   sel.innerHTML = '';
   const cli = driver === 'cli';
+  const maxHttp = driver === 'http' && (model === 'deepseek-v4-pro' || model === 'deepseek-flash' || !!model?.startsWith('glm-5.3'));
+  const allowed = (e: typeof EFFORTS[number]) => (!e.cliOnly || cli || (maxHttp && e.v === 'max')) && !(maxHttp && e.v === 'medium');
   EFFORTS.forEach(function(e){
-    if (e.cliOnly && !cli) return;
+    if (!allowed(e)) return;
     const o = document.createElement('option'); o.value = e.v; o.textContent = e.label; sel.appendChild(o);
   });
-  sel.value = EFFORTS.some(function(e){ return e.v === current && (!e.cliOnly || cli); }) ? current : '';
+  sel.value = EFFORTS.some(function(e){ return e.v === current && allowed(e); }) ? current : '';
 }
 
 /* a "provider:model" spec → its halves (the pickers' current values) */
@@ -1504,7 +1509,7 @@ async function loadProviders(){
   fillProviderSel(prov, curP, '— provider: the depth\'s (⚡ REVERSING AGENT) —', true);   // forTask: the scripted test routine is not a human's choice
   fillModelSel(model, prov.value, curM);
   const effort = document.getElementById('ag-spawn-effort') as HTMLSelectElement | null;
-  if (effort) fillEffortSel(effort, effort.value, driverOf(prov.value));
+  if (effort) fillEffortSel(effort, effort.value, driverOf(prov.value), model.value);
 }
 
 /* ---- the PROVIDERS dialog */
@@ -2007,7 +2012,9 @@ async function renderTaskGrid(){
       turns.placeholder = d.turnsUnlimited ? 'no turn limit (headless)' : 'default: ' + (driver === 'cli' ? d.defaults.turnsCli + ' (CLI tool calls)' : driver ? d.defaults.turnsLoop + ' (http loop turns)' : d.defaults.turnsCli + ' CLI / ' + d.defaults.turnsLoop + ' http');
     }
     if (budget){
-      budget.placeholder = 'default: ' + d.defaults.budget + (driver === 'cli' ? ' — not metered on the CLI' : '');
+      budget.disabled = !!d.budgetUnlimited && driver === 'http';
+      if (budget.disabled) budget.value = '';
+      budget.placeholder = budget.disabled ? 'no mission budget limit (headless)' : 'default: ' + d.defaults.budget + (driver === 'cli' ? ' — not metered on the CLI' : '');
       budget.classList.toggle('dim', driver === 'cli');
       budget.title = driver === 'cli'
         ? 'the claude CLI reports no token usage: this budget is advisory text in its prompt' + (d.turnsUnlimited ? '; headless missions have no turn limit' : ', the turn cap is what stops it')
@@ -2028,18 +2035,23 @@ async function renderTaskGrid(){
           const ms = grid.querySelector<HTMLSelectElement>('.tmodel[data-depth="' + d.depth + '"]');
           if (ms) fillModelSel(ms, sel.value, '');
           const es = grid.querySelector<HTMLSelectElement>('.teffort[data-depth="' + d.depth + '"]');
-          if (es) fillEffortSel(es, es.value, driverOf(sel.value));
+          if (es) fillEffortSel(es, es.value, driverOf(sel.value), ms?.value);
           capHints(d.depth, driverOf(sel.value));
         });
         c.appendChild(sel);
       } else if (spec.key === 'model'){
         const sel = document.createElement('select'); sel.className = 'tmodel'; sel.dataset.depth = d.depth;
         fillModelSel(sel, cur.provider, cur.model);
-        sel.addEventListener('change', function(){ mark(d.depth); });
+        sel.addEventListener('change', function(){
+          mark(d.depth);
+          const es = grid.querySelector<HTMLSelectElement>('.teffort[data-depth="' + d.depth + '"]');
+          const ps = grid.querySelector<HTMLSelectElement>('.tprov[data-depth="' + d.depth + '"]');
+          if (es && ps) fillEffortSel(es, es.value, driverOf(ps.value), sel.value);
+        });
         c.appendChild(sel);
       } else if (spec.key === 'effort'){
         const sel = document.createElement('select'); sel.className = 'teffort'; sel.dataset.depth = d.depth;
-        fillEffortSel(sel, d.effort || '', driverOf(cur.provider));
+        fillEffortSel(sel, d.effort || '', driverOf(cur.provider), cur.model);
         sel.addEventListener('change', function(){ mark(d.depth); });
         c.appendChild(sel);
       } else {
@@ -2096,6 +2108,7 @@ function openTaskDialog(){
         budget: parseInt(q('tbudget').value, 10) || 0,
       };
       if (q('tturns').disabled) delete params.turns; // preserve the stored value while headless overrides it
+      if (q('tbudget').disabled) delete params.budget;
       const rs = await tryOp('task.configure', params);
       if (rs.error){ err.textContent = depth + ': ' + rs.error.message; note.textContent = ''; return; }
     }
@@ -2302,7 +2315,10 @@ function initSpawn(){
   const effortSel = document.getElementById('ag-spawn-effort') as HTMLSelectElement | null;
   if (provSel && modelSel) provSel.addEventListener('change', function(){
     fillModelSel(modelSel, provSel.value, '');
-    if (effortSel) fillEffortSel(effortSel, effortSel.value, driverOf(provSel.value));   // xhigh/max are the CLI's (r1 H3)
+    if (effortSel) fillEffortSel(effortSel, effortSel.value, driverOf(provSel.value), modelSel.value);
+  });
+  if (modelSel && provSel && effortSel) modelSel.addEventListener('change', function(){
+    fillEffortSel(effortSel, effortSel.value, driverOf(provSel.value), modelSel.value);
   });
   if (effortSel) fillEffortSel(effortSel, '', '');
   /* the two configurable areas, as buttons above the cards and as hooks for

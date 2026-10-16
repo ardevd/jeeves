@@ -4788,7 +4788,7 @@ public final class Workspace {
                 boolean hit = json.contains(String.valueOf(r.get("addr")))
                         || (!text.isEmpty() && java.util.regex.Pattern.compile("(?<![\\w$])" + java.util.regex.Pattern.quote(nm) + "(?![\\w$])").matcher(text).find());
                 if (hit) names.add(r);
-                if (names.size() >= 60) break;
+                if (names.size() >= 60 && !dev.workbench.llm.Depth.unlimitedTurns()) break;
             }
             if (!names.isEmpty()) {
                 out.put("agentNames", names);
@@ -4800,7 +4800,7 @@ public final class Workspace {
                 boolean hit = json.contains(String.valueOf(r.get("addr")))
                         || (!text.isEmpty() && java.util.regex.Pattern.compile("(?<![\\w$])" + java.util.regex.Pattern.quote(nm) + "(?![\\w$])").matcher(text).find());
                 if (hit) hn.add(r);
-                if (hn.size() >= 60) break;
+                if (hn.size() >= 60 && !dev.workbench.llm.Depth.unlimitedTurns()) break;
             }
             if (!hn.isEmpty()) {
                 out.put("humanNames", hn);

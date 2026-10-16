@@ -21,6 +21,22 @@ public final class Depth {
         return "1".equals(value) || "true".equalsIgnoreCase(value);
     }
 
+    /** Separate opt-in: an unattended campaign meters usage without a mission token ceiling. */
+    public static boolean unlimitedBudget() {
+        String value = System.getenv("WORKBENCH_UNLIMITED_BUDGET");
+        return unlimitedTurns() && ("1".equals(value) || "true".equalsIgnoreCase(value));
+    }
+
+    /** Provider model contracts differ: GLM-5.3 and DeepSeek V4 support max natively. */
+    public static String httpEffort(String model, String effort) {
+        if (effort == null) return null;
+        if ("deepseek-v4-pro".equals(model) || "deepseek-flash".equals(model)
+                || (model != null && model.startsWith("glm-5.3"))) {
+            return "medium".equals(effort) || "xhigh".equals(effort) ? "high" : effort;
+        }
+        return "xhigh".equals(effort) || "max".equals(effort) ? "high" : effort;
+    }
+
     /** null/blank → null; quick|deep (any case) → canonical; else E_SYNTAX —
      *  a typo must not silently spawn an unbounded mission. */
     public static String normalize(String depth) throws OpException {

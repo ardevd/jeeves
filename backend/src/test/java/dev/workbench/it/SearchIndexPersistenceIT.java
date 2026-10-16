@@ -22,9 +22,18 @@ public final class SearchIndexPersistenceIT {
     }
     private static void stopped() throws Exception {
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);
-        while(Thread.getAllStackTraces().keySet().stream().anyMatch(t->t.isAlive() && t.getName().startsWith("search-index"))) {
-            if(System.nanoTime()>=deadline) throw new AssertionError("index worker did not stop");
-            Thread.sleep(10);
+        for (;;) {
+            // Join the entire snapshot before taking another. Testing isAlive() on
+            // an old snapshot could miss a successor started by workerFinished:
+            // its predecessor had exited, but the successor wasn't in the snapshot.
+            var workers=Thread.getAllStackTraces().keySet().stream()
+                    .filter(t->t.getName().startsWith("search-index")).toList();
+            if(workers.isEmpty()) return;
+            for(Thread worker:workers) {
+                long remaining=deadline-System.nanoTime();
+                if(remaining<=0) throw new AssertionError("index worker did not stop");
+                worker.join(Math.max(1,TimeUnit.NANOSECONDS.toMillis(remaining)));
+            }
         }
     }
     private static final class Host implements SearchIndex.Host {
@@ -204,9 +213,28 @@ public final class SearchIndexPersistenceIT {
         index.kill(); stopped();
     }
 
+    private static void immediateQuery(Path root) throws Exception {
+        Path dir=root.resolve("immediate-query"); Host host=new Host(); SearchIndex index=built(host,dir);
+        try {
+            host.version.set(2); host.blockCall=host.calls.get()+1;
+            index.invalidate(A,A); await(host.entered,"background refresh is held after invalidation");
+            check(!current(index,1),"stale text disappears immediately");
+            var pool=java.util.concurrent.Executors.newFixedThreadPool(8);
+            try {
+                var tasks=new java.util.ArrayList<java.util.concurrent.Callable<Boolean>>();
+                for(int n=0;n<8;n++) tasks.add(()->index.queryEntries().stream()
+                        .anyMatch(e->A.equals(e.addr()) && String.join("\n",e.lines()).contains("version = 2")));
+                for(var result:pool.invokeAll(tasks)) check(result.get(),"search sees renamed text while background refresh is held");
+            } finally {pool.shutdownNow();}
+            check(pending(dir).contains(A),"query overlay does not falsely acknowledge durable persistence");
+            host.release.countDown(); stopped();
+            check(current(index,2) && pending(dir).isEmpty(),"background persistence still completes normally");
+        } finally {index.kill();host.release.countDown();stopped();}
+    }
+
     public static void main(String[] args) throws Exception {
         Path root=Files.createTempDirectory("jeeves-index-persistence-");
-        try { interrupted(root); failedText(root); failedWrite(root); newerInvalidation(root); failedHeader(root); onDemand(root); missingGzip(root); rejectedWorker(root); }
+        try { interrupted(root); failedText(root); failedWrite(root); newerInvalidation(root); failedHeader(root); onDemand(root); missingGzip(root); rejectedWorker(root); immediateQuery(root); }
         catch(Exception|AssertionError failure){failure.printStackTrace(System.out);throw failure;}
         System.out.println("Search-index persistence checks passed: "+checks);
     }

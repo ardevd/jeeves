@@ -637,6 +637,9 @@ export interface Mission {
   local?: boolean;
   tokensUsed?: number;
   budget?: number;
+  budgetUnlimited?: boolean;
+  inputTokens?: number;
+  outputTokens?: number;
   tokensRaw?: number;      // raw prompt+completion tokens (tokensUsed is cost-weighted: cache hits at 1/10)
   cacheHitTokens?: number;
   budgetNeeded?: number;   // >0 while paused at the ceiling: the raise the next turn needs (RAISE & RESUME prefills it)
@@ -741,6 +744,7 @@ export interface TaskDepth {
   turns: number;             // 0 = default
   turnsUnlimited?: boolean; // headless execution overrides stored turns
   budget: number;            // 0 = default
+  budgetUnlimited?: boolean; // unattended HTTP execution meters usage without a token ceiling
   defaults: { turnsCli: number; turnsLoop: number; budget: number };
   resolved: { provider?: string; providerLabel?: string; model?: string; driver?: string; local?: boolean; configured?: boolean; unconfigured?: boolean; unresolved?: boolean; unlisted?: boolean };   // unlisted: the pinned model was dropped from its provider's list (llm-config §6.4)
 }

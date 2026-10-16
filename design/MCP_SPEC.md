@@ -326,7 +326,7 @@ background fetches are not navigation, which is why the browser pings explicitly
 | Op | M | Purpose |
 |---|---|---|
 | `task.list` | | the built-in task catalogue — today `reverse` with its `quick` / `deep` depths: each depth's configured `{model, effort, turns, budget}` (null / 0 = default), the defaults it falls back to, and the provider/model the next spawn resolves to |
-| `task.configure <task> <depth> [--model] [--effort] [--turns] [--budget]` | ✓ | MERGE one depth's settings: an absent param keeps the stored value, a blank string / 0 resets the field. `model` is `provider:model`, must resolve (the scripted agent is refused) and has NO default — an unconfigured depth spawns nothing (`agent.spawn {depth}` is E_SYNTAX until it is set); `effort` is `low\|medium\|high\|xhigh\|max` (the claude CLI's `--effort`; http providers get `reasoning_effort` clamped to `high`); turn cap and budget default per depth. `agent.spawn {depth}` with no explicit model runs on these (backend/.workbench/tasks.json); `llm.remove` resets the depths that named the removed provider. Operator-only: a mission actor gets E_SCOPE, an unmissioned MCP client (the user's assistant) may call it — MCP tools `task_list` / `task_configure` carry strict schemas |
+| `task.configure <task> <depth> [--model] [--effort] [--turns] [--budget]` | ✓ | MERGE one depth's settings: an absent param keeps the stored value, a blank string / 0 resets the field. `model` is `provider:model`, must resolve (the scripted agent is refused) and has NO default — an unconfigured depth spawns nothing (`agent.spawn {depth}` is E_SYNTAX until it is set); `effort` is `low\|medium\|high\|xhigh\|max` (the claude CLI's `--effort`; http providers use their model's reasoning-effort contract, detailed below); turn cap and budget default per depth. `agent.spawn {depth}` with no explicit model runs on these (backend/.workbench/tasks.json); `llm.remove` resets the depths that named the removed provider. Operator-only: a mission actor gets E_SCOPE, an unmissioned MCP client (the user's assistant) may call it — MCP tools `task_list` / `task_configure` carry strict schemas |
 
 With `WORKBENCH_HEADLESS=1` (also `true`), HTTP and CLI agent missions have no
 turn ceiling. This overrides depth defaults, saved `task.configure` turns and
@@ -340,6 +340,32 @@ budget enforcement remain effective. The CLI runner omits `--max-turns`.
 No mission restart/resumption semantics change. With the flag absent or false,
 the existing bounded behavior applies. Java's headless rendering flag does not
 select this execution policy.
+
+`WORKBENCH_UNLIMITED_BUDGET=1|true` together with the headless flag additionally
+removes HTTP mission token ceilings. Mission records carry `budgetUnlimited:true`,
+`budget:0`, and 64-bit `inputTokens`, `outputTokens`, `tokensUsed`, `tokensRaw`,
+`cacheHitTokens`; each turn retains the complete provider `usage` object.
+`agent.setbudget` is a reported no-op in this mode. Task rows disclose the override
+while preserving stored budgets. Provider balances are not changed or capped.
+Default/non-headless budget behavior is unchanged.
+
+HTTP `reasoning_effort:max` is passed unchanged for `deepseek-v4-pro`,
+`deepseek-flash`, and `glm-5.3` models; their `medium`/`xhigh` aliases map to `high`.
+Other models retain the existing max/xhigh-to-high compatibility mapping.
+Configured provider output allowances and mission `maxOutput` take precedence
+over the 4096 fallback, bounded by the endpoint allowance and any effective
+mission budget. Streaming usage supports both DeepSeek cache hit/miss fields and
+Z.ai `prompt_tokens_details.cached_tokens`.
+
+The `code` facade accepts `view:locals`, dispatched to `locals.list`. Headless
+HTTP loops deliver whole tool payloads and matching name-provenance rows; ordinary
+interactive payload cuts remain unchanged. Context-window maintenance still
+applies. `annotate` accepts batches of 1–50 items; full classes may require several.
+Native text search overlays fresh renders for pending invalidated classes, so a
+completed rename is visible to the next search before durable reindexing finishes.
+Original descriptors/local identities accompany current names in the existing
+symbol, locals and agent-provenance contracts. Failed renders remain explicitly
+partial; a query overlay does not claim successful durable cache persistence.
 
 ### 4.16 System (prerequisites)
 | Op | M | Purpose |

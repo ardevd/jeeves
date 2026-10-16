@@ -154,6 +154,7 @@ public final class TaskSettings {
         row.put("turns", e == null ? 0 : e.turns);
         if (Depth.unlimitedTurns()) row.put("turnsUnlimited", true);
         row.put("budget", e == null ? 0 : e.budget);
+        if (Depth.unlimitedBudget()) row.put("budgetUnlimited", true);
         Map<String, Object> defaults = new LinkedHashMap<>();
         defaults.put("turnsCli", Depth.cliTurns(depth, 40));
         defaults.put("turnsLoop", Depth.loopTurns(depth, 14));

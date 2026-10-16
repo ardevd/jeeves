@@ -53,10 +53,12 @@ public final class AgentManager {
                                    blocked event's text so the card/inspector can show it;
                                    the activity row alone scrolls away (agents P0.3) */
         public boolean local;
-        public int budget, tokensUsed;      /* tokensUsed is COST-weighted (cache hits at 1/10); the raw count and the hits ride beside it */
-        public long tokensRaw, cacheHitTokens;
-        public volatile int budgetNeeded;   /* >0 while paused at the budget ceiling: the raise the next turn needs (AgentLoop.pauseAtCeiling) */
-        public volatile int budgetFloor;    /* the least budget that lets the loop send the next request at all (tokensUsed + prompt estimate + 1) */
+        public int budget;
+        public boolean budgetUnlimited;
+        public long tokensUsed;             /* legacy COST-weighted display, not a provider invoice */
+        public long tokensRaw, cacheHitTokens, inputTokens, outputTokens;
+        public volatile long budgetNeeded;  /* >0 while paused at the budget ceiling */
+        public volatile long budgetFloor;   /* tokensUsed + prompt estimate + 1 */
         public volatile int turnCap;        /* the effective turn cap the http loop runs under (explicit maxTurns or the depth default) */
         public volatile int turnsDone;      /* turns completed so far (http loop) */
         public volatile int turnsNeeded;    /* >0 while paused AT the turn cap: the raise suggested (AgentLoop.pauseAtTurnCap) */
@@ -85,7 +87,10 @@ public final class AgentManager {
             m.maxTurns = num(r.get("maxTurns")); m.target = str(r.get("target")); m.project = str(r.get("project"));
             m.turnsUnlimited = Boolean.TRUE.equals(r.get("turnsUnlimited"));
             m.agentId = str(r.get("agentId")); m.state = str(r.get("state")); m.reason = str(r.get("reason"));
-            m.budget = num(r.get("budget")); m.tokensUsed = num(r.get("tokensUsed"));
+            m.budget = num(r.get("budget")); m.tokensUsed = r.get("tokensUsed") instanceof Number used ? used.longValue() : 0L;
+            m.budgetUnlimited = Boolean.TRUE.equals(r.get("budgetUnlimited"));
+            m.inputTokens = r.get("inputTokens") instanceof Number input ? input.longValue() : 0L;
+            m.outputTokens = r.get("outputTokens") instanceof Number output ? output.longValue() : 0L;
             m.tokensRaw = r.get("tokensRaw") instanceof Number n1 ? n1.longValue() : 0L; m.cacheHitTokens = r.get("cacheHitTokens") instanceof Number n2 ? n2.longValue() : 0L;
             m.startedAt = r.get("startedAt") instanceof Number n ? n.longValue() : 0L;
             m.provider = str(r.get("provider")); m.providerLabel = str(r.get("providerLabel"));
@@ -116,7 +121,9 @@ public final class AgentManager {
             m.put("state", state);
             if (reason != null) m.put("reason", reason);
             m.put("budget", budget);
+            if (budgetUnlimited) m.put("budgetUnlimited", true);
             m.put("tokensUsed", tokensUsed);
+            m.put("inputTokens", inputTokens); m.put("outputTokens", outputTokens);
             if (tokensRaw > 0) { m.put("tokensRaw", tokensRaw); m.put("cacheHitTokens", cacheHitTokens); }
             if (budgetNeeded > 0) { m.put("budgetNeeded", budgetNeeded); m.put("budgetFloor", budgetFloor); }
             if (turnsUnlimited || turnCap > 0) m.put("turnCap", turnsUnlimited ? 0 : turnCap);
@@ -720,6 +727,8 @@ public final class AgentManager {
         m.scope = scopeNorm;
         m.project = projectName;
         m.budget = budget <= 0 ? dev.workbench.llm.Depth.defaultBudget(m.depth, 200_000) : budget;
+        m.budgetUnlimited = "http".equals(m.mode) && dev.workbench.llm.Depth.unlimitedBudget();
+        if (m.budgetUnlimited) m.budget = 0;
         m.agentId = "agent-" + (++agentSeq);
         m.startedAt = System.currentTimeMillis();
         missions.put(m.id, m);
@@ -843,6 +852,11 @@ public final class AgentManager {
 
     public synchronized Map<String, Object> setBudget(String id, int budget) throws OpException {
         Mission m = requireMission(id);
+        if (m.budgetUnlimited) {
+            Map<String, Object> out = m.toMap();
+            out.put("note", "This headless campaign meters usage without a mission token ceiling; budget was ignored");
+            return out;
+        }
         if (budget <= 0) throw OpException.syntax("budget must be positive", "");
         m.budget = budget;
         return m.toMap();
@@ -1824,10 +1838,7 @@ public final class AgentManager {
         /* the provider's extras (DeepSeek's thinking mode) plus the mission's
            effort as the OpenAI-compatible reasoning_effort — the mission's wins */
         Map<String, Object> extras = new LinkedHashMap<>(pr.extraParams);
-        /* the OpenAI-compatible enum stops at high; xhigh/max are the claude
-           CLI's (settings r1 H3) — clamp, never send a value the endpoint 400s on */
-        if (m.effort != null) extras.put("reasoning_effort",
-                "xhigh".equals(m.effort) || "max".equals(m.effort) ? "high" : m.effort);
+        if (m.effort != null) extras.put("reasoning_effort", dev.workbench.llm.Depth.httpEffort(model, m.effort));
         dev.workbench.llm.AgentLoop loop = new dev.workbench.llm.AgentLoop(
                 dispatcher, m, client, model,
                 new dev.workbench.llm.AgentLoop.Activity() {   // rows tagged mission+turn; the transcript lands on the mission (agent.turn)

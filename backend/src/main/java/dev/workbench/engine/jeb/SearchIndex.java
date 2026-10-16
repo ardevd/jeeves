@@ -944,6 +944,40 @@ final class SearchIndex {
         return entries;
     }
 
+    /** A query immediately after a rename must include its fresh text, even when the
+     * durable background writer has not caught up. Overlay pending owners on a snapshot;
+     * never hold the index monitor while decompiling (engine -> index lock order).
+     * A concurrent second edit invalidates that overlay instead of publishing stale text.
+     * Failed renders remain pending and the existing coverage metadata reports the gap. */
+    List<Entry> queryEntries() {
+        ensureWarm();
+        Map<String, Entry> snapshot = new LinkedHashMap<>();
+        Map<String, Long> dirty = new LinkedHashMap<>();
+        int gen;
+        synchronized (this) {
+            if (pending.isEmpty()) return entries;
+            for (Entry e : entries) snapshot.put(e.addr(), e);
+            for (String addr : pending) {
+                dirty.put(addr, invalidations.getOrDefault(addr, 0L));
+                snapshot.remove(addr);
+            }
+            gen = generation;
+        }
+        for (Map.Entry<String, Long> changed : dirty.entrySet()) {
+            String addr = changed.getKey();
+            String text, label;
+            try { text = host.decompileText(addr); label = host.classLabel(addr); }
+            catch (Exception failure) { continue; }
+            if (text == null) continue;
+            synchronized (this) {
+                if (dead || gen != generation) return List.of();
+                if (changed.getValue().equals(invalidations.getOrDefault(addr, 0L)))
+                    snapshot.put(addr, new Entry(addr, label, text.split("\n", -1)));
+            }
+        }
+        return List.copyOf(snapshot.values());
+    }
+
     synchronized Map<String, Object> status() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("state", state);

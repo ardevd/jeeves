@@ -104,6 +104,12 @@ public final class AgentLoop {
      *  counts cost-weighted tokens, not raw ones. */
     private static final double CACHE_HIT_WEIGHT = 0.10;
 
+    private String usageSummary() {
+        return mission.budgetUnlimited
+                ? count(mission.inputTokens) + " input / " + count(mission.outputTokens) + " output tokens (no mission ceiling)"
+                : mission.tokensUsed + "/" + mission.budget + " tokens";
+    }
+
     /** Two-space pretty JSON for the transcript: the cap then truncates lines, not a one-line blob
      *  (the TURN pane showed a decompile result as one escaped line). */
     private static String prettyJson(Object v) { StringBuilder sb = new StringBuilder(); prettyJson(v, sb, 0); return sb.toString(); }
@@ -171,7 +177,15 @@ public final class AgentLoop {
     /** Where eviction starts: the model's window minus a 10% estimate margin (chars/4 undercounts
      *  code), the completion reserve and the tool schemas. Below it NOTHING is rewritten. */
     private int contextLimit() {
-        return Math.max(4_096, (int) (contextTokens * 0.9) - MAX_COMPLETION_TOKENS - TOOL_SCHEMA_TOKENS);
+        return Math.max(4_096, (int) (contextTokens * 0.9) - completionLimit() - TOOL_SCHEMA_TOKENS);
+    }
+
+    /** A configured output allowance replaces the historical 4096 default. The provider's
+     *  documented maximum still applies; the caller can request less for a particular mission. */
+    private int completionLimit() {
+        int limit = mission.maxOutputTokens > 0 ? mission.maxOutputTokens
+                : wire.maxOutputTokens() > 0 ? wire.maxOutputTokens() : MAX_COMPLETION_TOKENS;
+        return wire.maxOutputTokens() > 0 ? Math.min(limit, wire.maxOutputTokens()) : limit;
     }
 
     private static boolean looksLikeContextOverflow(Throwable e) {
@@ -267,8 +281,7 @@ public final class AgentLoop {
      *  budget guard, never the provider's own accounting. */
     private static final int TOOL_SCHEMA_TOKENS = 600;
 
-    /** Completion ceiling per turn; also the completion headroom quoted in a
-     *  pause message, so a raise computed from that message cannot re-pause. */
+    /** Fallback when neither mission nor provider declares its output allowance. */
     private static final int MAX_COMPLETION_TOKENS = 4096;
 
     /** What one context-maintenance pass did, for the per-turn activity row. */
@@ -441,7 +454,7 @@ public final class AgentLoop {
     }
 
     /** 31008 → "31,008" (locale-independent: the markers must be stable). */
-    private static String count(int n) {
+    private static String count(long n) {
         return String.format(java.util.Locale.ROOT, "%,d", n);
     }
 
@@ -578,11 +591,11 @@ public final class AgentLoop {
                             "stripped", ctx.stripped(), "promptEst", promptEst, "limit", contextTokens));
 
                     // (a) budget is a HARD ceiling (QA M2): no new request once spent
-                    if (mission.tokensUsed >= mission.budget) {
+                    if (!mission.budgetUnlimited && mission.tokensUsed >= mission.budget) {
                         rec.put("outcome", "paused"); activity.record(rec);   // partial transcript while parked — replaced when the turn completes
                         if (pauseAtCeiling("turn " + turn + " · budget hard ceiling "
                                 + mission.tokensUsed + "/" + mission.budget,
-                                promptEst, MAX_COMPLETION_TOKENS)) return;
+                                promptEst, completionLimit())) return;
                         rec.remove("outcome");                     // the retry records afresh under the same turn number
                         turn--;                                    // retry this turn with the raised budget
                         continue;
@@ -605,22 +618,19 @@ public final class AgentLoop {
                     req.put("tools", toolDefs());
                     req.put("tool_choice", "auto");
                     // (b) cap completion so estimated prompt + completion fit the remaining budget
-                    int remaining = mission.budget - mission.tokensUsed;
-                    if (remaining - promptEst <= 0) {
+                    long remaining = (long) mission.budget - mission.tokensUsed;
+                    if (!mission.budgetUnlimited && remaining - promptEst <= 0) {
                         rec.put("outcome", "paused"); activity.record(rec);
                         if (pauseAtCeiling("turn " + turn + " · prompt estimate " + promptEst
                                 + " exceeds remaining budget " + remaining,
-                                promptEst, MAX_COMPLETION_TOKENS)) return;
+                                promptEst, completionLimit())) return;
                         rec.remove("outcome");
                         turn--;
                         continue;
                     }
-                    /* the output cap: the loop's own ceiling, what the budget leaves, the endpoint's cap
-                       and the mission's own */
-                    int maxOut = Math.min(MAX_COMPLETION_TOKENS, remaining - promptEst);
-                    if (wire.maxOutputTokens() > 0) maxOut = Math.min(maxOut, wire.maxOutputTokens());
-                    if (mission.maxOutputTokens > 0) maxOut = Math.min(maxOut, mission.maxOutputTokens);
-                    req.put("max_tokens", Math.max(16, maxOut));
+                    int maxOut = completionLimit();
+                    if (!mission.budgetUnlimited) maxOut = (int) Math.min(maxOut, remaining - promptEst);
+                    req.put("max_tokens", Math.max(1, maxOut));
                     if (wire.streamOnly()) req.put("stream", true);   // the client collects the deltas; the loop sees one message
                     long chatT0 = System.nanoTime();
                     Map<String, Object> resp;
@@ -681,6 +691,10 @@ public final class AgentLoop {
                     if (usage != null) {
                         int promptTok = num(usage.get("prompt_tokens")), completionTok = num(usage.get("completion_tokens"));
                         int hitTok = num(usage.get("prompt_cache_hit_tokens")), missTok = num(usage.get("prompt_cache_miss_tokens"));
+                        if (!usage.containsKey("prompt_cache_hit_tokens") && usage.get("prompt_tokens_details") instanceof Map<?, ?> details)
+                            hitTok = num(details.get("cached_tokens"));
+                        hitTok = Math.max(0, Math.min(promptTok, hitTok));
+                        if (!usage.containsKey("prompt_cache_miss_tokens")) missTok = Math.max(0, promptTok - hitTok);
                         /* the budget counts COST: a prefix-cache hit is billed at ~1/10 of a miss
                            (DeepSeek, Anthropic) — m2 showed 2.19M of 2.29M "used" tokens were hits,
                            and the meter read them at full weight. No cache fields → raw counts. */
@@ -689,20 +703,24 @@ public final class AgentLoop {
                         mission.tokensUsed += used;
                         mission.tokensRaw += promptTok + completionTok;
                         mission.cacheHitTokens += hitTok;
+                        mission.inputTokens += promptTok;
+                        mission.outputTokens += completionTok;
+                        rec.put("usage", new LinkedHashMap<>(usage)); // exact provider usage, including reasoning/cache fields
                         rec.put("tokens", used);
                         rec.put("tokensRaw", promptTok + completionTok);
-                        if (usage.get("prompt_cache_hit_tokens") != null || usage.get("prompt_cache_miss_tokens") != null) {   // DeepSeek prefix cache — visible, not assumed
-                            rec.put("cacheHit", num(usage.get("prompt_cache_hit_tokens")));
-                            rec.put("cacheMiss", num(usage.get("prompt_cache_miss_tokens")));
+                        if (usage.get("prompt_cache_hit_tokens") != null || usage.get("prompt_cache_miss_tokens") != null
+                                || usage.get("prompt_tokens_details") instanceof Map<?, ?>) {
+                            rec.put("cacheHit", hitTok);
+                            rec.put("cacheMiss", missTok);
                         }
                     }
-                    if (mission.tokensUsed >= mission.budget) {
+                    if (!mission.budgetUnlimited && mission.tokensUsed >= mission.budget) {
                         // this turn's results are still to come; they are capped, so
                         // reserving one cap each bounds what turn+1 must re-send
                         if (pauseAtCeiling("turn " + turn + " · +" + used + " tokens → budget "
                                 + mission.tokensUsed + "/" + mission.budget + " reached",
                                 estimateTokens(messages) + TOOL_SCHEMA_TOKENS + pendingReserve(resp),
-                                MAX_COMPLETION_TOKENS)) return;
+                                completionLimit())) return;
                         // fall through: the response is already paid for — use it
                     }
 
@@ -777,7 +795,7 @@ public final class AgentLoop {
                         }
                         activity.row("note", "turn " + turn + " · final: "
                                 + text.substring(0, Math.min(160, text.length())) + " · "
-                                + mission.tokensUsed + "/" + mission.budget + " tokens");
+                                + usageSummary());
                         rec.put("outcome", "final");
                         mission.state = "done";
                         mission.stopReason = "final answer after " + turn + " turn" + (turn == 1 ? "" : "s");
@@ -907,7 +925,10 @@ public final class AgentLoop {
                         String content = Json.write(payload == null ? Map.of() : payload);
                         rawResultChars.put(callId, content.length());
                         callArgsSummary.put(callId, summarizeArgs(args));   // pre-cap size, for the R2 stub
-                        toolMsg.put("content", decompileCall ? capDecompile(payload, content) : capRows(payload, content));   // R1
+                        // Unattended exhaustive naming needs complete outlines, locals and argument inventories.
+                        // Keep the requested payload intact; context-window maintenance still applies between turns.
+                        toolMsg.put("content", mission.turnsUnlimited ? content
+                                : decompileCall ? capDecompile(payload, content) : capRows(payload, content));
                         messages.add(toolMsg);
                         capture.toolResult(capture.logicalId(mission.id, turn, attempt), turn, callId, toolName, args,
                                 String.valueOf(toolMsg.get("content")), Boolean.TRUE.equals(result.get("ok")), content.length());
@@ -928,7 +949,7 @@ public final class AgentLoop {
                         callRec.put("ms", (System.nanoTime() - callT0) / 1_000_000);
                     }
                     progress("turn " + turn + " · " + toolCalls.size() + " tool call(s) · "
-                            + mission.tokensUsed + "/" + mission.budget + " tokens");
+                            + usageSummary());
                 } catch (Exception e) {
                     rec.put("outcome", "error"); rec.put("error", String.valueOf(e));
                     throw e;

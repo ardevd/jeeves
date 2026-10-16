@@ -159,7 +159,7 @@ public final class ToolFacade {
                         "kind", pick("class | method | field — keep one kind (query; optional)", "class", "method", "field"),
                         "symbol", str("symbol to resolve: class or method signature (optional)", "\"Lm76/ak;\""),
                         "limit", num("max rows (optional; absent = every row for query, the first 500 classes for prefix)", "200")));
-        tool("code", true, List.of("code.decompile", "code.smali", "code.outline", "evidence.packet", "code.params"),
+        tool("code", true, List.of("code.decompile", "code.smali", "code.outline", "evidence.packet", "code.params", "locals.list"),
                 "Read code. view java (default) decompiles a method — that method ONLY, cheap — or a whole class;"
                         + " view smali is the disassembly under it (the ground truth); view outline lists a class's methods and fields"
                         + " with signatures; view packet is an evidence packet for ONE method (a class is refused): original descriptor,"
@@ -174,10 +174,12 @@ public final class ToolFacade {
                         + " NOT a verified mapping to the arguments (argumentMapping: unverified; WhatsApp keeps permuted and stale lists);"
                         + " only the analyst maps names onto arguments — an argument name you give through annotate {local} that equals a"
                         + " retained entry is recorded as such, and an argument the analyst mapped is not yours to rename."
-                        + " Results carry agentNames[]: the names agents already gave symbols in this code.",
+                        + " view locals lists every decompiler local/argument with its current name, original name and stable originalSymbol;"
+                        + " use it for exhaustive naming, then annotate {symbol: original method, local: current local name, name: new name}."
+                        + " Results carry agentNames[]: current analyst names paired with their originals (was/originalName/originalSymbol).",
                 "{\"symbol\": \"Lm76/ak;->a()V\"}",
                 props("symbol", str("method or class", "\"Lm76/ak;->a()V\" (that method only) or \"Lm76/ak;\" (the whole class)"),
-                        "view", pick("java (default) | smali | outline | packet | params | site (one call site's bounded context: pass an xref's `from` as the symbol, or `at`)", "java", "smali", "outline", "packet", "params", "site"),
+                        "view", pick("java (default) | smali | outline | packet | params | locals | site (one call site's bounded context: pass an xref's `from` as the symbol, or `at`)", "java", "smali", "outline", "packet", "params", "locals", "site"),
                         "at", str("site: the instruction offset when the symbol does not carry it (hex: +634h)", "\"+634h\""),
                         "context", num("site: DEX instructions each side (default 6)", "6"),
                         "lines", num("site: decompiled lines each side (default 8)", "8"),
@@ -253,7 +255,7 @@ public final class ToolFacade {
         annotateItems.put("items", annotateItem);
         annotateItems.put("description", "one object per symbol (1–50), each with any of name, comment, tags");
         tool("annotate", true, List.of("rename", "comment", "tag.add"),
-                "Name, comment or tag symbols — file a whole class's names in ONE call. Each item names a symbol and gives any of:"
+                "Name, comment or tag symbols — file a whole class's names in batches of up to 50 items. Each item names a symbol and gives any of:"
                         + " name (rename it), comment, tags; with local, name renames that local variable or parameter of the method. Every write applies at once and appears in every later result; the human"
                         + " can revert it. Give a confidence and one line of evidence per item; rename again when you learn more."
                         + " Returns {applied, pending, failed, results[]}; a failed write carries its reason (a taken name, a symbol"
@@ -699,8 +701,9 @@ public final class ToolFacade {
                         return new Route("evidence.packet", p);
                     }
                     case "params": return new Route("code.params", pass(args, Set.of("view", "window", "scope", "question", "entry", "maxInstructions")));
+                    case "locals": return new Route("locals.list", pass(args, Set.of("view", "window", "scope", "question", "entry", "maxInstructions")));
                     case "site": return new Route("code.site", pass(args, Set.of("view", "window", "scope", "question", "entry", "maxInstructions")));
-                    default: throw OpException.syntax("unknown view '" + view + "' for code", "view must be java, smali, outline, packet or params");
+                    default: throw OpException.syntax("unknown view '" + view + "' for code", "view must be java, smali, outline, packet, params, locals or site");
                 }
             }
             case "xrefs": {
