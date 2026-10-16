@@ -92,6 +92,7 @@ def deploy(request,api,systemctl):
         return state
     def phase(name,**fields):
         state.update(phase=name,at=time.time(),**fields);state.pop('error',None);durable_json(state_path,state)
+        deployment_note(root,maintenance={'phase':name,'revision':revision,'at':state['at']})
     try:
         verify_release(release,revision)
         # Never compete with a campaign coordinator. This lock is also held
