@@ -4679,50 +4679,83 @@ public final class Workspace {
         return out;
     }
 
-    /** Names a HUMAN assigned (current addr → {name, was, addr}) — final for agents; a read that
-     *  shows one says so (humanNames), so no agent spends a call finding out (user 2026-09-20). */
-    private Map<String, Map<String, Object>> humanNameLedger(String tid) {
-        Map<String, Map<String, Object>> byAddr = new LinkedHashMap<>();
-        Map<String, String> firstOld = new java.util.HashMap<>();
-        for (Map<String, Object> e : historyFor(tid)) {
-            if (!"rename".equals(e.get("op")) || Boolean.TRUE.equals(e.get("undone"))) continue;
-            if ("local".equals(e.get("kind")) || "parameters".equals(e.get("kind"))) continue;   // a local's or an argument's name is the method's own, not the symbol's
-            String from = String.valueOf(e.get("addr")), to = String.valueOf(e.get("newAddr"));
-            String orig = firstOld.containsKey(from) ? firstOld.remove(from) : String.valueOf(e.get("oldName"));
-            firstOld.put(to, orig);
-            byAddr.remove(from);
-            String actor = String.valueOf(e.get("actor"));
-            if (actor.startsWith("agent:")) continue;          // an agent's name: the other ledger
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("name", e.get("newName"));
-            row.put("was", orig);
-            row.put("addr", to);
-            byAddr.put(to, row);
+    private record NameLedgers(Map<String, Map<String, Object>> agents,
+                               Map<String, Map<String, Object>> humans) {}
+
+    /** Current attribution, keyed by original identity before display addresses are attached.
+     * History may predate owner renames or omit an SDK-propagated method rename. Such a row
+     * must not label an obsolete name as current merely because that word appears in code. */
+    private NameLedgers currentNameLedgers(String tid) {
+        List<Map<String,Object>> entries;
+        synchronized (this) {
+            entries = historyFor(tid).stream().map(LinkedHashMap<String,Object>::new)
+                    .map(row -> (Map<String,Object>)row).toList();
         }
-        return byAddr;
+        List<Map<String,Object>> ordered = new ArrayList<>(entries);
+        ordered.sort(java.util.Comparator.comparing(HistoryJournal::lastChange));
+        Map<String,Map<String,Object>> currentByLookup = new java.util.HashMap<>();
+        Map<String,Map<String,Object>> byOriginal = new LinkedHashMap<>();
+        Engine engine;
+        try { engine = engineFor(tid); }
+        catch (OpException unavailable) { return new NameLedgers(Map.of(), Map.of()); }
+        for (Map<String,Object> entry : ordered) {
+            if (!"rename".equals(entry.get("op")) || Boolean.TRUE.equals(entry.get("undone"))
+                    || Boolean.TRUE.equals(entry.get("discarded")) || entry.get("newName") == null
+                    || "local".equals(entry.get("kind")) || "parameters".equals(entry.get("kind"))) continue;
+            List<String> originals = renameOriginals(entry);
+            boolean stable = !originals.isEmpty();
+            if (!stable) {
+                if (!(entry.get("newAddr") instanceof String address)) continue;
+                originals = List.of(address);
+            }
+            for (String lookup : originals) {
+                if (!currentByLookup.containsKey(lookup)) {
+                    Map<String,Object> resolved = null;
+                    try {
+                        Map<String,Object> found = engine.resolve(lookup);
+                        boolean contradiction = Boolean.TRUE.equals(found.get("contradiction"));
+                        if (contradiction && ("parameter types".equals(found.get("lenient")) || "return type".equals(found.get("lenient")))
+                                && found.get("asked") != null && found.get("addr") != null)
+                            contradiction = !renamesExplain(tid, String.valueOf(found.get("asked")), String.valueOf(found.get("addr")));
+                        if (!contradiction) resolved = found;
+                    } catch (OpException unavailable) { /* Missing legacy alias: no attribution can be proved. */ }
+                    // Do not call resolveSymbol here: its thread-local envelope belongs to the main read.
+                    currentByLookup.put(lookup, resolved);
+                }
+                Map<String,Object> current = currentByLookup.get(lookup);
+                if (current == null || !String.valueOf(entry.get("newName")).equals(current.get("name"))) continue;
+                String original = stableSymbol(current, lookup);
+                if (stable && !lookup.equals(original)) continue;
+                String actor = String.valueOf(entry.get("actor"));
+                Map<String,Object> row = new LinkedHashMap<>();
+                row.put("name", current.get("name"));
+                row.put("was", current.get("origName") != null ? current.get("origName") : provenanceOriginalName(original));
+                row.put("addr", current.getOrDefault("addr", current.getOrDefault("fqcn", lookup)));
+                row.put("originalSymbol", original);
+                row.put("historyId", entry.get("id"));
+                if ("agent".equals(EventBus.actorKind(actor))) {
+                    row.put("by", actor.replaceFirst("^(agent|llm):", "").replaceFirst(" (auto-applied|accepted by human)$", ""));
+                    if (entry.get("confidence") != null) row.put("confidence", entry.get("confidence"));
+                }
+                byOriginal.put(original, row);
+            }
+        }
+        Map<String,Map<String,Object>> agents = new LinkedHashMap<>(), humans = new LinkedHashMap<>();
+        for (Map<String,Object> row : byOriginal.values())
+            (row.containsKey("by") ? agents : humans).put(String.valueOf(row.get("addr")), row);
+        return new NameLedgers(agents, humans);
     }
 
-    private Map<String, Map<String, Object>> agentNameLedger(String tid) {
-        Map<String, Map<String, Object>> byAddr = new LinkedHashMap<>();
-        Map<String, String> firstOld = new java.util.HashMap<>();   // current addr → the chain's original name
-        for (Map<String, Object> e : historyFor(tid)) {
-            if (!"rename".equals(e.get("op")) || Boolean.TRUE.equals(e.get("undone"))) continue;
-            if ("local".equals(e.get("kind")) || "parameters".equals(e.get("kind"))) continue;   // a local's or an argument's name is the method's own, not the symbol's                 // a local's name is the method's own, not a symbol
-            String from = String.valueOf(e.get("addr")), to = String.valueOf(e.get("newAddr"));
-            String orig = firstOld.containsKey(from) ? firstOld.remove(from) : String.valueOf(e.get("oldName"));
-            firstOld.put(to, orig);
-            byAddr.remove(from);
-            String actor = String.valueOf(e.get("actor"));
-            if (!actor.startsWith("agent:")) continue;               // a human's name: not a hypothesis to flag
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("name", e.get("newName"));
-            row.put("was", orig);
-            row.put("addr", to);
-            row.put("by", actor.replaceFirst("^agent:", "").replaceFirst(" (auto-applied|accepted by human)$", ""));
-            if (e.get("confidence") != null) row.put("confidence", e.get("confidence"));
-            byAddr.put(to, row);
+    private static String provenanceOriginalName(String original) {
+        int arrow = original.indexOf("->");
+        if (arrow >= 0) {
+            String member = original.substring(arrow + 2);
+            int end = member.indexOf('('); if (end < 0) end = member.indexOf(':');
+            return end < 0 ? member : member.substring(0, end);
         }
-        return byAddr;
+        String owner = original.endsWith(";") ? original.substring(0, original.length() - 1) : original;
+        int end = Math.max(owner.lastIndexOf('/'), owner.lastIndexOf('.'));
+        return owner.substring(end >= 0 ? end + 1 : owner.startsWith("L") ? 1 : 0);
     }
 
     @SuppressWarnings("unchecked")
@@ -4732,8 +4765,9 @@ public final class Workspace {
         try { tid = resolveTargetIdOrActive(params == null || params.get("target") == null ? null : String.valueOf(params.get("target"))); }
         catch (Exception e) { return null; }
         if (tid == null) return null;
-        Map<String, Map<String, Object>> ledger = agentNameLedger(tid);
-        Map<String, Map<String, Object>> humans = humanNameLedger(tid);
+        NameLedgers namesByActor = currentNameLedgers(tid);
+        Map<String, Map<String, Object>> ledger = namesByActor.agents();
+        Map<String, Map<String, Object>> humans = namesByActor.humans();
         if (ledger.isEmpty() && humans.isEmpty()) return null;
         if (data instanceof List<?> l) return decorateRows((List<Object>) l, ledger);
         if (!(data instanceof Map<?, ?>)) return null;

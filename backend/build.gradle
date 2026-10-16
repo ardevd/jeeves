@@ -140,6 +140,17 @@ tasks.register('opsActiveTest', JavaExec) {
     dependsOn 'compileTestJava'
 }
 
+// Current name/actor provenance over original identities, without the SDK or a server.
+tasks.register('nameProvenanceTest', JavaExec) {
+    group = 'verification'
+    description = 'Current symbol provenance across aliases, override families and undo/redo'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.provenance.NameProvenanceTest'
+    workingDir = repoRoot
+    environment 'WORKBENCH_MOCK', '1'
+    dependsOn 'compileTestJava'
+}
+
 // Deterministic index-host fixture, no live JEB instance or model calls.
 tasks.register('searchIndexPersistenceIT', JavaExec) {
     group = 'verification'
@@ -160,6 +171,7 @@ tasks.register('searchIndexPersistenceIT', JavaExec) {
     nativeRecoveryIT: ['dev.workbench.it.NativeRecoveryIT', 'params/params-fixture.dex'],
     concurrentRenameIT: ['dev.workbench.it.ConcurrentRenameIT', 'params/params-fixture.dex'],
     renameFamilyIT: ['dev.workbench.it.RenameFamilyIT', 'rename-family/rename-family.dex'],
+    callSiteCalleeIT: ['dev.workbench.it.CallSiteCalleeIT', 'rename-family/rename-family.dex'],
 ].each { taskName, fixture ->
     tasks.register(taskName, JavaExec) {
         group = 'verification'

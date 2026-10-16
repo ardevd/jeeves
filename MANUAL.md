@@ -291,6 +291,24 @@ get the same server, restricted by `--allowedTools` to the nine loop tools.
 The browser's own plumbing (layouts, prefs, hover, file browser …) and the
 retired cruft (bookmarks, device pull, map export …) are not tools.
 
+For one call site, use `code {view: site, symbol, at}` (or include the hex
+offset in `symbol`, as an xref's `from` does). `site.callee.ref` is the
+original method descriptor, without operand-separating commas. An internal
+callee also reports its current address/name, original signature and
+`internal: true`; a framework reference remains external.
+
+Agent reads label renamed symbols with `agentNames` or `humanNames`. Each label
+is checked against the symbol's current name and carries its current address,
+`originalSymbol` and `historyId`. A recorded method rename covers the definitions
+and overrides in its `renameTargets`. Old labels are omitted when their name is
+no longer current or their identity cannot be established from legacy history.
+These labels describe recorded authorship; they do not rename anything.
+
+Cross-reference `type` comes from JEB. `UNKNOWN` means JEB did not classify that
+reference; other rows may report `ALLOC`, `GET`, `SET` or `INVOKE`. Check `total`
+and `truncated` before describing the full result, and inspect the reference's
+instruction or the specific member when the kind matters.
+
 ### Several assistants naming the same target
 
 Give each assistant its own `WORKBENCH_ACTOR`, such as `llm:worker-1` and

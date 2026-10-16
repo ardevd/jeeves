@@ -3678,8 +3678,9 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             String atText = fmt.apply(at);
             site.put("instruction", atText);
             site.put("size", at.getSize());
-            /* the callee when the instruction is a call: the method reference as rendered, resolved exactly */
-            java.util.regex.Matcher cm = java.util.regex.Pattern.compile("^invoke-\\S+\\s+(?:\\{[^}]*\\},\\s*)?(L[^;]+;->[^\\s]+)").matcher(atText);
+            /* JEB separates the method operand from following registers with a comma. That
+               delimiter is not part of the descriptor and must not reach exact lookup. */
+            java.util.regex.Matcher cm = java.util.regex.Pattern.compile("^invoke-\\S+\\s+(?:\\{[^}]*\\},\\s*)?(L[^;]+;->[^\\s,]+)").matcher(atText);
             if (cm.find()) {
                 Map<String, Object> callee = new LinkedHashMap<>();
                 String ref = cm.group(1);
