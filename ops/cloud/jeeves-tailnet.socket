@@ -1,0 +1,14 @@
+[Unit]
+Description=Jeeves private tailnet listener
+After=tailscaled.service
+Requires=tailscaled.service
+
+[Socket]
+# Replace this example with this node's actual Tailscale IPv4 address.
+ListenStream=100.64.0.1:7800
+BindToDevice=tailscale0
+FreeBind=yes
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target

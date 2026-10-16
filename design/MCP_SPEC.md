@@ -399,3 +399,11 @@ The search corpus is derived state. Its pending recovery entry clears only after
 Cloud proxy authorities: `WORKBENCH_PROXY_HOSTS` adds explicit exact Host values to
 the existing loopback Host set. The server still binds 127.0.0.1, and matching Origin
 is required when supplied. Authentication remains the local reverse proxy’s duty.
+
+The optional `ops/cloud` controller uses the existing loopback ops, not a second
+MCP service. It enumerates the complete package/class tree, claims eight distinct
+original class IDs in a durable SQLite catalog, and reconciles a spawn through a
+unique assignment tag. A failed or ambiguous persistence/spawn step admits no
+new session. Native-only verification opens a copied JDB with no edit-history
+sidecar; live verification follows reopening the source target. No host lifecycle
+or automatic checkpoint-deletion operations are included.

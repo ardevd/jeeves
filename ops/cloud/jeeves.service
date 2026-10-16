@@ -1,0 +1,24 @@
+[Unit]
+Description=Jeeves headless reverse engineering
+Wants=network-online.target
+After=network-online.target tailscaled.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=jeeves
+Group=jeeves
+WorkingDirectory=/opt/jeeves/source
+EnvironmentFile=/etc/jeeves/runtime.env
+ExecStart=/opt/jeeves/source/backend/workbench.sh
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=infinity
+TimeoutStopSec=infinity
+TasksMax=infinity
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

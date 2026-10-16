@@ -732,3 +732,10 @@ The HTTP listener remains on loopback. For an authenticated local reverse proxy
 external host authority, including a port when the browser uses one. Comma-separated
 authorities are accepted; wildcards are not. The browser Origin must still match
 Host. This setting does not add authentication: the proxy must restrict access.
+
+For a cloud-resident catalog campaign, `ops/cloud/README.txt` documents the
+controller and its systemd unit. Each session uses eight agents and is followed
+by a fresh native save, a hash-verified checkpoint, independent native-only reopen
+verification, and live reopen verification before the next session. The catalog
+keeps original class identities; the prompt covers every field, method, argument
+and local. Model completion claims and verified persistence are recorded separately.

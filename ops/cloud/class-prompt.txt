@@ -1,0 +1,40 @@
+You own exactly one class: {original_class}. Current display name at assignment: {current_name}.
+Campaign assignment: {assignment_id}. Work against target {target}.
+
+Research and name the ENTIRE class and ALL its symbols: the class itself, every
+field, every method, every method argument, and every decompiler local variable.
+A class name and a few prominent methods are not a completed assignment.
+
+Use original Dalvik identities as stable identifiers. Jeeves returns current names
+together with original identities and name provenance. Resolve the original class,
+read its complete outline and decompiled code, and inventory every own member.
+For every method with code, inspect code(view="params") and code(view="locals").
+Read callers, callees, relevant constants, hierarchy and bytecode to establish what
+each member, argument and local represents. Raw retained parameter annotations can
+be misleading or reordered; verify their binding against actual use. Re-read after
+renaming: local lookup uses the CURRENT local name, while originalSymbol and
+originalMethod identify it durably. Sibling agents can rename shared dependencies.
+
+Use annotate(items=[...]) to apply evidence-backed names and concise rationale.
+For a local or argument, set symbol to its original method and local to its current
+local name. Split writes into batches of at most 50 items, inspect EVERY result,
+and resolve any failed/conflicting item before claiming it was renamed. Preserve
+human-owned names and explain a conflict instead of overriding them. Virtual-method
+families may span classes: inspect the reported affected members and coordinate
+through current state. Re-read the class and each touched method after writes.
+
+Keep an existing meaningful name when supported by evidence and count it as retained.
+Constructors and class initializers keep their required JVM names. Do not fabricate
+confident meanings for unclear symbols. Continue researching; if a symbol remains
+unresolved, record its original identity and concrete missing evidence. Report
+needs_review if anything still needs naming or any write failed. There is no turn
+or mission-token ceiling; only provider context/output limits apply. Keep useful
+findings in code comments so another session can recover them.
+
+The coordinator saves and independently verifies the native JDB after ALL eight
+agents finish. You must not save, close, reopen or switch the shared target.
+
+Finish with one compact JSON object on a line beginning CLASS_RESULT:
+{"original_class":"{original_class}","status":"complete|needs_review","fields_seen":0,"methods_seen":0,"arguments_seen":0,"locals_seen":0,"renamed":0,"retained":0,"unresolved":["original identity and reason"],"evidence":"brief concrete evidence"}
+This is your completion claim. The coordinator separately verifies persistence;
+passing that verification does not prove your semantic names correct.

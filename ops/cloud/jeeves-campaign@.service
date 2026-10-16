@@ -1,0 +1,22 @@
+[Unit]
+Description=Jeeves catalog campaign (%i eight-agent sessions)
+Requires=jeeves.service
+After=jeeves.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=jeeves
+Group=jeeves
+WorkingDirectory=/opt/jeeves/source/ops/cloud
+EnvironmentFile=/etc/jeeves/runtime.env
+ExecStart=/usr/bin/python3 -u /opt/jeeves/source/ops/cloud/campaign.py run --config /var/lib/jeeves/campaign/config.json --rounds %i
+Restart=on-failure
+RestartSec=30
+TimeoutStartSec=infinity
+TimeoutStopSec=infinity
+TasksMax=infinity
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

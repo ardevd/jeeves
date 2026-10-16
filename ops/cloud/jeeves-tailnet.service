@@ -1,0 +1,11 @@
+[Unit]
+Description=Jeeves tailnet socket proxy
+Requires=jeeves.service
+After=jeeves.service
+
+[Service]
+User=jeeves
+Group=jeeves
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd --connections-max=4096 127.0.0.1:7800
+NoNewPrivileges=true
+PrivateTmp=true
