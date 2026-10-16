@@ -1,4 +1,4 @@
-import json, tempfile, unittest
+import json, tempfile, unittest, sys
 from pathlib import Path
 from unittest.mock import patch
 import campaign
@@ -80,5 +80,15 @@ class Tests(unittest.TestCase):
         self.assertFalse(campaign.settled({'state':'running'}))
         self.assertTrue(campaign.settled({'state':'stopped','loopActive':False}))
         self.assertTrue(campaign.settled({'state':'done'}))
+
+    def test_completed_invocation_never_starts_another_session_after_restart(self):
+        config=self.root/'config.json';config.write_text(json.dumps({'root':str(self.root),'url':'http://127.0.0.1:7800','artifact':str(self.root/'input.apk'),'project':'fixture','models':MODELS}))
+        (self.root/'invocation.json').write_text(json.dumps({'phase':'complete','start_completed':0,'rounds':1}))
+        class API:
+            def call(self,op,**params):
+                if op!='project.open':raise AssertionError('Completed request dispatched '+op)
+        with patch.object(sys,'argv',['campaign.py','run','--config',str(config),'--rounds','1']),patch.object(campaign,'ROOT',self.root.resolve()),patch.object(campaign,'sha256',return_value=campaign.APK_SHA),patch.object(campaign,'API',return_value=API()):
+            campaign.main()
+        self.assertEqual(self.db.execute('SELECT count(*) FROM sessions').fetchone()[0],0)
 
 if __name__=='__main__':unittest.main()

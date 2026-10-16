@@ -168,6 +168,7 @@ def main():
         invocation=json.loads(invocation_path.read_text())
         if invocation['phase']=='complete':
             print('Requested invocation already complete. A new invocation requires an explicit operator action.',flush=True)
+            lock.close();db.close()
             return
     else:invocation=None
     if invocation is None:
