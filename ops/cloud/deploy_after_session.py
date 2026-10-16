@@ -100,6 +100,28 @@ def presave(api,folder,artifact):
                    env=dict(os.environ,HOME=account.pw_dir,USER=account.pw_name,LOGNAME=account.pw_name),check=True)
     return read(folder/'barrier/receipt.json')
 
+def saved_baseline(root,receipt,expected,history_hash):
+    """A previous deployment may have saved review analysis after the session.
+
+    Accept that later database only by its completed native/live maintenance
+    receipt and exact bytes/history. An unexplained mismatch still fails closed.
+    """
+    actual=sha256(Path(receipt['db']))
+    if actual==receipt['database_sha256']:return receipt,Path(expected)
+    revision=read(root/'deployment.json').get('revision')
+    prior_path=root/'maintenance'/('deploy-'+str(revision))/'receipt.json'
+    if prior_path.is_file():
+        prior=read(prior_path);barrier=prior.get('barrier',{})
+        prior_expected=Path(prior.get('expected',''))
+        if (prior.get('phase')=='complete' and prior.get('revision')==revision and prior.get('db')==receipt['db']
+                and prior.get('database_sha256')==actual and prior.get('history_sha256')==history_hash
+                and barrier.get('ok') and barrier.get('phase')=='complete' and barrier.get('db')==receipt['db']
+                and barrier.get('database_sha256')==actual and barrier.get('native_checks',0)>0
+                and barrier.get('live_checks',0)>0 and prior_expected.is_file()
+                and prior_expected.resolve().is_relative_to(root.resolve())):
+            return barrier,prior_expected
+    raise RuntimeError('Database changed after verification; no matching completed maintenance receipt')
+
 def deploy(request,api,systemctl):
     root=Path(request['root']).resolve();release=Path(request['release']).resolve()
     source=Path(request['source']);revision=request['revision'];session=request['session']
@@ -149,7 +171,7 @@ def deploy(request,api,systemctl):
                     deployment_note(root,maintenance={'phase':'presaving','revision':revision})
                     receipt=presave(api,maintenance,artifact)
                     expected=maintenance/'barrier/expected.json'
-                else:expected=ended_folder/'barrier/expected.json'
+                else:receipt,expected=saved_baseline(root,receipt,ended_folder/'barrier/expected.json',quality['history_sha256'])
                 previous=source.resolve() if source.is_symlink() else source.parent/'releases'/('before-'+revision)
                 previous.parent.mkdir(parents=True,exist_ok=True)
                 phase('closing',previous=str(previous),target=receipt['target'],db=receipt['db'],
@@ -158,6 +180,12 @@ def deploy(request,api,systemctl):
             else:fcntl.flock(lock,fcntl.LOCK_EX)
             if state['phase']=='closing':
                 if boundary(root,session,api) is None:raise RuntimeError('Session no longer quiescent before deployment')
+                # Also recover a prior deployer that already closed the target
+                # before noticing it had selected the older session checksum.
+                baseline,expected=saved_baseline(root,state['barrier'],state['expected'],state['history_sha256'])
+                if baseline['database_sha256']!=state['database_sha256']:
+                    phase('closing',barrier=baseline,expected=str(expected),
+                          database_sha256=baseline['database_sha256'],baseline_reconciled=True)
                 for target in api.call('target.list'):
                     if target.get('path')==request['artifact'] and target.get('state')!='closed':
                         changes=api.call('target.changes',target=target['id'])

@@ -173,4 +173,35 @@ class Tests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'Database changed'):self.run_deploy()
         self.assertEqual(self.control,[]);self.assertTrue(self.source.is_dir());self.assertFalse(self.source.is_symlink())
 
+    def later_verified_maintenance(self):
+        self.db.write_text('later verified review analysis')
+        folder=self.root/'maintenance/deploy-old';folder.mkdir(parents=True)
+        expected=folder/'expected.json';self.write(expected,{'symbols':[]})
+        receipt=dict(self.receipt,database_sha256=sha256(self.db),native_checks=9,live_checks=9)
+        self.write(folder/'receipt.json',dict(receipt,revision='old',history_sha256=sha256(self.history),barrier=receipt,expected=str(expected)))
+        return receipt,expected
+
+    def test_followup_deployment_uses_later_verified_maintenance_save(self):
+        receipt,expected=self.later_verified_maintenance()
+        result=self.run_deploy()
+        self.assertEqual(result['database_sha256'],receipt['database_sha256'])
+        self.assertEqual(result['expected'],str(expected))
+        self.assertNotIn('target.save',self.api.calls);self.assertNotIn('agent.spawn',self.api.calls)
+
+    def test_old_closing_state_reconciles_only_a_matching_completed_save(self):
+        receipt,expected=self.later_verified_maintenance();folder=self.root/'maintenance/deploy-abc123';folder.mkdir()
+        self.write(folder/'state.json',dict(self.receipt,phase='closing',revision='abc123',session=1,
+                    previous=str(self.root/'releases/before-abc123'),history_sha256=sha256(self.history),
+                    expected=str(self.folder/'barrier/expected.json'),barrier=self.receipt))
+        self.api.closed=True
+        result=self.run_deploy()
+        self.assertTrue(result['baseline_reconciled']);self.assertEqual(result['database_sha256'],receipt['database_sha256'])
+        self.assertEqual(result['expected'],str(expected));self.assertNotIn('agent.spawn',self.api.calls)
+
+    def test_later_receipt_with_different_history_is_not_accepted(self):
+        self.later_verified_maintenance();path=self.root/'maintenance/deploy-old/receipt.json'
+        saved=json.loads(path.read_text());saved['history_sha256']='unrelated';self.write(path,saved)
+        with self.assertRaisesRegex(RuntimeError,'no matching'):self.run_deploy()
+        self.assertEqual(self.control,[])
+
 if __name__=='__main__':unittest.main()

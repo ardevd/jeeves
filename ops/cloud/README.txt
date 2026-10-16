@@ -199,3 +199,10 @@ HTTP provider output/context allowances still apply. Abstract/non-rendered
 arguments without a local target remain unresolved if they need names; this
 release does not bypass the analyst-only parameter mapping guard. Deployment
 and qualification do not clear invocation.json or launch another paid session.
+
+A follow-up deployment may encounter a database saved by an earlier maintenance
+barrier after the session's original save. The deployer accepts that later file
+only when its exact checksum and unchanged history match the currently installed
+release's completed native/live verification receipt. Unexplained database changes
+still refuse activation. This reconciliation also repairs an older deployer that
+closed the target before discovering it had used the stale session checksum.
