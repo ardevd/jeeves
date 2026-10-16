@@ -7,7 +7,7 @@ databases are retained. A failed check leaves a durable error and retries the
 same deployment stage, never another campaign session.
 """
 from __future__ import annotations
-import argparse, fcntl, json, os, sqlite3, subprocess, time
+import argparse, fcntl, json, os, pwd, sqlite3, subprocess, sys, time
 from pathlib import Path
 from barrier import API, ROOT, ensure_target, run_barrier, verify_live
 from checkpoint_backup import durable_json, sha256
@@ -79,6 +79,27 @@ def publish_completion(root,folder,state):
         naming_audit_note='Collision diagnostics and local/argument attribution/lookup fixes are deployed. The completed session and its quality findings are preserved; no additional reversing session was started.',
         maintenance={'phase':'complete','revision':state['revision'],'receipt':str(folder/'receipt.json')})
 
+def presave(api,folder,artifact):
+    """Keep native JEB and private checkpoint files under the licensed account.
+
+    Only release activation/systemctl need root. The child uses the same pinned
+    maintenance code and inherits the installed JEB/runtime environment.
+    """
+    account=pwd.getpwnam('jeeves')
+    if os.geteuid()!=0:raise RuntimeError('Deployment control requires root')
+    if not folder.exists():
+        folder.mkdir(mode=0o700)
+        os.chown(folder,account.pw_uid,account.pw_gid)
+    owner=folder.stat()
+    if (owner.st_uid,owner.st_gid)!=(account.pw_uid,account.pw_gid):
+        raise RuntimeError('Maintenance save directory must belong to jeeves')
+    subprocess.run([sys.executable,str(Path(__file__).resolve()),'--presave',str(folder),
+                    '--artifact',str(artifact),'--url',api.url],
+                   user=account.pw_uid,group=account.pw_gid,
+                   extra_groups=os.getgrouplist(account.pw_name,account.pw_gid),
+                   env=dict(os.environ,HOME=account.pw_dir,USER=account.pw_name,LOGNAME=account.pw_name),check=True)
+    return read(folder/'barrier/receipt.json')
+
 def deploy(request,api,systemctl):
     root=Path(request['root']).resolve();release=Path(request['release']).resolve()
     source=Path(request['source']);revision=request['revision'];session=request['session']
@@ -110,14 +131,23 @@ def deploy(request,api,systemctl):
                 artifact=Path(request['artifact'])
                 history=Path(str(artifact)+'.workbench/history.json')
                 if sha256(history)!=quality['history_sha256']:raise RuntimeError('Edits changed after quality review')
-                target=ensure_target(api,artifact)
-                changes=api.call('target.changes',target=target)
-                if changes.get('dirty') or changes.get('symbols'):raise RuntimeError('Unexpected unsaved edits after session verification')
-                if changes.get('decompiled'):
+                maintenance=root/'maintenance'/('presave-'+revision)
+                pending=(maintenance/'barrier/state.json').exists()
+                # A resumed save may have deliberately closed the target for
+                # archive/native verification. Do not reopen it prematurely or
+                # skip the durable barrier just because decompiled is now zero.
+                targets=[t for t in api.call('target.list') if t.get('path')==str(artifact)
+                         and t.get('state') not in ('closed','error')]
+                if not pending and not targets:
+                    targets=[{'id':ensure_target(api,artifact)}]
+                changes=[api.call('target.changes',target=t['id']) for t in targets]
+                if any(c.get('dirty') or c.get('symbols') for c in changes):
+                    raise RuntimeError('Unexpected unsaved edits after session verification')
+                if pending or any(c.get('decompiled') for c in changes):
                     # Preserve analysis produced by read-only review too. This
                     # is a save/reopen barrier, never a new reversing session.
-                    maintenance=root/'maintenance'/('presave-'+revision)
-                    receipt=run_barrier(api,maintenance,artifact)
+                    deployment_note(root,maintenance={'phase':'presaving','revision':revision})
+                    receipt=presave(api,maintenance,artifact)
                     expected=maintenance/'barrier/expected.json'
                 else:expected=ended_folder/'barrier/expected.json'
                 previous=source.resolve() if source.is_symlink() else source.parent/'releases'/('before-'+revision)
@@ -165,7 +195,18 @@ def deploy(request,api,systemctl):
         raise
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--request',required=True);args=parser.parse_args()
+    parser=argparse.ArgumentParser()
+    mode=parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--request');mode.add_argument('--presave')
+    parser.add_argument('--artifact');parser.add_argument('--url');args=parser.parse_args()
+    if args.presave:
+        account=pwd.getpwnam('jeeves')
+        if os.geteuid()!=account.pw_uid:raise RuntimeError('Native save must run as jeeves')
+        if not args.artifact or not args.url:parser.error('--presave needs --artifact and --url')
+        folder=Path(args.presave)
+        result=run_barrier(API(args.url),folder,args.artifact)
+        durable_json(folder/'barrier/receipt.json',result)
+        return
     request=read(args.request)
     def systemctl(*args):subprocess.run(['systemctl',*args],check=True)
     deploy(request,API(request['url']),systemctl)

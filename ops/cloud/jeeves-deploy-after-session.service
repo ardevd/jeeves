@@ -7,8 +7,7 @@ StartLimitIntervalSec=0
 [Service]
 Type=simple
 EnvironmentFile=/etc/jeeves/runtime.env
-Environment=PYTHONPATH=/opt/jeeves/source/ops/cloud
-ExecStart=/usr/bin/python3 /var/lib/jeeves/campaign/maintenance/deploy-after-session.py --request /var/lib/jeeves/campaign/deployment-request.json
+ExecStart=/usr/bin/python3 /var/lib/jeeves/campaign/maintenance/runner/deploy_after_session.py --request /var/lib/jeeves/campaign/deployment-request.json
 Restart=on-failure
 RestartSec=30
 TimeoutStartSec=infinity

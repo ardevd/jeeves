@@ -233,6 +233,8 @@ def run_barrier(api, round_dir, artifact):
     round_dir=Path(round_dir).resolve();artifact=Path(artifact).resolve()
     if not round_dir.is_relative_to(ROOT) or not artifact.is_relative_to(ROOT):
         raise ValueError('Round and artifact must be inside campaign root')
+    # Campaign rounds already exist; a maintenance save starts a new round.
+    round_dir.mkdir(parents=True,mode=0o700,exist_ok=True)
     folder=round_dir/'barrier';folder.mkdir(mode=0o700,exist_ok=True)
     state_path=folder/'state.json'
     state=json.loads(state_path.read_text()) if state_path.exists() else {'phase':'capture','started_at':time.time()}

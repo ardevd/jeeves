@@ -106,16 +106,24 @@ Cloud campaign/review/exporter are separately supervised by systemd.
 Prepared maintenance can use deploy_after_session.py and the supplied systemd
 unit. Stage a complete source/backend/web release under /opt/jeeves/releases,
 with release-manifest.json containing its clean revision and each file's SHA256.
-Copy the deployment script to the stable campaign/maintenance directory and
+Link campaign/maintenance/runner to the prepared release's ops/cloud directory and
 write campaign/deployment-request.json with root, source, release, revision,
-session, artifact, project and loopback url. The unit's Python path points to
-the current cloud modules. Enable the unit only for an authorized deployment.
+session, artifact, project and loopback url. The unit and its save child use that
+immutable maintenance bundle, not modules from the older running source tree.
+Enable the unit only for an authorized deployment.
 It waits without a deadline for the requested invocation to finish, all agents
 and writes to drain, the save/native/live verification receipt, and all eight
 quality records. Findings may require review; they do not trigger new agents.
 It checks unchanged history, preserves any additional read-only decompilation
 through another verified save if needed, and closes the clean database before
-restarting Jeeves. The prior release stays on disk. Activation/reopen stages
+restarting Jeeves. The prior release stays on disk. Pre-deployment save stages
+are durable and restartable. New maintenance round
+directories are created before their barrier children. Root controls activation;
+save/native verification runs as the existing jeeves service account with its
+runtime environment and owns its private checkpoint files. After an interrupted
+save, resume its durable stage even if decompiled is zero or the target is closed;
+do not reopen the live database alongside native verification.
+Activation/reopen stages
 are durable and restartable; the running build and all saved names are checked
 after activation. A changed history, unsaved work, bad release hash or failed
 verification retains an error and prevents a success claim. No provider calls,
