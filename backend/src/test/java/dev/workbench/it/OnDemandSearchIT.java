@@ -74,7 +74,8 @@ public final class OnDemandSearchIT {
             target=String.valueOf(ws.openTarget(input.toString(),"jeb").get("id")); ready(ws,target); drained(ws,target);
             check(Boolean.TRUE.equals(ws.engineFor(target).searchIndexStatus().get("adoptedFromDisk")),"second session adopts edit-only corpus");
             found(d,target,"readFirstRound");
-            call(d,"rename",Map.of("target",target,"symbol",CHILD,"name","readNextRound")); drained(ws,target);
+            call(d,"rename",Map.of("target",target,"symbol",CHILD,"name","readNextRound"));
+            // The very next query must see accepted writes, with no drain/poll gate.
             found(d,target,"readNextRound");
             check(((List<?>)search(d,target,"readFirstRound").get("groups")).isEmpty(),"old name is absent after replacement");
             call(d,"rename",Map.of("target",target,"symbol","Lfixture/RenameFamily$Unrelated;","name","RenamedClassCacheFixture")); drained(ws,target);

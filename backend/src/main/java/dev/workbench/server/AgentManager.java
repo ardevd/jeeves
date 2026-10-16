@@ -578,6 +578,8 @@ public final class AgentManager {
         synchronized (this) {
             for (Mission m : missions.values()) {
                 Map<String, Object> row = m.toMap();
+                Thread loopThread = loopThreads.get(m.id);
+                row.put("loopActive", loopThread != null && loopThread.isAlive());
                 // FOLLOW is server state (agent.follow/unfollow), and a booting client has
                 // to paint the switch from something. It rides the mission rows rather than
                 // a new op: "following" is a property OF a mission, and follow(id) takes one.
@@ -795,6 +797,8 @@ public final class AgentManager {
     public synchronized Map<String, Object> stop(String id) throws OpException {
         Mission m = requireMission(id);
         m.stopRequested = true;
+        Thread loopThread = loopThreads.get(m.id);
+        m.cancellationUnconfirmed = loopThread != null && loopThread.isAlive();
         m.state = "stopped";
         if (m.stopReason == null) m.stopReason = "stopped by the user";
         Process p = procs.remove(id);
@@ -804,8 +808,8 @@ public final class AgentManager {
         return m.toMap();
     }
 
-    /** The http loops' threads, by mission id — the loop a stop waits for (a request in flight returns
-     *  at once with the interruption recorded as its failure) and what confirms a stop when it ends. */
+    /** The HTTP loop threads, by mission id. Stop prevents further tools/turns; an in-flight
+     * response or tool is allowed to drain so a native edit is never interrupted halfway. */
     private final Map<String, Thread> loopThreads = new java.util.concurrent.ConcurrentHashMap<>();
 
     /** A mission outside the running/paused set never emits presence again, so a
@@ -1870,9 +1874,10 @@ public final class AgentManager {
             finally {
                 /* the thread's return is the one confirmation that nothing of this mission is in flight
                    any more — a stopped mission stops being "draining" here, nowhere earlier */
-                loopThreads.remove(m.id);
                 if (m.cancellationUnconfirmed) { m.cancellationUnconfirmed = false; act(m.agentId, "note", "mission " + m.id + " stop confirmed — its loop has returned"); }
                 releaseFollowIfTerminal(m);
+                persistMission(m); // include the last turn/usage before publishing loopActive=false
+                loopThreads.remove(m.id);
             }
         }, "mission-" + m.id);
         t.setDaemon(true);

@@ -1,0 +1,18 @@
+[Unit]
+Description=Jeeves read-only campaign status export
+After=jeeves.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=jeeves
+Group=jeeves
+WorkingDirectory=/opt/jeeves/source/ops/cloud
+EnvironmentFile=/etc/jeeves/runtime.env
+ExecStart=/usr/bin/python3 -u /opt/jeeves/source/ops/cloud/status_export.py --config /var/lib/jeeves/campaign/config.json
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

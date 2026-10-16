@@ -29,16 +29,17 @@ def historical_aliases():
     return record
 
 class API:
-    def __init__(self, url):
+    def __init__(self, url, timeout=None):
         from urllib.parse import urlsplit
         parsed=urlsplit(url)
         if parsed.scheme != "http" or parsed.hostname != "127.0.0.1" or parsed.path: raise ValueError("A loopback HTTP endpoint is required")
         self.url = url
+        self.timeout = timeout
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     def call(self, op, **params):
         payload = json.dumps({'params':params,'actor':'human:campaign-coordinator'}).encode()
         request = urllib.request.Request(self.url+'/api/'+op, data=payload, headers={'Content-Type':'application/json'})
-        with self.opener.open(request) as response: result = json.load(response)
+        with self.opener.open(request, timeout=self.timeout) as response: result = json.load(response)
         if not result.get('ok'): raise RuntimeError(f'{op}: {result.get("error")}')
         return result['data']
 
@@ -240,6 +241,10 @@ def run_barrier(api, round_dir, artifact):
         durable_json(state_path,state)
     try:
         while True:
+            missions=api.call('agent.missions')
+            if any(m.get('state') not in ('done','blocked','stopped','interrupted')
+                   or m.get('loopActive') or m.get('cancellationUnconfirmed') for m in missions):
+                time.sleep(1);continue
             calls=api.call('ops.active')
             if isinstance(calls,dict):calls=calls.get('calls',[])
             if not [x for x in calls if str(x.get('actor','')).startswith(('llm:','agent:'))]:break

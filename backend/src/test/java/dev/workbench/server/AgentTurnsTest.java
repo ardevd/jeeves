@@ -29,6 +29,8 @@ public final class AgentTurnsTest {
     private static final String BASE = "http://127.0.0.1:" + WorkbenchServer.PORT;
     private static final Map<String, AtomicInteger> COUNTS = new ConcurrentHashMap<>();
     private static final CountDownLatch EIGHT = new CountDownLatch(8);
+    private static final CountDownLatch STOP_ENTERED = new CountDownLatch(1);
+    private static final CountDownLatch STOP_RELEASE = new CountDownLatch(1);
     private static int checks;
 
     private static void check(boolean ok, String message) {
@@ -77,6 +79,10 @@ public final class AgentTurnsTest {
             if (!EIGHT.await(15, TimeUnit.SECONDS)) throw new AssertionError("eight requests did not overlap");
         }
         if ("live".equals(model)) Thread.sleep(30);
+        if ("stop-held".equals(model)) {
+            STOP_ENTERED.countDown();
+            if (!STOP_RELEASE.await(15, TimeUnit.SECONDS)) throw new AssertionError("held response was not released");
+        }
         Map<String, Object> msg = new LinkedHashMap<>(Map.of("role", "assistant"));
         if ((model.startsWith("parallel-") && turn <= 104) || "live".equals(model)
                 || (!model.startsWith("parallel-") && turn <= 3)) {
@@ -146,6 +152,18 @@ public final class AgentTurnsTest {
         check(number(paused.get("budgetNeeded")) > 0 && !paused.containsKey("turnsNeeded"),
                 "existing token budget remains separately identified");
         op("agent.stop", Map.of("id", budget));
+
+        String held = spawn("stop-held", Map.of());
+        check(STOP_ENTERED.await(15, TimeUnit.SECONDS), "stop test holds a real provider response in flight");
+        op("agent.stop", Map.of("id", held));
+        Map<String, Object> draining = mission(held);
+        check(Boolean.TRUE.equals(draining.get("loopActive")) && Boolean.TRUE.equals(draining.get("cancellationUnconfirmed"))
+                && "draining".equals(draining.get("displayState")), "stop remains visibly draining until the provider returns");
+        STOP_RELEASE.countDown();
+        Map<String, Object> settled = await(held, m -> !Boolean.TRUE.equals(m.get("loopActive")));
+        check("stopped".equals(settled.get("state")) && !Boolean.TRUE.equals(settled.get("cancellationUnconfirmed"))
+                && number(settled.get("inputTokens")) == 1 && number(settled.get("outputTokens")) == 1
+                && COUNTS.get("stop-held").get() == 1, "settled stop retains actual paid usage and starts no next request");
     }
 
     private static void boundedChecks() throws Exception {
@@ -189,7 +207,7 @@ public final class AgentTurnsTest {
         try {
             op("llm.configure", Map.of("id", "turns-test", "create", true, "local", true,
                     "baseUrl", "http://127.0.0.1:" + provider.getAddress().getPort() + "/v1", "model", "bounded",
-                    "models", "bounded,live,budget,parallel-0,parallel-1,parallel-2,parallel-3,parallel-4,parallel-5,parallel-6,parallel-7"));
+                    "models", "bounded,live,budget,stop-held,parallel-0,parallel-1,parallel-2,parallel-3,parallel-4,parallel-5,parallel-6,parallel-7"));
             if (Depth.unlimitedTurns()) headlessChecks(); else boundedChecks();
             Map<String, Object> cliMission = map(op("agent.spawn", Map.of("goal", "Synthetic CLI check", "model", "anthropic:claude-code", "turns", 1)));
             await(String.valueOf(cliMission.get("id")), m -> "done".equals(m.get("state")));
@@ -198,6 +216,7 @@ public final class AgentTurnsTest {
                     "real process argv omits the CLI turn ceiling only in headless mode");
             System.out.println("AGENT TURNS TEST PASSED: " + checks + " checks; headless=" + Depth.unlimitedTurns());
         } finally {
+            STOP_RELEASE.countDown();
             for (Object item : (List<?>) op("agent.missions", Map.of()))
                 op("agent.stop", Map.of("id", map(item).get("id")));
             server.stop();

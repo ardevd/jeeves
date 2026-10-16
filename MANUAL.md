@@ -536,6 +536,12 @@ removing turn limits does not remove those or make interrupted missions resumabl
 The flag applies to the server process and is independent of Java's
 `java.awt.headless` setting, which the browser-backed server also uses.
 
+An HTTP mission's `loopActive` stays true until its last response/tool and final
+record have finished. A stopped mission displays `draining` with
+`cancellationUnconfirmed` while the upstream response is still in flight. Stop
+prevents further tools/turns; it does not interrupt a native database write.
+Save coordinators must wait for terminal state AND both flags to clear.
+
 An unattended HTTP campaign can additionally set `WORKBENCH_UNLIMITED_BUDGET=1`
 (or `true`). This only takes effect together with `WORKBENCH_HEADLESS`. Its
 missions report `budgetUnlimited: true` and `budget: 0`; saved/default/explicit

@@ -42,6 +42,9 @@ Install jeeves-campaign@.service. Start an explicitly requested number of sessio
 Use @30 only when thirty sessions have actually been requested. Do not run two
 instances: controller.lock excludes overlapping catalog controllers. invocation.json
 preserves the intended completed-session count across controller restarts.
+Once invocation.json says complete, restarting the service exits without creating
+another invocation. For a newly authorized run, first archive that completed file
+under an unused timestamped name; the next start then creates the new intent.
 For reboot continuation, enable the requested instance. A graceful stop is:
  touch /var/lib/jeeves/campaign/stop-after-session
 It permits the current eight agents and save/verification barrier to finish.
@@ -51,7 +54,8 @@ The server is a separately managed service; stopping the controller does not
 stop in-flight agents. Never restart the server during an active session as a
 routine deployment operation.
 
-After eight terminal missions, the runner waits for their tool operations,
+After eight terminal missions, the runner also waits for loopActive and
+cancellationUnconfirmed to clear and for their tool operations to finish. It
 captures current expectations for all edit-history symbols (including locals
 and argument metadata), requests a fresh save, closes the database, builds and
 hash-verifies an immutable checkpoint, opens a separate native-only copy WITHOUT
@@ -72,6 +76,32 @@ CLASS_RESULT is a model's completion claim, NOT proof of semantic correctness.
 Counts and unresolved items are recorded. Native/live verification proves that
 accepted names/comments survived saving; it does not establish their meaning.
 Missing/malformed receipts and failed missions remain needs_review.
+
+After the save barrier, quality.py inventories each of the eight classes and
+collects full decompiled class text, every method's argument/local metadata,
+the session's history delta and the agent's completion claim. The opposite
+provider makes one static Max review per class (GLM reviews DS, DS reviews GLM).
+It receives no mutation tools. Raw streamed responses, usage, evidence and
+findings are durable under rounds/cloud-NNNNNN/quality. Generic-name flags are
+only heuristics; model assessments are not ground truth. No corrective renames
+or second reversing session are launched by review. A failed/ambiguous paid
+review is retained for manual review instead of automatically repeating it.
+Collection errors, reported issues and missing claims keep classes needs_review.
+Full inventory uses native reads and history.json rather than history.list's
+existing 200-entry default / 2000-entry ceiling. Evidence is not truncated.
+
+jeeves-status.service exports campaign-only dashboard.json every five seconds.
+Read failures retain the last snapshot; each monitor API call has a 30-second
+network wait. relay.py serves the existing local port 7930 and fetches ONLY that
+snapshot over SSH every five seconds. Its SSH connect wait is 15 seconds, dead
+connection detection 15 seconds x2, and per-fetch wait 90 seconds; a failure
+retains the last snapshot and retries. None of these monitor settings cancels
+inference, saves or review. Browser data older than 45 seconds is visibly stale.
+The dashboard has all changes with a latest-30 display and Show all, filtering,
+original/current names, per-agent usage, save stages and independent quality
+findings. The old K3 dashboard files/history remain separate and intact.
+Local dashboard relay is NOT HIBERNATION-SAFE; it catches up after reconnect.
+Cloud campaign/review/exporter are separately supervised by systemd.
 
 Operating limits and persistence:
 - Exactly eight API agents per session (operator requirement), sharing one JEB.

@@ -650,6 +650,7 @@ export interface Mission {
   displayState?: string;   // the workflow name for the state: queued/running/paused/draining/cancelled/failed/completed
   stopReason?: string;     // why the run ended or stands where it does, in words (AgentLoop)
   cancellationUnconfirmed?: boolean;   // the loop's thread has not returned yet: the upstream may still be answering
+  loopActive?: boolean; // live HTTP loop still exists, including terminal-state finalization
   turnsNeeded?: number;    // >0 while paused AT the turn cap: the suggested raise (RAISE THIS MISSION & RESUME prefills it)
   dismissed?: boolean;     // removed from the view by the user (× on a finished card); the record stays
   scope?: string;

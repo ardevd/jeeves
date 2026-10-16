@@ -349,6 +349,13 @@ removes HTTP mission token ceilings. Mission records carry `budgetUnlimited:true
 while preserving stored budgets. Provider balances are not changed or capped.
 Default/non-headless budget behavior is unchanged.
 
+`agent.missions` adds `loopActive` for a live HTTP loop, including final record
+persistence. `agent.stop` sets `cancellationUnconfirmed` while this loop drains;
+`displayState` is then `draining`. No new tools/turns are dispatched after stop,
+but an in-flight response contributes its actual usage. Terminal state alone is
+not acknowledgement that all work has stopped. Save barriers also wait for
+`loopActive` and `cancellationUnconfirmed` to be false.
+
 HTTP `reasoning_effort:max` is passed unchanged for `deepseek-v4-pro`,
 `deepseek-flash`, and `glm-5.3` models; their `medium`/`xhigh` aliases map to `high`.
 Other models retain the existing max/xhigh-to-high compatibility mapping.

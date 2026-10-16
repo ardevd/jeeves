@@ -36,6 +36,7 @@ class SessionAPI:
 class Tests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name);self.db=campaign.catalog_db(self.root)
+        history=self.root/'input.apk.workbench';history.mkdir();(history/'history.json').write_text('[]')
         campaign.catalog(CatalogAPI(),'t1',self.db)
     def tearDown(self):self.db.close();self.tmp.cleanup()
     def test_case_sensitive_complete_catalog_and_atomic_eight(self):
@@ -63,7 +64,8 @@ class Tests(unittest.TestCase):
             session=campaign.claim_session(self.db,MODELS)
             self.assertEqual(session['phase'],'barrier')
             self.assertEqual(self.db.execute("SELECT count(*) FROM classes WHERE state='done'").fetchone()[0],0)
-            with patch.object(campaign,'run_barrier',return_value={'ok':True,'target':'t2'}):
+            quality={'status':'complete','classes':[{'original_class':s['original_class'],'review':{'verdict':'acceptable'}} for s in json.loads(session['slots'])]}
+            with patch.object(campaign,'run_barrier',return_value={'ok':True,'target':'t2'}),patch.object(campaign,'review_session',return_value=quality):
                 campaign.run_session(api,self.db,session,self.root/'input.apk',self.root)
             self.assertEqual(len(api.missions),8)
             self.assertEqual(self.db.execute("SELECT count(*) FROM classes WHERE state='done'").fetchone()[0],8)
@@ -71,5 +73,12 @@ class Tests(unittest.TestCase):
         class API:
             def call(self,*a,**k):return []
         self.assertEqual(campaign.completion(API(),'m1','LA;')['status'],'needs_review')
+
+    def test_terminal_label_does_not_acknowledge_inflight_work(self):
+        self.assertFalse(campaign.settled({'state':'stopped','loopActive':True}))
+        self.assertFalse(campaign.settled({'state':'stopped','cancellationUnconfirmed':True}))
+        self.assertFalse(campaign.settled({'state':'running'}))
+        self.assertTrue(campaign.settled({'state':'stopped','loopActive':False}))
+        self.assertTrue(campaign.settled({'state':'done'}))
 
 if __name__=='__main__':unittest.main()
