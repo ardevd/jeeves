@@ -206,3 +206,32 @@ only when its exact checksum and unchanged history match the currently installed
 release's completed native/live verification receipt. Unexplained database changes
 still refuse activation. This reconciliation also repairs an older deployer that
 closed the target before discovering it had used the stale session checksum.
+Overnight execution
+-------------------
+campaign.py run --config /var/lib/jeeves/campaign/config.json --hours 8
+uses an eight-hour admission window, with no session-count limit. Each session
+has eight agents, then a verified native save/reopen and independent quality
+review. Only after those finish can another session start. The active session
+finishes even if the window expires during inference, verification or review.
+
+The first launch atomically saves started_at and deadline_at in invocation.json.
+Process recovery reuses that deadline; restarting cannot grant another eight
+hours. A completed invocation remains completed until an authorized operator
+archives it. stop-after-session requests the same graceful boundary. A controller
+file lock prevents two units from operating the same catalog concurrently.
+
+jeeves-night@8.service runs this entirely on the cloud host, is restartable on
+failure and can be enabled across reboot. It Wants rather than Requires Jeeves:
+temporary backend failure must not permanently stop the recovering controller.
+Pin its WorkingDirectory and ExecStart to the tested controller release when the
+Java backend remains on a different release. Never restart a live backend merely
+to install a Python scheduling change. Preserve the previous invocation, catalog,
+configuration and verified checkpoints when explicitly starting a new run.
+
+This window is not a dollar ceiling or an eight-hour kill timer. Provider credit,
+context, output and availability constraints still apply. Saving/reviewing may
+continue beyond the deadline. The provisioned cloud server continues billing;
+no automatic top-up or teardown is configured. The local dashboard relay requires
+the laptop, but the cloud campaign and durable results do not. Qualify the actual
+deployed units, model slots and saved deadline before claiming sleep safety.
+

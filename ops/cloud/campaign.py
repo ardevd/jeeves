@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cloud-resident eight-agent catalog runner. No SSH, model keys, or laptop loop."""
 from __future__ import annotations
-import argparse, fcntl, json, os, sqlite3, time, uuid
+import argparse, fcntl, json, math, os, sqlite3, time, uuid
 from pathlib import Path
 from barrier import API, ROOT, APK_SHA, ensure_target, run_barrier
 from checkpoint_backup import durable_json, sha256
@@ -168,9 +168,62 @@ def run_session(api,db,session,artifact,root):
         db.execute("UPDATE sessions SET phase='complete',receipt=? WHERE id=?",(json.dumps(receipt),sid))
     return receipt
 
+def invocation_state(root,db,*,rounds=None,hours=None):
+    path=root/'invocation.json'
+    if path.exists():return json.loads(path.read_text())
+    now=time.time()
+    invocation={'phase':'running','started_at':now,
+                'start_completed':db.execute("SELECT count(*) FROM sessions WHERE phase='complete'").fetchone()[0]}
+    if hours is not None:
+        if not math.isfinite(hours) or hours<=0:raise ValueError('--hours must be positive and finite')
+        invocation.update(mode='window',hours=hours,deadline_at=now+hours*3600)
+    elif rounds is not None and rounds>=1:invocation.update(mode='rounds',rounds=rounds)
+    else:raise ValueError('Specify --rounds or --hours for this invocation')
+    durable_json(path,invocation)
+    return invocation
+
+def boundary_reason(root,db,invocation,now):
+    # A deadline or stop request only prevents claiming another session. Recovery,
+    # saving and reviewing the current session must finish, even after the deadline.
+    if db.execute("SELECT 1 FROM sessions WHERE phase!='complete'").fetchone():return None
+    if (root/'stop-after-session').exists():return 'Graceful stop requested; active session saved and reviewed'
+    if invocation.get('mode')=='window':
+        return 'Run window finished; active session saved and reviewed' if now>=invocation['deadline_at'] else None
+    completed=db.execute("SELECT count(*) FROM sessions WHERE phase='complete'").fetchone()[0]
+    return 'Requested sessions saved and reviewed' if completed>=invocation['start_completed']+invocation['rounds'] else None
+
+def run_invocation(api,db,config,artifact,root,invocation):
+    while True:
+        reason=boundary_reason(root,db,invocation,time.time())
+        if reason:break
+        focus=None
+        if config.get('focus_manifest'):
+            from focus import load
+            focus=load(config['focus_manifest'],db,APK_SHA)
+        reason=boundary_reason(root,db,invocation,time.time())
+        if reason:break
+        session=claim_session(db,config['models'],focus)
+        if session is None:
+            reason='All eligible classes have completed the coverage and quality checks'
+            break
+        try:
+            # Target ops are scoped to the selected project, even with an explicit
+            # target ID. A user viewing another project must not strand recovery.
+            api.call('project.open',name=config['project'])
+            run_session(api,db,session,artifact,root)
+        except Exception as error:
+            durable_json(root/'status.json',{'phase':'retrying','session':session['id'],'error':str(error),'updated_at':time.time()})
+            print('Retained state; retrying after 30 seconds:',error,flush=True);time.sleep(30)
+    invocation.update(phase='complete',completed_at=time.time(),reason=reason)
+    durable_json(root/'invocation.json',invocation)
+    durable_json(root/'status.json',{'phase':'idle','updated_at':time.time(),'reason':reason})
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('command',choices=['catalog','run','status'])
-    parser.add_argument('--config',required=True);parser.add_argument('--rounds',type=int)
+    parser.add_argument('--config',required=True)
+    duration=parser.add_mutually_exclusive_group()
+    duration.add_argument('--rounds',type=int)
+    duration.add_argument('--hours',type=float,help='Start new sessions for this many hours; finish the active session before pausing')
     args=parser.parse_args();config=json.loads(Path(args.config).read_text())
     root=Path(config['root']).resolve()
     if root!=ROOT:raise ValueError('Config root must match JEEVES_CAMPAIGN_ROOT')
@@ -184,35 +237,13 @@ def main():
     if args.command=='catalog':
         target=ensure_target(api,artifact)
         count=catalog(api,target,db);durable_json(root/'catalog-receipt.json',{'classes':count,'apk_sha256':APK_SHA,'at':time.time()});print('Catalog verified:',count);return
-    if args.rounds is None or args.rounds<1:raise ValueError('Specify the intended number of eight-agent sessions with --rounds')
-    invocation_path=root/'invocation.json'
-    if invocation_path.exists():
-        invocation=json.loads(invocation_path.read_text())
+    invocation=invocation_state(root,db,rounds=args.rounds,hours=args.hours)
+    try:
         if invocation['phase']=='complete':
             print('Requested invocation already complete. A new invocation requires an explicit operator action.',flush=True)
-            lock.close();db.close()
             return
-    else:invocation=None
-    if invocation is None:
-        baseline=db.execute("SELECT count(*) FROM sessions WHERE phase='complete'").fetchone()[0]
-        invocation={'phase':'running','start_completed':baseline,'rounds':args.rounds};durable_json(invocation_path,invocation)
-    while db.execute("SELECT count(*) FROM sessions WHERE phase='complete'").fetchone()[0]<invocation['start_completed']+invocation['rounds']:
-        if (root/'stop-after-session').exists() and not db.execute("SELECT 1 FROM sessions WHERE phase!='complete'").fetchone():break
-        focus=None
-        if config.get('focus_manifest'):
-            from focus import load
-            focus=load(config['focus_manifest'],db,APK_SHA)
-        session=claim_session(db,config['models'],focus)
-        if session is None:break
-        try:
-            # Target ops are scoped to the selected project, even with an explicit
-            # target ID. A user viewing another project must not strand recovery.
-            api.call('project.open',name=config['project'])
-            run_session(api,db,session,artifact,root)
-        except Exception as error:
-            durable_json(root/'status.json',{'phase':'retrying','session':session['id'],'error':str(error),'updated_at':time.time()})
-            print('Retained state; retrying after 30 seconds:',error,flush=True);time.sleep(30)
-    invocation['phase']='complete';durable_json(invocation_path,invocation)
-    durable_json(root/'status.json',{'phase':'idle','updated_at':time.time(),'reason':'Requested sessions finished or graceful stop requested'})
+        print('Running durable invocation:',json.dumps(invocation),flush=True)
+        run_invocation(api,db,config,artifact,root,invocation)
+    finally:lock.close();db.close()
 
 if __name__=='__main__':main()

@@ -107,4 +107,66 @@ class Tests(unittest.TestCase):
             campaign.main()
         self.assertEqual(self.db.execute('SELECT count(*) FROM sessions').fetchone()[0],0)
 
+    def test_window_deadline_is_durable_and_never_restarts_on_process_recovery(self):
+        with patch.object(campaign.time,'time',return_value=1000):
+            first=campaign.invocation_state(self.root,self.db,hours=8)
+        with patch.object(campaign.time,'time',return_value=20000):
+            again=campaign.invocation_state(self.root,self.db,hours=8)
+        self.assertEqual(first,again)
+        self.assertEqual(first['deadline_at'],29800)
+
+    def test_eight_hour_loop_claims_eight_each_time_and_finishes_session_past_deadline(self):
+        now=[1000.0];seen=[]
+        class API:
+            def call(self,op,**params):self.assert_op=op
+        def session(api,db,current,artifact,root):
+            slots=json.loads(current['slots']);seen.append(current['id'])
+            self.assertEqual(len(slots),8)
+            self.assertEqual([s['model'] for s in slots],MODELS)
+            self.assertEqual(len({s['original_class'] for s in slots}),8)
+            self.assertEqual(db.execute("SELECT count(*) FROM sessions WHERE phase!='complete'").fetchone()[0],1)
+            now[0]+=3*3600  # Session includes its save, reopen verification and review.
+            with db:
+                db.execute("UPDATE classes SET state='needs_review'")
+                db.execute("UPDATE sessions SET phase='complete' WHERE id=?",(current['id'],))
+        with patch.object(campaign.time,'time',side_effect=lambda:now[0]),patch.object(campaign,'run_session',side_effect=session):
+            inv=campaign.invocation_state(self.root,self.db,hours=8)
+            campaign.run_invocation(API(),self.db,{'project':'fixture','models':MODELS},self.root/'input.apk',self.root,inv)
+        self.assertEqual(seen,[1,2,3])
+        self.assertEqual(inv['phase'],'complete')
+        self.assertEqual(inv['completed_at'],1000+9*3600)
+        self.assertEqual(inv['deadline_at'],1000+8*3600)
+        self.assertEqual(self.db.execute('SELECT count(*) FROM sessions').fetchone()[0],3)
+
+    def test_recovery_after_deadline_finishes_pending_verification_before_pausing(self):
+        first=campaign.claim_session(self.db,MODELS)
+        with self.db:self.db.execute("UPDATE sessions SET phase='barrier'")
+        inv={'phase':'running','mode':'window','start_completed':0,'deadline_at':1}
+        self.assertIsNone(campaign.boundary_reason(self.root,self.db,inv,2))
+        (self.root/'stop-after-session').touch()
+        self.assertIsNone(campaign.boundary_reason(self.root,self.db,inv,2))
+        calls=[]
+        def session(api,db,current,*unused):
+            calls.append((current['id'],current['phase']))
+            if len(calls)==1:raise ConnectionError('verification temporarily unavailable')
+            with db:db.execute("UPDATE sessions SET phase='complete' WHERE id=?",(current['id'],))
+        class API:
+            def call(self,*args,**kwargs):pass
+        with patch.object(campaign,'run_session',side_effect=session),patch.object(campaign.time,'sleep'):
+            campaign.run_invocation(API(),self.db,{'project':'fixture','models':MODELS},self.root/'input.apk',self.root,inv)
+        self.assertEqual(calls,[(first['id'],'barrier')]*2)
+        self.assertEqual(self.db.execute('SELECT count(*) FROM sessions').fetchone()[0],1)
+        self.assertIn('Graceful stop',inv['reason'])
+
+    def test_expired_window_never_claims_a_session(self):
+        inv={'phase':'running','mode':'window','start_completed':0,'deadline_at':1}
+        with patch.object(campaign,'claim_session',side_effect=AssertionError('new work after deadline')):
+            campaign.run_invocation(None,self.db,{'project':'fixture','models':MODELS},self.root/'input.apk',self.root,inv)
+        self.assertEqual(inv['phase'],'complete')
+
+    def test_invalid_window_cannot_create_an_invocation(self):
+        for hours in [0,-1,float('inf'),float('nan')]:
+            with self.assertRaises(ValueError):campaign.invocation_state(self.root,self.db,hours=hours)
+        self.assertFalse((self.root/'invocation.json').exists())
+
 if __name__=='__main__':unittest.main()
