@@ -36,12 +36,9 @@ public final class OnDemandSearchIT {
             Thread.sleep(50);
         }
     }
-    private static void drained(Workspace ws,String target) throws Exception {
-        long until=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(60);
-        while(((Number)ws.engineFor(target).searchIndexStatus().get("pendingReindex")).intValue()>0) {
-            if(System.nanoTime()>until) throw new AssertionError(ws.engineFor(target).searchIndexStatus().toString());
-            Thread.sleep(50);
-        }
+    private static void idle(Workspace ws,String target) throws Exception {
+        check(Boolean.FALSE.equals(ws.engineFor(target).searchIndexStatus().get("workerRunning")),
+                "on-demand cache does not start a background native worker");
     }
     private static Map<String,Object> search(Dispatcher d,String target,String query) {
         return map(call(d,"tool.call",Map.of("tool","search","args",Map.of("target",target,"query",query,"kind","code"))));
@@ -65,20 +62,20 @@ public final class OnDemandSearchIT {
         try {
             ws.openProject("SearchFixture");
             String target=String.valueOf(ws.openTarget(input.toString(),"jeb").get("id")); ready(ws,target);
-            call(d,"rename",Map.of("target",target,"symbol",CHILD,"name","readFirstRound")); drained(ws,target);
+            call(d,"rename",Map.of("target",target,"symbol",CHILD,"name","readFirstRound")); idle(ws,target);
             found(d,target,"readFirstRound");
             var groups=(List<?>)search(d,target,"readFirstRound").get("groups");
             check(groups.size()>=5,"propagated rename refreshes four family owners and the caller");
             check(Boolean.TRUE.equals(ws.saveTarget(target).get("saved")),"native changes save before closing");
             ws.closeTarget(target);
-            target=String.valueOf(ws.openTarget(input.toString(),"jeb").get("id")); ready(ws,target); drained(ws,target);
+            target=String.valueOf(ws.openTarget(input.toString(),"jeb").get("id")); ready(ws,target); idle(ws,target);
             check(Boolean.TRUE.equals(ws.engineFor(target).searchIndexStatus().get("adoptedFromDisk")),"second session adopts edit-only corpus");
             found(d,target,"readFirstRound");
             call(d,"rename",Map.of("target",target,"symbol",CHILD,"name","readNextRound"));
             // The very next query must see accepted writes, with no drain/poll gate.
             found(d,target,"readNextRound");
             check(((List<?>)search(d,target,"readFirstRound").get("groups")).isEmpty(),"old name is absent after replacement");
-            call(d,"rename",Map.of("target",target,"symbol","Lfixture/RenameFamily$Unrelated;","name","RenamedClassCacheFixture")); drained(ws,target);
+            call(d,"rename",Map.of("target",target,"symbol","Lfixture/RenameFamily$Unrelated;","name","RenamedClassCacheFixture")); idle(ws,target);
             check(!((List<?>)search(d,target,"RenamedClassCacheFixture").get("groups")).isEmpty(),"class rename enters the on-demand corpus with its current name");
             check(Boolean.TRUE.equals(ws.saveTarget(target).get("saved")),"second session saves");
             ws.closeTarget(target);
@@ -88,7 +85,7 @@ public final class OnDemandSearchIT {
             }
             var legacy=map(Json.parse(Files.readString(header))); legacy.put("sourceIdentity",Map.of());
             Files.writeString(header,Json.write(legacy));
-            target=String.valueOf(ws.openTarget(input.toString(),"jeb").get("id")); ready(ws,target); drained(ws,target);
+            target=String.valueOf(ws.openTarget(input.toString(),"jeb").get("id")); ready(ws,target); idle(ws,target);
             check(!Boolean.TRUE.equals(ws.engineFor(target).searchIndexStatus().get("adoptedFromDisk")),"legacy text is regenerated instead of adopted");
             found(d,target,"readNextRound");
             check(!((List<?>)search(d,target,"RenamedClassCacheFixture").get("groups")).isEmpty(),"legacy recovery finds class-renamed owners by original history identity");

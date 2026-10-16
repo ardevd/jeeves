@@ -619,6 +619,10 @@ are retained separately. They are durably written under the artifact's
 `.workbench/naming-coverage/`, independent of bounded mission transcripts.
 `recordedBy` on get selects a particular actor; writes always use the operation
 actor. Recording coverage never renames symbols or bypasses review.
+Successful coverage records count as research progress in the agent loop, so an
+audited class with suitable existing names can finish without a forced rename.
+A failed record or a read alone does not count as recorded coverage. The full
+class audit and independent quality checks still decide completion.
 
 The cloud controller checks all own methods for each of the eight assigned
 agents before saving and after reopening. Its independent native verifier also
@@ -634,12 +638,15 @@ text and identities. Possible matches still resolve against current native
 state on every read. This avoids resolving unrelated campaign history for each
 concurrent reader without introducing a cache delay after a rename.
 
-Text search regenerates pending renamed owners for the current query if the
-background index writer has not caught up. A search immediately after a successful
-rename can therefore see the fresh text; it does not depend on a polling delay.
-Persistence continues in the background. Unrenderable or concurrently invalidated
-classes remain pending and retain the partial-coverage warning. On-demand coverage
-still does not mean that every class in a target has been indexed.
+Text search regenerates pending renamed owners for the current query and persists
+the replacement text and header. Concurrent queries share that work; later queries
+reuse the fresh cache. A search immediately after a successful rename sees current
+text without a polling delay. With `WORKBENCH_INDEX_MODE=on-demand`, edits and reopen
+only queue recovery; they never launch an unsolicited native rendering worker.
+An explicit full rebuild remains available. A requested search can still wait on
+slow native rendering. Failed or concurrently invalidated renders remain pending
+and retain the partial-coverage warning. On-demand coverage does not mean that
+every class in a target has been indexed.
 
 ## 7. Dynamic analysis (Runs view)
 

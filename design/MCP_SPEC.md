@@ -405,8 +405,10 @@ The `code` facade accepts `view:locals`, dispatched to `locals.list`. Headless
 HTTP loops deliver whole tool payloads and matching name-provenance rows; ordinary
 interactive payload cuts remain unchanged. Context-window maintenance still
 applies. `annotate` accepts batches of 1–50 items; full classes may require several.
-Native text search overlays fresh renders for pending invalidated classes, so a
-completed rename is visible to the next search before durable reindexing finishes.
+Native text search refreshes pending invalidated classes and persists their text
+and header; concurrent queries share that work. On-demand mode starts no automatic
+reindex worker on edits or reopen, but explicit full rebuilds remain available.
+Failed/superseded renders stay pending and cannot publish obsolete names.
 
 Agent-name attribution conservatively excludes historical names absent from all
 returned string values before native resolution. Every remaining possible match
@@ -464,6 +466,9 @@ The loop-visible and MCP facade tool `naming_coverage` routes `action:get`
 (default) to `naming.coverage` and `action:record` to `naming.coverage.record`.
 All ordinary mutation scope checks apply to record; `recordedBy` cannot change
 its author. This is evidence storage, separate from native edits/proposals.
+Successful records count as research progress for loop completion without forcing
+unnecessary renames. Failed records and coverage reads do not suppress that nudge;
+class completion still requires the whole inventory and independent review.
 
 `schema:naming-coverage-v1` returns `originalMethod`, `hasCode`, `variables`,
 `inventoryFingerprint`, `inventoryErrors`, `counts`, `recordedBy`, `record`, and

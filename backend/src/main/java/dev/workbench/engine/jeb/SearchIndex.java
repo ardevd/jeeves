@@ -42,13 +42,12 @@ import java.util.zip.GZIPOutputStream;
  *   generation counter gates the old thread's corpus writes, and the corpus
  *   dir is only wiped when the old builder is confirmed dead.
  *
- * Threading (the old P1-12 lesson — indexing must never block interactive ops):
- * a single daemon thread at MIN priority walks the target's classes; for each
- * class it takes the engine lock ONLY for the decompile burst (a few ms per
- * class), then processes/stores the text OFF the lock. Interactive decompile
- * requests interleave between classes — worst-case wait is one class decompile.
- * The snapshot lives in a CopyOnWriteArrayList, so search queries run fully
- * off the engine lock against the classes indexed so far.
+ * Automatic mode uses one MIN-priority daemon; each native class render takes
+ * the engine lock and can last minutes on complex input. On-demand mode starts
+ * no unsolicited worker. Explicit searches refresh pending classes, sharing and
+ * persisting their results, with native calls outside the index monitor. Clean
+ * corpus snapshots are searched without native rendering. Explicit full rebuilds
+ * retain their background behavior in both modes.
  *
  * Cancellable via op.cancel (ticket "search-index" / "search-index:<target>");
  * progress is reported through target.info / search.index.
@@ -88,6 +87,9 @@ final class SearchIndex {
     private final String ticket;
     private final File dir;                                   // search-index dir, or null (no persistence)
     private final String engineVersion;
+    private final boolean automaticRefresh;
+    /** Searches share replacement work without holding the index/engine monitors while waiting. */
+    private final Object queryRefresh = new Object();
     private final List<Entry> entries = new CopyOnWriteArrayList<>();
     /** Class addrs invalidated by edits (rename/comment), awaiting re-index.
      *  Drained by the builder thread itself at the end of a full build, or by a
@@ -170,10 +172,16 @@ final class SearchIndex {
     }
 
     SearchIndex(Host host, String ticket, File dir, String engineVersion) {
+        this(host, ticket, dir, engineVersion,
+                !"on-demand".equalsIgnoreCase(System.getenv("WORKBENCH_INDEX_MODE")));
+    }
+
+    SearchIndex(Host host, String ticket, File dir, String engineVersion, boolean automaticRefresh) {
         this.host = host;
         this.ticket = ticket;
         this.dir = dir;
         this.engineVersion = engineVersion;
+        this.automaticRefresh = automaticRefresh;
     }
 
     String ticket() { return ticket; }
@@ -620,7 +628,7 @@ final class SearchIndex {
 
     /**
      * Fine-grained invalidation after an edit (rename/comment): drop the class's
-     * stale entries (memory AND gz) and re-queue it for background re-index.
+     * stale entries (memory AND gz) and re-queue it for the configured refresh mode.
      * {@code staleAddr} is the class addr BEFORE the edit (a class rename shifts
      * it), {@code freshAddr} the addr to re-index (same for member edits).
      * Never runs a decompile on the caller's thread. The label lookup takes the
@@ -679,7 +687,7 @@ final class SearchIndex {
      *  drains the queue itself at the end of its pass (see build()). The
      *  generation gate stops a superseded drainer from committing stale text. */
     private synchronized void ensureDrainer() {
-        if (dead || cancel) return;
+        if (dead || cancel || !automaticRefresh) return;
         if (thread != null && thread.isAlive()) return;          // builder will drain
         if (reindexQueue.isEmpty()) return;
         final int gen = generation;
@@ -944,38 +952,74 @@ final class SearchIndex {
         return entries;
     }
 
-    /** A query immediately after a rename must include its fresh text, even when the
-     * durable background writer has not caught up. Overlay pending owners on a snapshot;
-     * never hold the index monitor while decompiling (engine -> index lock order).
-     * A concurrent second edit invalidates that overlay instead of publishing stale text.
-     * Failed renders remain pending and the existing coverage metadata reports the gap. */
+    /** Refresh edited owners only when requested in on-demand mode. Concurrent searches
+     * share the result, including its durable text/header commit. A cancelled background
+     * worker does not cancel explicit searches. Native calls never hold the index monitor;
+     * generation/revision checks reject a render superseded by another edit or close.
+     * Persistence failures retain pending work; this query may still use its fresh overlay. */
     List<Entry> queryEntries() {
+        synchronized (queryRefresh) { return refreshForQuery(); }
+    }
+
+    private List<Entry> refreshForQuery() {
         ensureWarm();
-        Map<String, Entry> snapshot = new LinkedHashMap<>();
         Map<String, Long> dirty = new LinkedHashMap<>();
+        Map<String, Entry> refreshed = new LinkedHashMap<>();
         int gen;
         synchronized (this) {
-            if (pending.isEmpty()) return entries;
-            for (Entry e : entries) snapshot.put(e.addr(), e);
-            for (String addr : pending) {
+            if (dead) return List.of();
+            if (pending.isEmpty()) return List.copyOf(entries);
+            for (String addr : pending)
                 dirty.put(addr, invalidations.getOrDefault(addr, 0L));
-                snapshot.remove(addr);
-            }
             gen = generation;
         }
         for (Map.Entry<String, Long> changed : dirty.entrySet()) {
             String addr = changed.getKey();
+            synchronized (this) {
+                if (dead || gen != generation || Thread.currentThread().isInterrupted()) return List.of();
+                if (!pending.contains(addr) || !changed.getValue().equals(invalidations.getOrDefault(addr, 0L))) continue;
+                // A prior query/background pass may have persisted the text but failed
+                // its header. Retry that commit without paying native rendering again.
+                if (readyForHeader.contains(addr)) {
+                    for (Entry e : entries) if (addr.equals(e.addr())) refreshed.put(addr, e);
+                    if (refreshed.containsKey(addr)) continue;
+                }
+            }
             String text, label;
             try { text = host.decompileText(addr); label = host.classLabel(addr); }
             catch (Exception failure) { continue; }
             if (text == null) continue;
             synchronized (this) {
-                if (dead || gen != generation) return List.of();
-                if (changed.getValue().equals(invalidations.getOrDefault(addr, 0L)))
-                    snapshot.put(addr, new Entry(addr, label, text.split("\n", -1)));
+                if (dead || gen != generation || Thread.currentThread().isInterrupted()) return List.of();
+                if (!changed.getValue().equals(invalidations.getOrDefault(addr, 0L))) continue;
+                Entry entry = new Entry(addr, label, text.split("\n", -1));
+                refreshed.put(addr, entry);
+                // Explicit query: cancellation of the background worker is irrelevant.
+                // Close/interruption were checked above; the gate protects atomic I/O.
+                if (!beginCommit(gen, true)) return List.of();
+                try {
+                    if (!writeGz(addr, text)) continue;
+                    entries.removeIf(e -> e.addr().equals(addr)); entries.add(entry);
+                    live.put(addr, label); readyForHeader.add(addr);
+                    reindexQueue.removeIf(addr::equals);
+                } finally { endCommit(); }
             }
         }
-        return List.copyOf(snapshot.values());
+        synchronized (this) {
+            if (dead || gen != generation || Thread.currentThread().isInterrupted()) return List.of();
+            if (!readyForHeader.isEmpty() && beginCommit(gen, true)) {
+                try {
+                    finishedAt = builtAtMs = System.currentTimeMillis();
+                    persisted = writeHeader();
+                } finally { endCommit(); }
+            }
+            Map<String, Entry> snapshot = new LinkedHashMap<>();
+            for (Entry e : entries) if (!pending.contains(e.addr())) snapshot.put(e.addr(), e);
+            for (var e : refreshed.entrySet())
+                if (dirty.get(e.getKey()).equals(invalidations.getOrDefault(e.getKey(), 0L)))
+                    snapshot.put(e.getKey(), e.getValue());
+            return List.copyOf(snapshot.values());
+        }
     }
 
     synchronized Map<String, Object> status() {
@@ -990,7 +1034,9 @@ final class SearchIndex {
         m.put("indexedClasses", live.keySet().stream().filter(a -> !pending.contains(a)).count());
         m.put("revision", generation + ":" + invalidationSequence + ":" + builtAtMs);
         m.put("warmRejectReason", warmRejectReason);
-        m.put("mode", System.getenv().getOrDefault("WORKBENCH_INDEX_MODE", "automatic"));
+        m.put("mode", automaticRefresh ? "automatic" : "on-demand");
+        m.put("automaticRefresh", automaticRefresh);
+        m.put("cancelRequested", cancel);
         m.put("built", built);
         m.put("total", total);
         m.put("pendingReindex", pendingCount);

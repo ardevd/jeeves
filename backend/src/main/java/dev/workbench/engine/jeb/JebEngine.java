@@ -829,6 +829,7 @@ public final class JebEngine implements Engine, SearchIndex.Host {
         // falls back to: only a wholly unexplained mtime delta counts as
         // foreign. WORKBENCH_PARANOID=1 rebuilds on any delta regardless.
         boolean foreign = false;
+        boolean onDemandIndex = "on-demand".equalsIgnoreCase(System.getenv("WORKBENCH_INDEX_MODE"));
         if (builtAt > 0 && jdb2 != null && jdb2.isFile()) {
             long recorded = searchIndex.recordedJdb2Mtime();
             if (recorded > 0) foreign = jdb2.lastModified() != recorded;
@@ -841,14 +842,14 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                 searchIndex.rejectWarm("Database mtime witness changed outside this workbench");
                 System.err.println("workbench: " + name
                         + " — jdb2 changed outside the workbench (mtime witness mismatch);"
-                        + " rebuilding the search index");
+                        + (onDemandIndex ? " queued on-demand cache recovery" : " rebuilding the search index"));
                 phase = "index";
-                message = "Foreign jdb2 change detected — rebuilding search index";
+                message = onDemandIndex ? "Foreign jdb2 change detected — cache recovery queued" : "Foreign jdb2 change detected — rebuilding search index";
             } else if (searchIndex.warmRejectReason() != null) {
                 System.err.println("workbench: " + name + " — persisted corpus rejected ("
-                        + searchIndex.warmRejectReason() + "); building search index");
+                        + searchIndex.warmRejectReason() + (onDemandIndex ? "); cache recovery queued for search" : "); building search index"));
             }
-            if (!"on-demand".equals(System.getenv("WORKBENCH_INDEX_MODE"))) searchIndex.start();
+            if (!onDemandIndex) searchIndex.start();
             else {
                 recovery.addAll(indexReplay.keySet());
                 java.util.Set<String> classes = new java.util.LinkedHashSet<>();

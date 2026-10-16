@@ -21,7 +21,13 @@ during hydration are queued for regeneration.
 
 The search corpus is a derived cache, separate from the native database and edit
 history. A rename or comment invalidates affected class text and records its
-address in `search-index/pending.json`. The background worker rebuilds that text.
+address in `search-index/pending.json`. Automatic mode starts a background worker.
+With `WORKBENCH_INDEX_MODE=on-demand`, invalidation, warm adoption and hydration
+never start that worker. The next text search refreshes pending classes and
+persists their text/header; concurrent searches share the refresh and later
+queries reuse it. Explicit full rebuilds still run when requested. Slow native
+rendering can delay a requested search and other operations sharing the engine.
+Cancelling background work does not disable search or its durable refresh.
 
 A pending entry remains until both the replacement gzip and the matching header
 have been written durably. The gzip is written to a temporary sibling, flushed,
@@ -52,7 +58,8 @@ JEB_HOME=/path/to/activated-jeb gradle -p backend onDemandSearchIT
 The fixture uses a controlled fake index host; it opens no JEB engine or model.
 It checks interruption even when the host clears the interrupt flag, unsuccessful
 decompilation, failed text replacement, failed header persistence, a newer edit
-arriving during an older decompile, and reopen recovery after each case. Its two
+arriving during an older decompile, eight concurrent demand queries sharing one
+render, no background work on demand-mode edits/reopen, and recovery after each case. Its two
 filesystem-failure messages are deliberate injections. Native rename/save tests
 separately exercise the adapter's normal close path.
 

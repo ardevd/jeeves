@@ -27,6 +27,8 @@ public final class Dispatcher {
         long id = nextCallId.incrementAndGet();
         Map<String,Object> call = new LinkedHashMap<>();
         call.put("id", id); call.put("op", op); call.put("actor", actor);
+        Op registered = registry.get(op);
+        call.put("mutating", registered != null && registered.mutating());
         call.put("startedAt", java.time.Instant.now().toString());
         Map<?,?> identity = params;
         if ("tool.call".equals(op) && params.get("args") instanceof Map<?,?> args) {

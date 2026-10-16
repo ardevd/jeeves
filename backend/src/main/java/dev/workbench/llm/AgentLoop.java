@@ -475,7 +475,9 @@ public final class AgentLoop {
             + "contradicts it (a \"download\" loop called from an upload path), rename it to what holds for "
             + "every use, class and method alike, and give that evidence as your rationale; never bend your "
             + "own names to fit a wrong one. Keep it only when every use you can see agrees with it. A name in humanNames is "
-            + "final: names a human assigned are not yours to change.";
+            + "final: names a human assigned are not yours to change. During a completion pass, audit arguments and locals "
+            + "with naming_coverage and record evidence for suitable existing names. A fully audited class can legitimately "
+            + "need zero new renames; never replace a supported name just to produce a write.";
 
     private String systemPrompt() {
         return "You are a reverse-engineering agent inside a workbench for Android/Java binaries. "
@@ -561,6 +563,7 @@ public final class AgentLoop {
         Map<String, Integer> rawResultChars = new LinkedHashMap<>();   // tool_call_id → pre-cap size
         Map<String, String> callArgsSummary = new java.util.HashMap<>();   // call id → summarized args, for the elision stub
         int proposalsMade = 0;
+        boolean coverageRecorded = false;
         boolean nudged = false;
         int readOnlyStreak = 0;      // consecutive turns with reads but no successful write, since the first decompile
         boolean turnHadCalls = false;
@@ -786,13 +789,14 @@ public final class AgentLoop {
                         }
                         reasoningOnly = 0;
                         // (4) proposal protocol: a mission that only CHATTED gets one nudge
-                        if (proposalsMade == 0 && !nudged && (maxTurns == 0 || turn < maxTurns)) {
+                        if (proposalsMade == 0 && !coverageRecorded && !nudged && (maxTurns == 0 || turn < maxTurns)) {
                             nudged = true;
                             rec.put("outcome", "nudged");
                             activity.row("note", "turn " + turn + " · final text with 0 proposals — nudging");
                             messages.add(Map.of("role", "user", "content",
-                                    "Do not just describe. Rename now: call annotate (name per item) for every method, class "
-                                    + "and field you have understood, then continue."));
+                                    "Record your findings in the target: use annotate for evidence-supported name improvements. "
+                                    + "Preserve suitable existing names and use naming_coverage to record your argument/local audit "
+                                    + "and retained-name evidence. Do not invent replacements merely to produce a rename."));
                             continue;
                         }
                         activity.row("note", "turn " + turn + " · final: "
@@ -915,8 +919,10 @@ public final class AgentLoop {
                             proposalsMade++;
                             readOnlyStreak = -1;                     // this turn wrote: the streak restarts after it
                         }
-                        if ("naming_coverage".equals(toolName) && "record".equals(args.get("action")) && Boolean.TRUE.equals(result.get("ok")))
+                        if ("naming_coverage".equals(toolName) && "record".equals(args.get("action")) && Boolean.TRUE.equals(result.get("ok"))) {
+                            coverageRecorded = true;
                             readOnlyStreak = -1; // durable research progress, but not a rename/proposal count
+                        }
                         boolean decompileCall = isDecompile(toolName, args);
                         if (decompileCall) decompiledOnce = true;
                         turnHadCalls = true;

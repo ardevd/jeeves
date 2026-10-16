@@ -89,7 +89,8 @@ public final class ActiveCallsTest {
             check("llm:detached-worker".equals(call.get("actor")) && "fixture.block".equals(call.get("op")), "active row identifies the detached worker and operation");
             check("t1".equals(call.get("target")) && "Lfixture/Message;".equals(call.get("symbol")), "active row preserves target and symbol identity");
             check(call.get("id") instanceof Number && call.get("startedAt") instanceof String, "active row has a stable call id and start timestamp");
-            check(call.keySet().equals(Set.of("id", "op", "actor", "startedAt", "target", "symbol")), "active row excludes query text, tokens and the full parameter body");
+            check(Boolean.FALSE.equals(call.get("mutating")), "read operation reports its mutation classification");
+            check(call.keySet().equals(Set.of("id", "op", "actor", "mutating", "startedAt", "target", "symbol")), "active row excludes query text, tokens and the full parameter body");
             release.countDown(); await(done, "detached HTTP operation reaches its own completion");
             check(h.calls().isEmpty(), "success clears active state even when the HTTP response has no client");
         } finally { release.countDown(); server.stop(0); workers.shutdownNow(); }
@@ -97,7 +98,7 @@ public final class ActiveCallsTest {
     private static void parallelAndNested() throws Exception {
         Harness h = new Harness();
         CountDownLatch entered = new CountDownLatch(5), release = new CountDownLatch(1);
-        h.registry.register(new Op("fixture.child", "", false, Op.Cost.heavy, request -> {
+        h.registry.register(new Op("fixture.child", "", true, Op.Cost.heavy, request -> {
             entered.countDown(); await(release, "parallel child is released"); return "done";
         }));
         h.registry.register(new Op("fixture.parent", "", false, Op.Cost.cheap,
@@ -106,12 +107,16 @@ public final class ActiveCallsTest {
         List<Future<?>> futures = new ArrayList<>();
         try {
             for (int i=0; i<5; i++) {
-                String actor = "llm:parallel-" + i;
+                String actor = i == 0 ? "human:parallel" : "llm:parallel-" + i;
                 futures.add(workers.submit(() -> h.dispatcher.dispatch("fixture.parent", Map.of("target", "t1"), actor)));
             }
             await(entered, "five independent nested operations are concurrently blocked");
             List<?> calls = h.calls();
             check(calls.size() == 10, "all five parents and children are reported without a reporting cap");
+            check(calls.stream().filter(row -> Boolean.TRUE.equals(map(row).get("mutating"))).count()==5,
+                    "all nested writes report mutation even beneath read-only facade operations");
+            check(calls.stream().anyMatch(row -> "human:parallel".equals(map(row).get("actor")) && Boolean.TRUE.equals(map(row).get("mutating"))),
+                    "deployment can identify in-flight human writes independently of actor prefixes");
             check(calls.stream().map(row -> map(row).get("id")).distinct().count() == 10, "nested and parallel calls have distinct ids");
             check(calls.stream().noneMatch(row -> "ops.active".equals(map(row).get("op"))), "the query never reports itself as active work");
             release.countDown();

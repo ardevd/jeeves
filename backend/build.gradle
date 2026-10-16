@@ -204,11 +204,22 @@ tasks.register('nameProvenanceTest', JavaExec) {
 }
 
 // Deterministic index-host fixture, no live JEB instance or model calls.
+tasks.register('agentCompletionTest', JavaExec) {
+    group = 'verification'
+    description = 'Recorded naming coverage can finish without unnecessary renames'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.llm.AgentCompletionTest'
+    workingDir = repoRoot
+    environment 'WORKBENCH_MOCK', '1'
+    dependsOn 'compileTestJava'
+}
+
 tasks.register('searchIndexPersistenceIT', JavaExec) {
     group = 'verification'
     description = 'Pending search-index work survives cancellation and failed corpus writes'
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'dev.workbench.engine.jeb.SearchIndexPersistenceIT'
+    environment 'WORKBENCH_INDEX_MODE', 'automatic'
     workingDir = repoRoot
     dependsOn 'compileTestJava'
     doFirst {

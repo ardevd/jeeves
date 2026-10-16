@@ -226,15 +226,79 @@ public final class SearchIndexPersistenceIT {
                         .anyMatch(e->A.equals(e.addr()) && String.join("\n",e.lines()).contains("version = 2")));
                 for(var result:pool.invokeAll(tasks)) check(result.get(),"search sees renamed text while background refresh is held");
             } finally {pool.shutdownNow();}
-            check(pending(dir).contains(A),"query overlay does not falsely acknowledge durable persistence");
+            check(pending(dir).isEmpty(),"query persists replacement text and header while background render waits");
             host.release.countDown(); stopped();
             check(current(index,2) && pending(dir).isEmpty(),"background persistence still completes normally");
         } finally {index.kill();host.release.countDown();stopped();}
     }
 
+    private static void demandOnly(Path root) throws Exception {
+        Path dir=root.resolve("demand-only"); Host host=new Host();
+        SearchIndex index=new SearchIndex(host,"demand",dir.toFile(),"test",false);
+        try {
+            index.invalidate(A,A); stopped();
+            check(host.calls.get()==0 && !Boolean.TRUE.equals(index.status().get("workerRunning")),
+                    "on-demand invalidation never starts native background work");
+            check(pending(dir).contains(A),"on-demand invalidation durably records pending work");
+            index.cancel(); // Cancelling unsolicited background work must not disable search.
+            host.version.set(2);
+            var pool=java.util.concurrent.Executors.newFixedThreadPool(8);
+            try {
+                var tasks=new java.util.ArrayList<java.util.concurrent.Callable<Boolean>>();
+                for(int n=0;n<8;n++) tasks.add(()->index.queryEntries().stream()
+                        .anyMatch(e->A.equals(e.addr()) && String.join("\n",e.lines()).contains("version = 2")));
+                for(var result:pool.invokeAll(tasks)) check(result.get(),"concurrent on-demand reader sees current names");
+            } finally {pool.shutdownNow();}
+            check(host.calls.get()==1,"eight readers share exactly one current render");
+            check(pending(dir).isEmpty(),"on-demand search persists text and header before clearing pending");
+            index.queryEntries(); check(host.calls.get()==1,"repeat search reuses the durable fresh cache");
+            host.version.set(3); index.invalidate(A,A);
+        } finally {index.kill();stopped();}
+        SearchIndex reopened=new SearchIndex(host,"demand-reopened",dir.toFile(),"test",false);
+        try {
+            int before=host.calls.get();
+            check(reopened.tryWarmLoad()>0,"on-demand reopen retains the corpus and pending queue"); stopped();
+            check(host.calls.get()==before,"on-demand warm adoption does not render queued classes");
+            check(reopened.queryEntries().stream().anyMatch(e->String.join("\n",e.lines()).contains("version = 3")),
+                    "first search after reopen replaces stale saved names");
+            check(pending(dir).isEmpty(),"reopened on-demand search durably clears pending");
+            // A render that overlaps a newer edit must not publish its obsolete names.
+            host.version.set(4); reopened.invalidate(A,A); host.blockCall=host.calls.get()+1;
+            var worker=java.util.concurrent.Executors.newSingleThreadExecutor();
+            try {
+                var result=worker.submit(reopened::queryEntries); await(host.entered,"query render overlaps a rename");
+                host.version.set(5); reopened.invalidate(A,A); host.release.countDown();
+                check(result.get(10,TimeUnit.SECONDS).stream().noneMatch(e->String.join("\n",e.lines()).contains("version = 4")),
+                        "query cannot publish text superseded by a newer rename");
+                check(pending(dir).contains(A),"superseded query leaves the newer rename pending");
+                reopened.queryEntries();check(current(reopened,5),"next query commits the latest rename");
+            } finally {host.release.countDown();worker.shutdownNow();}
+            host.version.set(6); reopened.invalidate(A,A); host.failCall=host.calls.get()+1;
+            check(reopened.queryEntries().stream().noneMatch(e->A.equals(e.addr())),"failed demand render never exposes stale text");
+            check(pending(dir).contains(A),"failed demand render remains retryable");
+            reopened.queryEntries(); check(current(reopened,6) && pending(dir).isEmpty(),"later demand query recovers failed render");
+            Path header=dir.resolve("header.json"),backup=dir.resolve("header-before-failure.json");
+            Files.move(header,backup);Files.createDirectory(header);Files.writeString(header.resolve("blocker"),"fixture");
+            try {
+                host.version.set(7);reopened.invalidate(A,A);int beforeHeader=host.calls.get();
+                check(reopened.queryEntries().stream().anyMatch(e->String.join("\n",e.lines()).contains("version = 7")),
+                        "failed demand header commit can return freshly rendered text");
+                check(pending(dir).contains(A),"failed demand header commit retains durable pending work");
+                Files.delete(header.resolve("blocker"));Files.delete(header);Files.move(backup,header);
+                reopened.queryEntries();
+                check(host.calls.get()==beforeHeader+1,"retrying demand header persistence reuses the already rendered text");
+                check(pending(dir).isEmpty(),"successful demand header retry clears pending work");
+            } finally {
+                if(Files.isDirectory(header)){Files.deleteIfExists(header.resolve("blocker"));Files.delete(header);}
+                if(Files.exists(backup))Files.move(backup,header,java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+            reopened.start();stopped();check("built".equals(reopened.status().get("state")),"explicit full rebuild still works in on-demand mode");
+        } finally {reopened.kill();stopped();}
+    }
+
     public static void main(String[] args) throws Exception {
         Path root=Files.createTempDirectory("jeeves-index-persistence-");
-        try { interrupted(root); failedText(root); failedWrite(root); newerInvalidation(root); failedHeader(root); onDemand(root); missingGzip(root); rejectedWorker(root); immediateQuery(root); }
+        try { interrupted(root); failedText(root); failedWrite(root); newerInvalidation(root); failedHeader(root); onDemand(root); missingGzip(root); rejectedWorker(root); immediateQuery(root); demandOnly(root); }
         catch(Exception|AssertionError failure){failure.printStackTrace(System.out);throw failure;}
         System.out.println("Search-index persistence checks passed: "+checks);
     }
