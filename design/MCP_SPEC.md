@@ -85,6 +85,16 @@ compare-and-set mismatch. Batch results preserve the readable `error` and add
 `errorDetails` containing the full typed error; the facade forwards both.
 `annotate` remains a per-item result envelope and may partly succeed.
 
+After the existing validation, ownership and `expectedName` checks, a native
+request for the current name returns `applied:false, unchanged:true`. No native
+mutation, cache invalidation, history entry or author transfer occurs. A method
+family is unchanged only when all affected members already have the name.
+Rename batches and `annotate` expose `status:unchanged` and an `unchanged` count,
+separate from `applied`, `pending` and `failed`. Comments/tags still apply
+independently. Auto-applied or manually accepted rename proposals that require
+no edit settle as `unchanged`, with no history ID or undo action. Existing
+historical entries are retained unchanged.
+
 A native destination-name refusal retains `E_BUSY` and adds `requestedName`,
 `currentName`, `originalSymbol`, `conflicts[]`, and
 `collisionLookup: matched|unresolved|incomplete`. Each conflict has `kind`,

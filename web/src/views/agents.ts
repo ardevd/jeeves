@@ -692,11 +692,12 @@ function propRows(){
    ✓ / ✗ and a name edit; applied rows (a ✓ or the APPLY DIRECTLY policy) take ↶ revert and ✎
    rename-again; reverted rows take ↷ redo; refused / rejected / purged rows are dim records. */
 const PENDING = 'pending', APPLIED = 'accepted';
-function rowState(p: Proposal): 'pending' | 'applied' | 'reverted' | 'refused' | 'rejected' | 'purged' {
+function rowState(p: Proposal): 'pending' | 'applied' | 'reverted' | 'refused' | 'rejected' | 'purged' | 'unchanged' {
   if (p.state === PENDING) return 'pending';
   if (p.state === APPLIED) return p.reverted ? 'reverted' : 'applied';
   if (p.state === 'refused') return 'refused';
   if (p.state === 'purged') return 'purged';
+  if (p.state === 'unchanged') return 'unchanged';
   return 'rejected';
 }
 function proposalRow(p: Proposal){
@@ -711,7 +712,7 @@ function proposalRow(p: Proposal){
     /* the name is click-to-edit (a collision, a better name — any reason): on a pending row Enter
        accepts with the edit, Esc restores, leaving the field keeps the edit for ✓ / ACCEPT ALL; on
        an applied row Enter renames again, as the human (the agent cannot take it back) */
-    edit = '<s>' + esc(p.oldName || '?') + '</s> → <b class="pnew" title="' + (st === 'applied' ? 'click to rename again' : 'click to edit the name before accepting') + '">' + esc(p.editedName || p.newName) + '</b>'
+    edit = st === 'unchanged' ? '<b>' + esc(p.newName) + '</b>' : '<s>' + esc(p.oldName || '?') + '</s> → <b class="pnew" title="' + (st === 'applied' ? 'click to rename again' : 'click to edit the name before accepting') + '">' + esc(p.editedName || p.newName) + '</b>'
       + (st === 'pending' || st === 'applied' ? '<button class="pencil" title="' + (st === 'applied' ? 'rename again' : 'edit the proposed name') + '">✎</button>' : '')
       + (p.editedName && p.editedName !== p.newName ? '<span class="pchip edited" title="the agent proposed ' + esc(p.newName) + '">edited</span>' : '')
       + (p.refusal ? '<div class="prefused">' + esc(p.refusal) + '</div>' : '');
@@ -910,6 +911,7 @@ async function loadProposals(userDriven?: boolean){
   const pendingN = propCache.filter(function(p){ return rowState(p) === 'pending'; }).length;
   const appliedN = propCache.filter(function(p){ return rowState(p) === 'applied'; }).length;
   const revertedN = propCache.filter(function(p){ return rowState(p) === 'reverted'; }).length;
+  const unchangedN = propCache.filter(function(p){ return rowState(p) === 'unchanged'; }).length;
   /* prop-pending is the VIEW-scope (possibly mission-filtered) summary — this loader is its
      only writer. props-n is project-scope (pending only: what needs a hand); this loader writes
      it only when unfiltered (its list IS the project list) and only if its request-time claim
@@ -921,7 +923,7 @@ async function loadProposals(userDriven?: boolean){
   const scope = mine === 'all' ? '' : ' · showing ' + mine + ' only'
     + (running.length ? ' — ' + running.map(function(m){ return m.id + ' (' + m.agentId + ') is writing now' ; }).join(', ') + ' — × in the log bar shows every mission' : ' — × in the log bar shows every mission');
   document.getElementById('prop-pending')!.textContent = (propCache.length
-    ? appliedN + ' applied' + (pendingN ? ' · ' + pendingN + ' pending' : '') + (revertedN ? ' · ' + revertedN + ' reverted' : '')
+    ? appliedN + ' applied' + (pendingN ? ' · ' + pendingN + ' pending' : '') + (revertedN ? ' · ' + revertedN + ' reverted' : '') + (unchangedN ? ' · ' + unchangedN + ' unchanged' : '')
     : 'no edits' + (mine === 'all' ? '' : ' from ' + mine)) + scope;
   const pn = propCache.length ? String(propCache.length) : '';
   ['ag-tab-props-n', 'ag-open-n'].forEach(function(id){ const el = document.getElementById(id); if (el) el.textContent = pn; });
@@ -1033,10 +1035,11 @@ async function settle(id: string | null, accept: boolean, rowEl: Element | null,
       if (!quiet) notice('review not applied — ' + msg, { err: true });
       return msg;
     }
+    const unchanged = (r.data as Proposal | undefined)?.state === 'unchanged';
     const editedName = edit.editedName;
     rowEdits.delete(id || '');
     const p0 = propCache.find(x => x.id === id);
-    if (accept && p0 && p0.kind === 'rename' && p0.symbol && !p0.symbol.includes('->') && S.hooks.classRenamed){
+    if (accept && !unchanged && p0 && p0.kind === 'rename' && p0.symbol && !p0.symbol.includes('->') && S.hooks.classRenamed){
       /* a CLASS rename: its tab (active or not) and tree row follow at once — the open class's
          own re-render below would only re-key the active tab (user 2026-09-13) */
       const finalName = editedName || p0.newName || '';
@@ -1051,7 +1054,7 @@ async function settle(id: string | null, accept: boolean, rowEl: Element | null,
       rowEl.classList.add('settled');
       const act = rowEl.querySelector('.pact')!;
       act.innerHTML = '<span class="pstamp ' + (accept ? 'ok' : 'no') + '">' +
-        (accept ? '✓ ACCEPTED' : '✗ REJECTED') + '</span>';
+        (accept ? (unchanged ? 'UNCHANGED' : '✓ ACCEPTED') : '✗ REJECTED') + '</span>';
       /* let the stamp actually render before the reload wipes the row */
       await new Promise(function(r){ setTimeout(r, 400); });
     }
@@ -1059,7 +1062,7 @@ async function settle(id: string | null, accept: boolean, rowEl: Element | null,
     // accepted renames/comments land in History (agent badge) — refresh the dock
     if (S.hooks.historyChanged) S.hooks.historyChanged();
     if (S.hooks.marksChanged) S.hooks.marksChanged();
-    if (accept && !deferRender) await rerenderOpenClass();
+    if (accept && !unchanged && !deferRender) await rerenderOpenClass();
     return null;
   } finally { settling.delete(id); }
 }

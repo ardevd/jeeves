@@ -241,6 +241,7 @@ tasks.register('searchIndexPersistenceIT', JavaExec) {
     renameFamilyIT: ['dev.workbench.it.RenameFamilyIT', 'rename-family/rename-family.dex'],
     callSiteCalleeIT: ['dev.workbench.it.CallSiteCalleeIT', 'rename-family/rename-family.dex'],
     variableRenderingIT: ['dev.workbench.it.VariableRenderingIT', 'rename-family/rename-family.dex'],
+    unchangedRenameIT: ['dev.workbench.it.UnchangedRenameIT', 'params/params-fixture.dex'],
 ].each { taskName, fixture ->
     tasks.register(taskName, JavaExec) {
         group = 'verification'
@@ -251,7 +252,7 @@ tasks.register('searchIndexPersistenceIT', JavaExec) {
         dependsOn 'compileTestJava'
         environment 'WORKBENCH_MOCK', '0'
         environment 'WORKBENCH_COURSE', '0'
-        if (taskName in ['onDemandSearchIT','generatedLocalIT']) environment 'WORKBENCH_INDEX_MODE', 'on-demand'
+        if (taskName in ['onDemandSearchIT','generatedLocalIT','unchangedRenameIT']) environment 'WORKBENCH_INDEX_MODE', 'on-demand'
         environment 'WORKBENCH_REVIEW_MODE', 'auto'
         if (hasEngine) {
             classpath += engineJars
@@ -269,6 +270,7 @@ tasks.register('searchIndexPersistenceIT', JavaExec) {
             environment 'WORKBENCH_HOME', new File(run, 'home').absolutePath
             args file('src/test/fixtures/' + fixture[1]).absolutePath, run.absolutePath
             if (taskName == 'renameCollisionIT') args file('src/test/fixtures/name-collision/name-collision.dex').absolutePath
+            if (taskName == 'unchangedRenameIT') args file('src/test/fixtures/rename-family/rename-family.dex').absolutePath
         }
     }
 }

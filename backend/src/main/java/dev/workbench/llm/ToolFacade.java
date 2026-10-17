@@ -280,7 +280,7 @@ public final class ToolFacade {
                 "Name, comment or tag symbols — file a whole class's names in batches of up to 50 items. Each item names a symbol and gives any of:"
                         + " name (rename it), comment, tags; with local, name renames that local variable or parameter of the method. Every write applies at once and appears in every later result; the human"
                         + " can revert it. Give a confidence and one line of evidence per item; rename again when you learn more."
-                        + " Returns {applied, pending, failed, results[]}; a failed write carries its reason (a taken name, a symbol"
+                        + " Returns {applied, pending, unchanged, failed, results[]}; unchanged means the name was already assigned and no rename was recorded; a failed write carries its reason (a taken name, a symbol"
                         + " a human named, outside your write-scope). Another agent's unsaved name is protected: RENAME_CONFLICT"
                         + " names its currentName and currentActor; use that name and continue reading. expectedName refuses a stale"
                         + " rename even after a save. A taken-name refusal includes conflicts[] with the other symbols'"
@@ -1177,7 +1177,7 @@ public final class ToolFacade {
             }
             if (!any) { row.put("error", "nothing to do: give name, comment or tags"); failed++; }
         }
-        int applied = 0, pending = 0;
+        int applied = 0, pending = 0, unchanged = 0;
         /* comments and tags FIRST, renames last: a comment keys on the item and follows a rename, but a
            comment filed by the OLD address after the rename finds nothing (m10 turn 8, 2026-09-20) */
         String[] ops = {"comment", "tag.add", "rename"};
@@ -1202,7 +1202,8 @@ public final class ToolFacade {
                     if (rm.get("id") != null) outcome.put("id", rm.get("id"));
                     if (rm.get("error") != null) outcome.put("error", rm.get("error"));
                     if (rm.get("errorDetails") != null) outcome.put("errorDetails", rm.get("errorDetails"));
-                    if ("applied".equals(status)) applied++; else if ("pending".equals(status)) pending++; else failed++;
+                    if ("applied".equals(status)) applied++; else if ("pending".equals(status)) pending++;
+                    else if ("unchanged".equals(status)) unchanged++; else failed++;
                 }
                 Map<String, Object> row = rows.get(indexes.get(b).get(k));
                 if (b == 1) {
@@ -1217,6 +1218,7 @@ public final class ToolFacade {
         out.put("applied", applied);
         out.put("pending", pending);
         out.put("failed", failed);
+        out.put("unchanged", unchanged);
         out.put("results", rows);
         Map<String, Object> env = new LinkedHashMap<>();
         env.put("ok", true);

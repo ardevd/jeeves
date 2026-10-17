@@ -359,6 +359,14 @@ history releases them, so a later round may refine the saved names. An optional
 {"target":"t1","items":[{"symbol":"Lexample/Message;","name":"MessageEnvelope","expectedName":"Message"}]}
 ```
 
+An authorized native rename to the existing name returns `unchanged`, adds no
+rename history or write count, and preserves the original author. The same
+applies to a method family only when every affected member already has that
+name. Ownership and `expectedName` checks still apply. Batch results count
+`applied`, `pending`, `unchanged` and `failed` separately; comments or tags in
+the same item can still apply. The Edits pane labels unchanged proposals without
+offering an undo action for an edit that never happened.
+
 `annotate` still returns each item's outcome. A failed rename keeps the readable
 `error` string and adds `errorDetails` with `code`, `currentName`, `currentActor`
 when there is an unsaved owner, `originalSymbol`, `unsaved`, and `historyId` when

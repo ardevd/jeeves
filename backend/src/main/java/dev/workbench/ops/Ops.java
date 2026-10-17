@@ -455,6 +455,7 @@ public final class Ops {
                     String localIdentity = String.valueOf(localBefore.get("originalSymbol"));
                     ws.renameCoordinator().check(tid, localIdentity, String.valueOf(localBefore.get("name")), req.actor(), req.str("expectedName"));
                     Map<String, Object> res = ws.engineFor(tid).renameLocal(symbol, req.str("local"), name, req.actor());
+                    if (!Boolean.TRUE.equals(res.get("applied"))) return res;
                     ws.renameCoordinator().renamed(tid, localIdentity, name, req.actor(), null);
                     Map<String, Object> h = new LinkedHashMap<>();
                     h.put("op", "rename");
@@ -1578,7 +1579,7 @@ public final class Ops {
                 if (!(items instanceof List<?> l)) return one.handler().handle(req);
                 if (l.isEmpty() || l.size() > 50)
                     throw OpException.syntax("items must hold 1 to 50 entries", "items=" + l.size());
-                int applied = 0, pending = 0, failed = 0;
+                int applied = 0, pending = 0, failed = 0, unchanged = 0;
                 List<Object> results = new ArrayList<>();
                 for (Object o : l) {
                     Map<String, Object> row = new LinkedHashMap<>();
@@ -1593,6 +1594,9 @@ public final class Ops {
                         Object res = one.handler().handle(new Op.Request(name, ip, req.actor()));
                         boolean isApplied = res instanceof Map<?, ?> rm && Boolean.TRUE.equals(rm.get("applied"));
                         if (isApplied) { applied++; row.put("status", "applied"); }
+                        else if (res instanceof Map<?, ?> rm && Boolean.TRUE.equals(rm.get("unchanged"))) {
+                            unchanged++; row.put("status", "unchanged");
+                        }
                         else { pending++; row.put("status", "pending"); }
                         if (res instanceof Map<?, ?> rm2 && rm2.get("id") != null) row.put("id", rm2.get("id"));
                     } catch (OpException e) {
@@ -1607,6 +1611,7 @@ public final class Ops {
                 out.put("applied", applied);
                 out.put("pending", pending);
                 out.put("failed", failed);
+                out.put("unchanged", unchanged);
                 out.put("results", results);
                 return out;
             }));

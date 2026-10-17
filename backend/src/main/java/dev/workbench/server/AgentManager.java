@@ -1115,8 +1115,9 @@ public final class AgentManager {
            name) is NOT left in the queue: it settles refused and the agent gets the reason, so
            it can pick another name in the same turn. */
         if (reviewPolicy.appliesDirectly(kind, body.get("confidence"), null)) {
+            boolean changed;
             try {
-                applyProposal(p, "agent:" + agentId + " auto-applied");
+                changed = applyProposal(p, "agent:" + agentId + " auto-applied");
             } catch (OpException e) {
                 store.retouch(pid, "refusal", e.getMessage());
                 store.settle(pid, "refused");
@@ -1125,11 +1126,12 @@ public final class AgentManager {
                 throw e;
             }
             store.retouch(pid, "auto", true);
-            store.settle(pid, "accepted");
-            act(agentId, "note", "proposal " + pid + " AUTO-APPLIED · " + describe(kind, p));
+            store.settle(pid, changed ? "accepted" : "unchanged");
+            act(agentId, "note", "proposal " + pid + (changed ? " AUTO-APPLIED · " : " UNCHANGED · ") + describe(kind, p));
             publishPropsCount();
-            out.put("applied", true);
-            out.put("status", "auto-accepted");
+            out.put("applied", changed);
+            if (!changed) out.put("unchanged", true);
+            out.put("status", changed ? "auto-accepted" : "unchanged");
             return out;
         }
         publishPropsCount();
@@ -1368,11 +1370,11 @@ public final class AgentManager {
             p = proposals.get(id);
         }
 
-        if (accept) applyProposal(p, human);
-        else rejectUnderlying(p);
+        boolean changed = accept && applyProposal(p, human);
+        if (!accept) rejectUnderlying(p);
 
-        Map<String, Object> settled = proposals.settle(id, accept ? "accepted" : "rejected");
-        act(agentId, "note", "proposal " + id + " " + (accept ? "ACCEPTED" : "rejected") + " · "
+        Map<String, Object> settled = proposals.settle(id, accept ? (changed ? "accepted" : "unchanged") : "rejected");
+        act(agentId, "note", "proposal " + id + " " + (accept ? (changed ? "ACCEPTED" : "UNCHANGED") : "rejected") + " · "
                 + describe(String.valueOf(p.get("kind")), p));
         publishPropsCount();
         return settled;
@@ -1475,7 +1477,7 @@ public final class AgentManager {
         return active;
     }
 
-    private void applyProposal(Map<String, Object> p, String human) throws OpException {
+    private boolean applyProposal(Map<String, Object> p, String human) throws OpException {
         String kind = String.valueOf(p.get("kind"));
         String target = ("rename".equals(kind) || "comment".equals(kind) || "tag".equals(kind))
                 ? proposalTarget(p) : null;
@@ -1487,6 +1489,7 @@ public final class AgentManager {
                 /* The edits pane refers to the same history entry as the guarded mutation. */
                 if (res.get("historyId") != null) storeOf(p).stamp(String.valueOf(p.get("id")), "historyId", res.get("historyId"));
                 if (res.get("newAddr") != null) storeOf(p).stamp(String.valueOf(p.get("id")), "newAddr", res.get("newAddr"));
+                return Boolean.TRUE.equals(res.get("applied"));
             }
             case "comment" -> {
                 ws.withTargetWrite(target, () -> {
@@ -1538,6 +1541,7 @@ public final class AgentManager {
                     p.get("field") == null ? null : String.valueOf(p.get("field")), "human", false);
             default -> throw OpException.unsupported("review for kind: " + kind, "");
         }
+        return true;
     }
 
     private void rejectUnderlying(Map<String, Object> p) throws OpException {

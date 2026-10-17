@@ -4717,9 +4717,19 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             if (r.kind() == Kind.METHOD && (addr.contains("-><init>(") || addr.contains("-><clinit>(")))
                 throw OpException.syntax("a constructor cannot be renamed (<init> / <clinit> are the class's own) — name the class instead",
                         "symbol=" + symbol);   // JEB refused it as "taken", which sent an agent looking for another name (Kimi test, 2026-09-20)
+            List<Map<String,Object>> affected = renameTargets(symbol);
+            if (!affected.isEmpty() && affected.stream().allMatch(member -> name.equals(member.get("name")))) {
+                Map<String,Object> out = new LinkedHashMap<>();
+                out.put("addr", addr); out.put("newAddr", addr);
+                out.put("kind", r.kind().name().toLowerCase());
+                out.put("oldName", name); out.put("newName", name);
+                out.put("applied", false); out.put("unchanged", true);
+                out.put("reason", "Every affected symbol already has this name.");
+                return out;
+            }
             java.util.Set<String> refClasses = referrerClasses(addr);   // captured BEFORE the rename shifts addrs
             if (r.kind() == Kind.METHOD) {
-                for (Map<String,Object> relative : renameTargets(symbol)) {
+                for (Map<String,Object> relative : affected) {
                     String relatedAddr = String.valueOf(relative.get("addr"));
                     refClasses.add(classAddrOf(relatedAddr));
                     refClasses.addAll(referrerClasses(relatedAddr));
@@ -5503,6 +5513,15 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             LocalRef selected = selectedLocal(mu, local);
             long itemId = selected.itemId();
             if (itemId == 0) throw unavailableLocal(selected, mu.r().addr());
+            if (newName.equals(selected.shown())) {
+                Map<String,Object> out = new LinkedHashMap<>();
+                out.put("addr", mu.r().addr()); out.put("newAddr", mu.r().addr());
+                out.put("kind", "local"); out.put("local", local);
+                out.put("oldName", selected.shown()); out.put("newName", newName);
+                out.put("applied", false); out.put("unchanged", true);
+                out.put("reason", "This variable already has this name.");
+                return out;
+            }
             boolean applied;
             try { applied = renameIdentifier(mu.ju(), itemId, newName); }
             catch (OpException refusal) {
