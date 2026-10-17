@@ -7,6 +7,7 @@ from barrier import API
 from checkpoint_backup import durable_json
 from quality import read
 from naming_coverage import summary as coverage_summary
+from review_debt import progress as debt_progress
 
 def agent_owner(actor):
     if not isinstance(actor,str) or not actor.startswith(('llm:','agent:')):return None
@@ -44,6 +45,7 @@ def snapshot(config,api):
             'disk_free_bytes':shutil.disk_usage(root).free,'invocation':read(root/'invocation.json',{}),
             'qualification':read(root/'rounds/qualification-save-barrier-20261016/barrier/state.json',{}),
             'quality':{'status':'pending','classes':[]},'quality_history':[]}
+    result['review_debt']=debt_progress(catalog,sessions,config.get('review_debt_first'))
     try:missions={m['id']:m for m in api.call('agent.missions')}
     except Exception as error:missions={};result['errors'].append(str(error))
     try:
@@ -73,7 +75,7 @@ def snapshot(config,api):
         for slot in json.loads(session['slots']):
             mission=missions.get(slot.get('mission'),{})
             worker={k:mission.get(k) for k in ('id','agentId','state','displayState','loopActive','cancellationUnconfirmed','turnsDone','inputTokens','outputTokens','cacheHitTokens','writes','reason','stopReason','progress','startedAt')}
-            worker.update(original_class=slot['original_class'],current_name=current_names.get(slot['original_class']) or slot['current_name'],model=slot['model'],result=slot.get('result'))
+            worker.update(original_class=slot['original_class'],current_name=current_names.get(slot['original_class']) or slot['current_name'],model=slot['model'],result=slot.get('result'),assignment_kind=slot.get('assignment_kind'))
             owner=mission.get('agentId') or agent_owner(slot.get('coverage_actor'))
             applied=[r for r in session_edits if owner and agent_owner(r.get('actor'))==owner]
             worker.update(apiWrites=worker.get('writes'),writes=len(applied),localWrites=sum(r.get('kind')=='local' for r in applied),

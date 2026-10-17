@@ -916,3 +916,26 @@ verified and its review outcomes recorded. Ordinary rate limits and oversized
 contexts are not treated as exhausted funds. Recovery retains the invocation.
 There is no automatic recharge or server teardown. The local dashboard relay
 needs the laptop; the cloud controller, verification and reviews do not.
+
+
+### Repair existing review debt before new classes
+
+The cloud configuration `review_debt_first: true` holds untouched classes while
+any catalog class is `needs_review`, including earlier classes outside the current
+FMessage focus. Sessions still contain exactly eight distinct owners, four
+DeepSeek and four GLM slots. Repairs rotate by the oldest last assignment, so a
+stubborn class cannot starve the rest. A final partial batch uses already completed
+classes for verification; it never fills empty slots with untouched classes.
+
+Each repair receives its previous unresolved work, coverage and independent
+findings. Earlier findings survive failed provider reviews and require explicit,
+evidence-backed assessments by the next independent reviewer. An omitted or
+unresolved finding keeps the class in debt. Supported names are retained; engine
+limitations are reported rather than counted as completed. The normal save,
+native/live verification and coverage requirements still apply after every eight.
+The dashboard counts waiting and in-flight repairs. New classes resume only when
+all debt clears, and later review failures automatically close that gate again.
+There is no repair-round or retry cap. Provider context/output limits, credit,
+available disk and unsupported native rename targets can still prevent progress;
+the gate does not waive them. The existing continuous credit-stop behavior drains,
+saves and records the active session before stopping new admission.

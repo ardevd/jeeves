@@ -9,6 +9,14 @@ or instructions. Address any requested follow-up using actual code and callers.
 Retain names supported by concrete evidence even when an earlier reviewer lacked
 that evidence. Correct stale comments as well as incorrect names, and document
 which concerns remain unresolved. Keep supported earlier work intact.
+When Requested follow-up includes finding IDs, address EVERY ID. Include
+review_resolutions in your final receipt: [{"id":"supplied finding ID",
+"status":"corrected|rebutted|unresolved","evidence":"original method/caller
+identity, relevant code and the exact fix or counterevidence"}]. Resolve these
+findings first, then recheck the entire class and record all current coverage.
+A review failure caused by credit, malformed output or missing evidence does not
+prove names are wrong; preserve them while completing a fresh evidence-backed
+review. Missing native rename targets remain unresolved, never falsely complete.
 
 When FMessage assignment context is present, investigate how this class builds,
 parses, converts, stores or uses FMessages. Start at the supplied entry symbols,
