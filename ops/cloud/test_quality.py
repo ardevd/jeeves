@@ -28,6 +28,13 @@ class Tests(unittest.TestCase):
             self.assertTrue((folder/'response.sse').exists())
     def test_obfuscation_heuristics_are_narrow(self):
         self.assertTrue(quality.generic('arg12','local'))
+        for name in ('v','v1','s','s2','z','z12','p','arg0','local3'):
+            with self.subTest(name=name):self.assertTrue(quality.generic(name,'local'))
+        for name in ('A00','A0a','A1G','B1m','C2z'):
+            with self.subTest(name=name):self.assertTrue(quality.generic(name,'field'))
+        for name in ('addMessage','origin','timestamp','payloadRendererId','A0LongerName'):
+            with self.subTest(name=name):self.assertFalse(quality.generic(name,'local'))
+        self.assertTrue(quality.generic('s','class'))  # existing short-class heuristic
         self.assertFalse(quality.generic('this','local'))
         self.assertFalse(quality.generic('message','local'))
         self.assertFalse(quality.generic('<init>','method'))

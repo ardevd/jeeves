@@ -90,7 +90,10 @@ def research_evidence(api,slot,evidence,history,baseline_ids):
 def generic(name, kind):
     if name in ('this','<init>','<clinit>'):return False
     if re.fullmatch(r'(?:arg|v|p)\d+(?:_\d+)?',str(name)):return True
-    if re.fullmatch(r'(?:A|B|C)\d{2,}',str(name)):return True
+    # Current JEB rendering starts with v/s/z before adding numeric suffixes.
+    # Single-letter loop/math names can be meaningful: this only asks for review.
+    if kind=='local' and re.fullmatch(r'(?:arg|var|local|[a-z])\d*(?:_\d+)?',str(name)):return True
+    if re.fullmatch(r'(?:[ABC]\d{2,}|[ABC]\d[A-Za-z])',str(name)):return True
     return kind in ('class','field','method') and len(str(name))<=2
 
 def inventory(api,target,original):

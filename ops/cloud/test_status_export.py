@@ -62,4 +62,26 @@ class Tests(unittest.TestCase):
             self.assertEqual(result['quality']['classes'],current)
             self.assertEqual(result['quality_history'][1]['quality'],result['quality'])
 
+            folder=root/'rounds/cloud-000002'
+            partial={'stage':'before','at':1,'classes':[{'original_class':'LC0;','methods':[{'private':'full evidence'}]}]}
+            (folder/'coverage-before-partial.json').write_text(json.dumps(partial))
+            result=status_export.snapshot(dict(root=str(root),artifact=str(artifact)),API())
+            self.assertEqual(result['coverage']['status'],'collecting')
+            self.assertEqual(result['coverage']['classes_total'],8)
+            self.assertEqual(len(result['coverage']['classes']),1)
+            self.assertNotIn('methods',result['coverage']['classes'][0])
+            self.assertEqual(result['quality_history'][0]['quality'],prior)
+            complete=dict(partial,status='needs_review')
+            (folder/'coverage-before.json').write_text(json.dumps(complete))
+            result=status_export.snapshot(dict(root=str(root),artifact=str(artifact)),API())
+            self.assertEqual(result['coverage']['status'],'needs_review')
+            (folder/'coverage-after-partial.json').write_text(json.dumps(dict(partial,stage='after',at=2)))
+            result=status_export.snapshot(dict(root=str(root),artifact=str(artifact)),API())
+            self.assertEqual(result['coverage']['stage'],'after')
+            self.assertEqual(result['coverage']['status'],'collecting')
+            (folder/'coverage-after.json').write_text(json.dumps(dict(complete,stage='after',at=3)))
+            result=status_export.snapshot(dict(root=str(root),artifact=str(artifact)),API())
+            self.assertEqual(result['coverage']['at'],3)
+            self.assertEqual(result['coverage']['status'],'needs_review')
+
 if __name__=='__main__':unittest.main()

@@ -470,6 +470,12 @@ partial; a query overlay does not claim successful durable cache persistence.
 
 ## Save completion and durability
 
+The private cloud campaign exports partial method-variable coverage as
+`status:collecting`, with `classes_total` and the classes already checked.
+Post-save partial coverage takes precedence over pre-save evidence. Generic-name
+flags (including short locals and `A0a`-style members) are review hints only;
+they do not change native renameability or establish semantic correctness.
+
 A target save is serialized with its edit transaction. Async completion requires `saving:false`, `last.at >= startedAt`, and `last.ok:true`; failures before the native write also produce a fresh failed outcome. Rename ownership clears only after history and native state are persisted. Undo/redo events have durable revisions and replay in execution order across a restart; discard includes pending reversals of saved entries. Failed replay prevents saving a partially recovered project. Close waits for active target edits and refuses a failed history flush before detaching; a native synchronous close-save failure reports `closed:true, saved:false`. See [persistence contract](../docs/persistence.md) for checkpoint, recovery, and verification semantics.
 
 The search corpus is derived state. Its pending recovery entry clears only after replacement text and the header persist; see [search-index recovery](../docs/search-index-recovery.md).

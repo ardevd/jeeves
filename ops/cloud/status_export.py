@@ -81,8 +81,10 @@ def snapshot(config,api):
             result['workers'].append(worker)
         result['quality']=quality
         result['barrier']=saved
-        coverage=read(folder/'coverage-after.json') or read(folder/'coverage-before.json')
-        if coverage:result['coverage']=coverage_summary(coverage)
+        coverage=(read(folder/'coverage-after.json') or read(folder/'coverage-after-partial.json')
+                  or read(folder/'coverage-before.json') or read(folder/'coverage-before-partial.json'))
+        if coverage:
+            result['coverage']=dict(coverage_summary(coverage),classes_total=len(result['workers']))
     edits=[r for r in history if baseline is not None and r.get('id') not in baseline]
     result['edits']=edits;result['counts']=counts(edits);result['history_entries']=len(history)
     # Read counts from durable state; do not ask a model or force a project switch.

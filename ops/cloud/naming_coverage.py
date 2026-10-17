@@ -43,5 +43,5 @@ def native_expectations(coverage):
             for c in coverage['classes'] for m in c['methods'] if not m.get('inventoryErrors')]
 
 def summary(coverage):
-    return {'status':coverage['status'],'stage':coverage['stage'],'at':coverage['at'],
+    return {'status':coverage.get('status','collecting'),'stage':coverage['stage'],'at':coverage['at'],
             'classes':[{k:v for k,v in c.items() if k!='methods'} for c in coverage['classes']]}

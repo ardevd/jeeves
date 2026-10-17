@@ -98,6 +98,8 @@ provider makes one static Max review per class (GLM reviews DS, DS reviews GLM).
 It receives no mutation tools. Raw streamed responses, usage, evidence and
 findings are durable under rounds/cloud-NNNNNN/quality. Generic-name flags are
 only heuristics; model assessments are not ground truth. No corrective renames
+are implied by flags for short locals such as v/s/z12 or members such as A0a.
+A meaningful one-letter counter can be retained with evidence. No renames
 or second reversing session are launched by review. A failed/ambiguous paid
 review is retained for manual review instead of automatically repeating it.
 Collection errors, reported issues and missing claims keep classes needs_review.
@@ -117,6 +119,11 @@ original/current names, per-agent usage, save stages and independent quality
 findings. The old K3 dashboard files/history remain separate and intact.
 Local dashboard relay is NOT HIBERNATION-SAFE; it catches up after reconnect.
 Cloud campaign/review/exporter are separately supervised by systemd.
+The dashboard publishes each completed class's existing partial coverage file
+while the audit is collecting. Post-save partial evidence supersedes pre-save
+evidence; partial results never claim a completed audit. A new session without
+an audit clears the previous session's coverage display. This adds no native or
+provider calls to the exporter.
 
 Prepared maintenance can use deploy_after_session.py and the supplied systemd
 unit. Stage a complete source/backend/web release under /opt/jeeves/releases,

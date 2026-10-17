@@ -858,3 +858,7 @@ by a fresh native save, a hash-verified checkpoint, independent native-only reop
 verification, and live reopen verification before the next session. The catalog
 keeps original class identities; the prompt covers every field, method, argument
 and local. Model completion claims and verified persistence are recorded separately.
+The campaign dashboard shows coverage as each class is checked, with an explicit
+collecting state until the audit finishes. Possible unnamed-symbol flags include
+short locals such as `v`/`z12` and members such as `A0a`; these prompt review and
+do not prove that a name is wrong. Supported short names can be retained.
