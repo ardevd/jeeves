@@ -150,6 +150,15 @@ def run_session(api,db,session,artifact,root):
                     slot.update(mission=matched[0]['id'],spawn='acknowledged',coverage_actor='llm:'+matched[0]['agentId']);save_slots(db,sid,slots);continue
                 if slot['spawn']=='ambiguous':
                     raise RuntimeError('Ambiguous spawn has no mission receipt; preserved for reconciliation: '+slot['assignment_id'])
+                # The catalog/focus names were captured at discovery. Previous
+                # agents may have renamed this class since then; resolve its
+                # stable original descriptor before claiming the label is current.
+                current=api.call('symbol.resolve',target=target,symbol=slot['original_class'])
+                name=current.get('name')
+                if (current.get('origSig')!=slot['original_class'] or current.get('contradiction')
+                        or not isinstance(name,str) or not name.strip()):
+                    raise RuntimeError('Cannot resolve current assignment identity: '+slot['original_class'])
+                slot['current_name']=name
                 slot['spawn']='ambiguous';save_slots(db,sid,slots)
                 # Never blindly replay a mutation after a lost HTTP acknowledgement.
                 mission=api.call('agent.spawn',target=target,scope='target:'+target,model=slot['model'],effort='max',goal=prompt(slot,target))

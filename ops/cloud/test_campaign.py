@@ -25,6 +25,7 @@ class SessionAPI:
             self.missions.append(m)
             if self.lost:self.lost=False;raise ConnectionResetError('lost spawn acknowledgement')
             return m
+        if op=='symbol.resolve':return {'origSig':p['symbol'],'name':'FreshName_'+p['symbol']}
         if op=='agent.turns':return [{'turn':1}]
         if op=='code.outline':return {'symbol':{'origSig':p['class']},'methods':[{'origSig':p['class']+'->a()V'}]}
         if op=='naming.coverage':return {'originalMethod':p['symbol'],'recordedBy':p['recordedBy'],'status':self.coverage_status,
@@ -88,6 +89,7 @@ class Tests(unittest.TestCase):
             with patch.object(campaign,'run_barrier',side_effect=RuntimeError('save verification failed')):
                 with self.assertRaisesRegex(RuntimeError,'verification failed'):campaign.run_session(api,self.db,session,self.root/'input.apk',self.root)
             self.assertEqual(len(api.missions),8)
+            self.assertEqual(api.calls.count('symbol.resolve'),8)
             session=campaign.claim_session(self.db,MODELS)
             self.assertEqual(session['phase'],'barrier')
             self.assertEqual(self.db.execute("SELECT count(*) FROM classes WHERE state='done'").fetchone()[0],0)
@@ -96,6 +98,31 @@ class Tests(unittest.TestCase):
                 campaign.run_session(api,self.db,session,self.root/'input.apk',self.root)
             self.assertEqual(len(api.missions),8)
             self.assertEqual(self.db.execute("SELECT count(*) FROM classes WHERE state='done'").fetchone()[0],8)
+    def test_each_of_eight_spawn_goals_uses_live_name_and_persists_it(self):
+        api=SessionAPI();session=campaign.claim_session(self.db,MODELS)
+        with patch.object(campaign,'ensure_target',return_value='t1'),patch.object(campaign,'run_barrier',side_effect=RuntimeError('fixture boundary')):
+            with self.assertRaisesRegex(RuntimeError,'fixture boundary'):
+                campaign.run_session(api,self.db,session,self.root/'input.apk',self.root)
+        slots=json.loads(self.db.execute('SELECT slots FROM sessions').fetchone()[0])
+        self.assertEqual(len(api.missions),8);self.assertEqual(api.calls.count('symbol.resolve'),8)
+        for slot,mission in zip(slots,api.missions):
+            name='FreshName_'+slot['original_class']
+            self.assertEqual(slot['current_name'],name)
+            self.assertIn('Current display name at assignment: '+name+'.',mission['goal'])
+            self.assertIn('You own exactly one class: '+slot['original_class']+'.',mission['goal'])
+        self.assertEqual(len({s['original_class'] for s in slots}),8)
+
+    def test_ambiguous_or_missing_live_identity_cannot_launch_a_wrong_class(self):
+        api=SessionAPI();session=campaign.claim_session(self.db,MODELS);base=api.call
+        for answer in [{'origSig':'LWrong;','name':'Wrong'}, {'origSig':'LA;','name':''},
+                       {'origSig':'LA;','name':'Ambiguous','contradiction':True}]:
+            api.call=lambda op,**p:answer if op=='symbol.resolve' else base(op,**p)
+            with patch.object(campaign,'ensure_target',return_value='t1'):
+                with self.assertRaisesRegex(RuntimeError,'assignment identity'):
+                    campaign.run_session(api,self.db,session,self.root/'input.apk',self.root)
+            self.assertFalse(api.missions)
+            saved=json.loads(self.db.execute('SELECT slots FROM sessions').fetchone()[0])
+            self.assertTrue(all(s['spawn']=='prepared' and s['mission'] is None for s in saved))
     def test_no_completion_claim_without_receipt(self):
         class API:
             def call(self,*a,**k):return []

@@ -44,6 +44,11 @@ priority even if the class still needs review. Ordinary eligibility remains.
 Duplicate requests and classes outside the focus are rejected. Prior class
 results and review findings accompany every later assignment as evidence to
 check, never proof. This preserves exactly eight distinct slots and their model mix.
+The catalog and focus manifest contain discovery-time display labels. Immediately
+before each new spawn, the runner resolves the original descriptor in the live
+target and persists its current display name with the admission record. A missing
+or contradictory identity prevents that spawn. Already launched missions retain
+their original goals and are reconciled without refreshing or duplicating them.
 
 Install jeeves-campaign@.service. Start an explicitly requested number of sessions:
  systemctl start jeeves-campaign@1

@@ -139,7 +139,17 @@ and are also what an orchestrator-LLM would call to run a fleet.
 - No multi-project mission spanning (a mission lives in one project).
 - No scheduling/cron of missions.
 
-## 8. Open questions
+## 8. Cloud catalog assignments
+
+The optional cloud controller keeps original class descriptors as stable keys
+and reserves exactly eight distinct classes per session. Discovery-time catalog
+and focus labels are historical. Immediately before a new spawn, it resolves
+the original descriptor against the live target, verifies the same unambiguous
+identity and persists the returned current display name with the admission.
+Already acknowledged or reconciled missions retain their original goals and are
+not spawned again. This refresh does not alter research scope or the run window.
+
+## 9. Open questions
 
 1. Auto-accept thresholds: per-confidence auto-accept (e.g. renames with
    conf ≥ 0.95 auto-land) or always-review? (Mockup: always-review default,
