@@ -92,9 +92,34 @@ public final class UnchangedRenameIT {
             check(Boolean.TRUE.equals(ws.saveTarget(target).get("saved")),"mixed outcome saves natively");
             ws.closeTarget(target);String reopened=String.valueOf(ws.openTarget(input.toString(),"jeb").get("id"));ready(ws,reopened);owner(d,reopened,identity);
             check(ws.writesBy(reopened,"second-owner")==1&&ws.writesBy(reopened,"review-owner")==0,"accurate counts survive native reopen");
+            manager.reviewPolicy().configure("auto",List.of(),0);
+            var overHuman=map(d.dispatch("rename",Map.of("target",reopened,"symbol","Lfixture/1cq;","name","ReviewedMessageKey"),"llm:review-owner").get("data"));
             var human=d.dispatch("rename",Map.of("target",reopened,"symbol","Lfixture/1cq;","name","HumanMessageKey"),"human");
             check(Boolean.TRUE.equals(human.get("ok")),"analyst assignment applies");
             counts(annotate(d,reopened,List.of(Map.of("symbol","Lfixture/1cq;","name","HumanMessageKey")),"llm:second-owner"),0,0,0,1);
+            var denied=d.dispatch("agent.review",Map.of("id",overHuman.get("id"),"action","accept"),"llm:review-owner");
+            check("E_SCOPE".equals(map(denied.get("error")).get("code")),"an agent cannot supply human review authority");
+            var humanApproved=d.dispatch("agent.review",Map.of("id",overHuman.get("id"),"action","accept"),"human");
+            check(Boolean.TRUE.equals(humanApproved.get("ok"))&&"accepted".equals(map(humanApproved.get("data")).get("state")),
+                    "a human review may explicitly replace an analyst's name");
+            check("ReviewedMessageKey".equals(ws.engineFor(reopened).resolve("Lfixture/1cq;").get("name")),"reviewed class name reaches the native engine");
+            manager.reviewPolicy().configure("auto",ReviewPolicy.KINDS,0);
+            counts(annotate(d,reopened,List.of(Map.of("symbol","Lfixture/1cq;->b:I","name","freshRowId")),OWNER),1,0,0,0);
+            counts(annotate(d,reopened,List.of(Map.of("symbol","Lfixture/1cq;->b:I","name","unapprovedRowId")),"llm:intruder accepted by human"),0,0,0,1);
+            manager.reviewPolicy().configure("auto",List.of(),0);
+            var staleReview=map(d.dispatch("rename",Map.of("target",reopened,"symbol","Lfixture/1cq;->b:I","name","reviewedRowId","expectedName","rowId"),"llm:review-owner").get("data"));
+            var staleDecision=d.dispatch("agent.review",Map.of("id",staleReview.get("id"),"action","accept"),"human");
+            check("RENAME_CONFLICT".equals(map(staleDecision.get("error")).get("code")),"human approval still respects expectedName");
+            check("freshRowId".equals(ws.engineFor(reopened).resolve("Lfixture/1cq;->b:I").get("name")),"stale reviewed rename leaves the native name intact");
+            d.dispatch("agent.review",Map.of("id",staleReview.get("id"),"action","reject"),"human");
+            var override=map(d.dispatch("rename",Map.of("target",reopened,"symbol","Lfixture/1cq;->b:I","name","reviewedRowId","expectedName","freshRowId"),"llm:review-owner").get("data"));
+            var decision=d.dispatch("agent.review",Map.of("id",override.get("id"),"action","accept"),"human");
+            check(Boolean.TRUE.equals(decision.get("ok"))&&"accepted".equals(map(decision.get("data")).get("state")),"explicit human approval can replace another agent's unsaved name");
+            check("reviewedRowId".equals(ws.engineFor(reopened).resolve("Lfixture/1cq;->b:I").get("name")),"approved unsaved replacement reaches the native engine");
+            check(ws.historyList(reopened,0).stream().map(UnchangedRenameIT::map).anyMatch(h->"reviewedRowId".equals(h.get("newName"))
+                    &&"agent:review-owner accepted by human".equals(h.get("actor"))),"review keeps the proposing agent's historical attribution");
+            manager.reviewPolicy().configure("auto",ReviewPolicy.KINDS,0);
+            counts(annotate(d,reopened,List.of(Map.of("symbol","Lfixture/1cq;->b:I","name","unapprovedRowId")),OWNER),0,0,0,1);
             Path family=output.resolve("UnchangedFamily.dex");Files.copy(Path.of(args[2]),family);
             String ft=String.valueOf(ws.openTarget(family.toString(),"jeb").get("id"));ready(ws,ft);
             String child="Lfixture/RenameFamily$Child;->a(I)I",reader="Lfixture/RenameFamily$Reader;->a(I)I";

@@ -1117,7 +1117,7 @@ public final class AgentManager {
         if (reviewPolicy.appliesDirectly(kind, body.get("confidence"), null)) {
             boolean changed;
             try {
-                changed = applyProposal(p, "agent:" + agentId + " auto-applied");
+                changed = applyProposal(p, "agent:" + agentId + " auto-applied", false);
             } catch (OpException e) {
                 store.retouch(pid, "refusal", e.getMessage());
                 store.settle(pid, "refused");
@@ -1370,7 +1370,7 @@ public final class AgentManager {
             p = proposals.get(id);
         }
 
-        boolean changed = accept && applyProposal(p, human);
+        boolean changed = accept && applyProposal(p, human, true);
         if (!accept) rejectUnderlying(p);
 
         Map<String, Object> settled = proposals.settle(id, accept ? (changed ? "accepted" : "unchanged") : "rejected");
@@ -1477,7 +1477,7 @@ public final class AgentManager {
         return active;
     }
 
-    private boolean applyProposal(Map<String, Object> p, String human) throws OpException {
+    private boolean applyProposal(Map<String, Object> p, String human, boolean analystApproved) throws OpException {
         String kind = String.valueOf(p.get("kind"));
         String target = ("rename".equals(kind) || "comment".equals(kind) || "tag".equals(kind))
                 ? proposalTarget(p) : null;
@@ -1485,7 +1485,7 @@ public final class AgentManager {
             case "rename" -> {
                 Map<String, Object> res = ws.renameSymbol(target, String.valueOf(p.get("symbol")),
                         String.valueOf(p.get("newName")), human, p.get("confidence"),
-                        p.get("expectedName") == null ? null : String.valueOf(p.get("expectedName")));
+                        p.get("expectedName") == null ? null : String.valueOf(p.get("expectedName")), analystApproved);
                 /* The edits pane refers to the same history entry as the guarded mutation. */
                 if (res.get("historyId") != null) storeOf(p).stamp(String.valueOf(p.get("id")), "historyId", res.get("historyId"));
                 if (res.get("newAddr") != null) storeOf(p).stamp(String.valueOf(p.get("id")), "newAddr", res.get("newAddr"));

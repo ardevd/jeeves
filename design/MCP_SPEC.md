@@ -95,6 +95,12 @@ independently. Auto-applied or manually accepted rename proposals that require
 no edit settle as `unchanged`, with no history ID or undo action. Existing
 historical entries are retained unchanged.
 
+`agent.review` remains human-only. Its accepted renames use explicit internal
+analyst authority for ownership checks while retaining the proposing agent's
+`accepted by human` history attribution. The `expectedName` precondition still
+applies. Auto-accept and ordinary rename calls retain normal agent checks;
+an actor-string suffix does not grant review authority.
+
 A native destination-name refusal retains `E_BUSY` and adds `requestedName`,
 `currentName`, `originalSymbol`, `conflicts[]`, and
 `collisionLookup: matched|unresolved|incomplete`. Each conflict has `kind`,

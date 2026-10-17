@@ -180,6 +180,14 @@ public final class Workspace {
     /** One atomic ownership check, engine mutation, and durable recovery record. */
     public Map<String,Object> renameSymbol(String targetParam, String symbol, String name, String actor,
                                            Object confidence, String expectedName) throws OpException {
+        return renameSymbol(targetParam, symbol, name, actor, confidence, expectedName, false);
+    }
+
+    /* Only the human-only proposal-review operation supplies analystApproved. Its
+       agent attribution belongs in history, not in the permission check. */
+    Map<String,Object> renameSymbol(String targetParam, String symbol, String name, String actor,
+                                   Object confidence, String expectedName, boolean analystApproved) throws OpException {
+        String permissionActor = analystApproved ? "human" : actor;
         String tid;
         synchronized (this) { tid = resolveTargetIdOrActive(targetParam); }
         return withTargetWrite(tid, () -> {
@@ -192,9 +200,9 @@ public final class Workspace {
             for (Map<String,Object> member : affected) {
                 String memberOriginal = stableSymbol(member, symbol);
                 String current = String.valueOf(member.getOrDefault("name", member.getOrDefault("fqcn", symbol)));
-                renameCoordinator.check(tid, memberOriginal, current, actor,
+                renameCoordinator.check(tid, memberOriginal, current, permissionActor,
                         memberOriginal.equals(original) ? expectedName : null);
-                if ("agent".equals(EventBus.actorKind(actor)) && humanNamedBy(tid, memberOriginal) != null) {
+                if ("agent".equals(EventBus.actorKind(permissionActor)) && humanNamedBy(tid, memberOriginal) != null) {
                     OpException conflict = OpException.scope("The symbol is named '" + current + "' by the analyst; your rename was not applied", "symbol=" + memberOriginal);
                     conflict.extra.put("currentName", current);
                     conflict.extra.put("originalSymbol", memberOriginal);

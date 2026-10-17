@@ -367,6 +367,11 @@ name. Ownership and `expectedName` checks still apply. Batch results count
 the same item can still apply. The Edits pane labels unchanged proposals without
 offering an undo action for an edit that never happened.
 
+A human accepting a pending proposal may override an unsaved agent name or an
+intervening analyst rename. The history still credits the proposing agent and
+records the human approval. An explicit `expectedName` must still match; a stale
+proposal remains pending. Automatic agent writes do not receive this authority.
+
 `annotate` still returns each item's outcome. A failed rename keeps the readable
 `error` string and adds `errorDetails` with `code`, `currentName`, `currentActor`
 when there is an unsaved owner, `originalSymbol`, `unsaved`, and `historyId` when
