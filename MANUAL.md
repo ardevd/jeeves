@@ -654,6 +654,12 @@ displaying the wrong name on a neighboring argument.
 
 Partial item lists merge for the same actor and fingerprint, without an item
 cap. Empty methods require an explicit record with `items:[]` and evidence.
+An invalid item reports its zero-based `itemIndex`, `field`, exact `identity`,
+`originalMethod` and a specific corrective hint. Copy identities from the current
+inventory rather than reconstructing their numeric IDs. Duplicate identities,
+unknown IDs, missing evidence and invalid dispositions have distinct errors.
+A rejected request records none of its items; existing receipts remain intact.
+The agent loop preserves these diagnostics in the next model tool reply.
 Missing entries, unresolved variables and collection errors prevent completion;
 changed names or inventories make old records stale. Records for other actors
 are retained separately. They are durably written under the artifact's

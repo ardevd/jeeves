@@ -189,6 +189,13 @@ public final class NamingCoverage {
             return evaluate(inventory,load(file(ws,tid,text(inventory.get("originalMethod"))),text(inventory.get("originalMethod"))),recordedBy);
         });
     }
+    private static OpException itemError(int index,String field,String reason,String original,String identity,String hint) {
+        var error=OpException.syntax("Coverage items["+index+"]."+field+": "+reason,
+                identity.isBlank()?original:identity);
+        error.extra.put("itemIndex",index);error.extra.put("field",field);
+        error.extra.put("originalMethod",original);error.extra.put("identity",identity);
+        error.extra.put("hint",hint);return error;
+    }
     public static Map<String,Object> record(Workspace ws, String target, String symbol, String actor, Map<String,Object> request) throws OpException {
         String tid=ws.resolveTargetIdOrActive(target);
         return ws.withTargetWrite(tid, () -> {
@@ -207,17 +214,31 @@ public final class NamingCoverage {
                 decisions.putAll(map(value));
             Map<String,Map<String,Object>> variables=new HashMap<>();
             for (Object value:(List<?>)inventory.get("variables")) { var row=map(value); variables.put(text(row.get("identity")),row); }
-            Set<String> seen=new HashSet<>();
-            for (Object value:items) {
-                if (!(value instanceof Map<?,?>)) throw OpException.syntax("Each coverage item is an object",original);
+            Map<String,Integer> seen=new HashMap<>();
+            for (int index=0;index<items.size();index++) {
+                Object value=items.get(index);
+                if (!(value instanceof Map<?,?>)) throw itemError(index,"item","expected an object",original,"",
+                        "Each item must contain identity, disposition and evidence together.");
                 var item=map(value); String identity=text(item.get("identity")); var row=variables.get(identity);
                 String disposition=text(item.get("disposition")), reason=text(item.get("evidence"));
-                if (row==null || !seen.add(identity) || reason.isBlank() || !Set.of("renamed","retained","unresolved").contains(disposition))
-                    throw OpException.syntax("Coverage requires unique current variable identities, a disposition and concrete evidence",identity);
+                if (identity.isBlank()) throw itemError(index,"identity","missing current variable identity",original,identity,
+                        "Copy identity exactly from naming_coverage action=get for "+original+"; put its disposition and evidence in the same object.");
+                if (row==null) throw itemError(index,"identity","not a current variable identity",original,identity,
+                        "Read naming_coverage action=get for "+original+" and copy the exact identity string; do not reconstruct its numeric ID.");
+                Integer prior=seen.putIfAbsent(identity,index);
+                if (prior!=null) throw itemError(index,"identity","duplicates items["+prior+"]",original,identity,
+                        "Keep one decision per identity in this request; no items from this rejected request were recorded.");
+                if (!Set.of("renamed","retained","unresolved").contains(disposition))
+                    throw itemError(index,"disposition","expected renamed, retained or unresolved",original,identity,
+                            "Put the disposition and concrete evidence alongside this identity in the same item.");
+                if (reason.isBlank()) throw itemError(index,"evidence","missing concrete evidence",original,identity,
+                        "Describe this variable's observed use; no items from this rejected request were recorded.");
                 if (!"unresolved".equals(disposition) && text(row.get("name")).isBlank())
-                    throw OpException.syntax("An unnamed argument must be unresolved",identity);
+                    throw itemError(index,"disposition","an unnamed argument must be unresolved",original,identity,
+                            "Use unresolved and explain the unavailable name or rename target.");
                 if ("renamed".equals(disposition) && !(row.get("nameProvenance") instanceof Map<?,?>))
-                    throw OpException.syntax("No active rename provenance for this variable; use retained with evidence or unresolved",identity);
+                    throw itemError(index,"disposition","no active rename provenance for this variable",original,identity,
+                            "Use retained with evidence for a supported existing name, or unresolved; claiming renamed requires an applied rename.");
                 decisions.put(identity,Map.of("identity",identity,"disposition",disposition,"evidence",reason));
             }
             Map<String,Object> receipt=new LinkedHashMap<>();

@@ -943,11 +943,12 @@ public final class AgentLoop {
                                         : "the arguments were invalid or the target does not resolve — "
                                                 + "check the symbol spelling (symbols {symbol} resolves it), then retry with "
                                                 + exampleFor(toolName);
+                                // Preserve the operation's diagnostics (identity, item index,
+                                // collision owner, etc.). A generic hint must not erase the
+                                // information the model needs to correct its next request.
                                 Map<String, Object> e2 = new LinkedHashMap<>();
-                                e2.put("code", code);
-                                e2.put("message", String.valueOf(err.get("message")));
+                                for (var entry : err.entrySet()) e2.put(String.valueOf(entry.getKey()), entry.getValue());
                                 e2.put("hint", hint);
-                                if (err.get("candidates") != null) e2.put("candidates", err.get("candidates"));   // the nearest symbols ride along
                                 result = Map.of("ok", false, "error", e2);
                             }
                         }

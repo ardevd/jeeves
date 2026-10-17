@@ -576,6 +576,12 @@ name a unique current identity, use `renamed|retained|unresolved`, and contain
 nonblank evidence; a method-level evidence string is also required. `renamed`
 requires current history provenance. Partial records merge only for the same
 actor and unchanged fingerprint; a changed inventory requires fresh assessment.
+Item validation errors are E_SYNTAX with zero-based `itemIndex`, `field`,
+`identity`, `originalMethod` and `hint`. The message distinguishes an unknown or
+missing identity, a duplicate (including its earlier index), invalid disposition,
+missing evidence and an unsupported renamed/retained claim. No decision in a
+rejected request is persisted. Agent-loop error hints augment the complete
+operation error object rather than dropping its detail or machine fields.
 An explicit empty items list reviews a variable-free method. No count limit is
 imposed by this tool. Atomic, fsynced sidecars preserve separate actor records;
 unreadable files produce E_IO and are retained. Names and reviews remain model

@@ -40,6 +40,21 @@ public final class NamingCoverageIT {
         return Map.of("target",target,"symbol",read.get("originalMethod"),"action","record",
                 "inventoryFingerprint",read.get("inventoryFingerprint"),"evidence","Inspected the authored fixture method.","items",items);
     }
+    private static void rejectedItem(Dispatcher d,String tid,Map<String,Object> current,List<?> items,
+                                     int index,String field,String message,String identity) {
+        String before=Json.write(get(d,tid,METHOD,ACTOR).get("record"));
+        var result=d.dispatch("tool.call",Map.of("tool","naming_coverage","args",args(tid,current,items)),ACTOR);
+        check(!Boolean.TRUE.equals(result.get("ok")),"invalid coverage request is rejected");
+        var error=map(result.get("error"));
+        check("E_SYNTAX".equals(error.get("code")) && ((Number)error.get("itemIndex")).intValue()==index
+                        && field.equals(error.get("field")) && METHOD.equals(error.get("originalMethod")),
+                "native facade identifies the exact rejected coverage item and field");
+        check(String.valueOf(error.get("message")).contains(message) && identity.equals(error.get("identity"))
+                        && error.get("hint") instanceof String,
+                "native facade explains the specific failure and preserves identity");
+        check(before.equals(Json.write(get(d,tid,METHOD,ACTOR).get("record"))),
+                "rejected batch cannot partially alter an existing durable receipt");
+    }
     public static void main(String[] argv)throws Exception {
         Path output=Path.of(argv[1]),input=output.resolve("CoverageFixture.dex"),home=output.resolve("home");Files.copy(Path.of(argv[0]),input);
         Workspace ws=new Workspace();Dispatcher d=dispatcher(ws,home);
@@ -87,6 +102,17 @@ public final class NamingCoverageIT {
             check("complete".equals(call(d,args(tid,current,decisions),ACTOR).get("status")),"reassessment repairs unresolved receipt");
             var duplicate=d.dispatch("tool.call",Map.of("tool","naming_coverage","args",args(tid,current,List.of(item(one,"retained"),item(one,"retained")))),ACTOR);
             check(!Boolean.TRUE.equals(duplicate.get("ok")),"duplicate variable assessments are rejected without changing receipt");
+            String identity=String.valueOf(one.get("identity"));
+            rejectedItem(d,tid,current,List.of(item(one,"unresolved"),Map.of("identity",identity+"9","disposition","retained","evidence","mistyped identity")),
+                    1,"identity","not a current variable identity",identity+"9");
+            rejectedItem(d,tid,current,List.of(item(one,"retained"),item(one,"retained")),1,"identity","duplicates items[0]",identity);
+            rejectedItem(d,tid,current,List.of(Map.of("disposition","retained","evidence","identity was split into another object")),
+                    0,"identity","missing current variable identity","");
+            rejectedItem(d,tid,current,List.of(Map.of("identity",identity,"disposition","complete","evidence","wrong enum")),
+                    0,"disposition","expected renamed, retained or unresolved",identity);
+            rejectedItem(d,tid,current,List.of(Map.of("identity",identity,"disposition","retained","evidence"," ")),
+                    0,"evidence","missing concrete evidence",identity);
+            rejectedItem(d,tid,current,List.of("not an object"),0,"item","expected an object","");
             String empty="Lfixture/Params;->zeroArgs()V";var zero=get(d,tid,empty,ACTOR);
             check(variables(zero).isEmpty() && "unreviewed".equals(zero.get("status")),"empty method still requires an explicit review");
             check("complete".equals(call(d,args(tid,zero,List.of()),ACTOR).get("status")),"explicit empty receipt completes variable-free method");
