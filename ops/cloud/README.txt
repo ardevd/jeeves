@@ -199,6 +199,13 @@ Preparing a focus manifest never resets a completed invocation or starts a round
 - Exactly eight API agents per session (operator requirement), sharing one JEB.
 - No headless turn or mission-token ceiling. Explicit provider context/output
   bounds still apply: configured 1,000,000 context; DS 393,216 output; GLM 131,072.
+  Independent DeepSeek reviews retain all input when a confirmed HTTP 400 gives
+  exact message/output/window token counts: they request the remaining context
+  for output, preserving Max reasoning. Each corrected attempt keeps a separate
+  durable intent, response and private rejection diagnostic. This does not change
+  account configuration. Unknown outcomes, incomplete streams, unrelated errors
+  and inputs that alone exceed the context window are never blindly retried or
+  silently truncated.
 - Existing annotate write batches hold at most 50 items; the prompt requires
   successive batches and inspection of every result. Package listings default
   to 500; catalog collection passes the full measured class count explicitly.

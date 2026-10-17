@@ -218,7 +218,7 @@ def provider_rejection(provider,record):
             'http_status':record['status'],'provider_error_file':'provider-error.json',
             'findings':[],'examples':[],'at':record['at']}
 
-def provider_review(folder,evidence,provider,settings_home=LIVE_HOME):
+def provider_review_once(folder,evidence,provider,settings_home=LIVE_HOME,max_output_tokens=None):
     """A durable request intent prevents automatic duplicate paid review after a crash."""
     done=folder/'model-review.json'
     if done.exists():return read(done)
@@ -245,9 +245,14 @@ def provider_review(folder,evidence,provider,settings_home=LIVE_HOME):
                     {'role':'user','content':json.dumps(evidence,ensure_ascii=False)}],
                      'stream':True,'stream_options':{'include_usage':True},'max_tokens':settings['maxOutputTokens']}
             payload.update(settings.get('extraParams',{}))
+            if max_output_tokens is not None:
+                if not isinstance(max_output_tokens,int) or not 0<max_output_tokens<=payload['max_tokens']:
+                    raise ValueError('Corrected output must fit the configured provider maximum')
+                payload['max_tokens']=max_output_tokens
             body=json.dumps(payload).encode()
             durable_json(intent,{'provider':provider,'model':settings['model'],'at':time.time(),
-                                 'request_bytes':len(body),'evidence_sha256':sha256(folder/'evidence.json')})
+                                 'request_bytes':len(body),'evidence_sha256':sha256(folder/'evidence.json'),
+                                 'max_output_tokens':payload['max_tokens']})
             request=urllib.request.Request(settings['baseUrl'].rstrip('/')+'/chat/completions',data=body,
                     headers={'Content-Type':'application/json','Authorization':'Bearer '+key})
             # No local deadline cancels intended review work. Provider limits still apply.
@@ -277,6 +282,49 @@ def provider_review(folder,evidence,provider,settings_home=LIVE_HOME):
         result={'status':'needs_manual_review','provider':provider,'verdict':'needs_review',
                 'summary':'Independent model review did not complete.','error':str(error),'findings':[],'examples':[],'at':time.time()}
     durable_json(done,result)
+    return result
+
+def context_adjustment(folder,provider):
+    """Use only explicit, checksummed provider counts; never estimate or trim input."""
+    if provider!='deepseek':return None
+    record=read(folder/'provider-error.json',{});intent=read(folder/'request.json',{})
+    if record.get('status')!=400 or record.get('body_complete') is not True:return None
+    try:
+        body=base64.b64decode(record['body_base64'],validate=True)
+        if (len(body)!=record['body_bytes'] or hashlib.sha256(body).hexdigest()!=record['body_sha256']
+                or record.get('provider')!=provider or intent.get('provider')!=provider
+                or record.get('evidence_sha256')!=intent.get('evidence_sha256')
+                or sha256(folder/'evidence.json')!=intent.get('evidence_sha256')):return None
+        message=json.loads(body)['error']['message']
+        match=re.search(r"maximum context length is (\d+) tokens\. However, you requested (\d+) tokens "
+                        r"\((\d+) in the messages, (\d+) in the completion\)",message)
+        if not match:return None
+        limit,total,prompt,completion=map(int,match.groups());remaining=limit-prompt
+        if total!=prompt+completion or completion!=intent.get('max_output_tokens') or not 0<remaining<completion:return None
+        return dict(context_tokens=limit,input_tokens=prompt,previous_max_output_tokens=completion,
+                    max_output_tokens=remaining,reason='Explicit provider context rejection; complete input retained')
+    except (KeyError,TypeError,ValueError,OSError):return None
+
+def provider_review(folder,evidence,provider,settings_home=LIVE_HOME,max_output_tokens=None):
+    """Correct known context rejections; an ambiguous admitted attempt is never replayed."""
+    current=folder;adjustments=[];output=max_output_tokens
+    while True:
+        result=provider_review_once(current,evidence,provider,settings_home,output)
+        if result.get('status')=='complete':break
+        adjustment=context_adjustment(current,provider)
+        if adjustment is None:break
+        output=adjustment['max_output_tokens']
+        next_folder=current/'context-adjustments'/str(output)
+        next_folder.mkdir(parents=True,exist_ok=True,mode=0o700)
+        if not (next_folder/'evidence.json').exists():durable_json(next_folder/'evidence.json',evidence)
+        if read(next_folder/'evidence.json')!=evidence:
+            result=dict(result,error='Corrected review evidence differs; no provider request sent');break
+        adjustment.update(rejected_attempt=str(current.relative_to(folder)),attempt=str(next_folder.relative_to(folder)))
+        adjustments.append(adjustment);current=next_folder
+    if adjustments:
+        result=dict(result,context_adjustments=adjustments,review_attempt=str(current.relative_to(folder)))
+        if result.get('provider_error_file'):result['provider_error_file']=str(current.relative_to(folder)/result['provider_error_file'])
+        durable_json(folder/'model-review.json',result)
     return result
 
 def review_session(api,target,slots,folder,artifact,settings_home=LIVE_HOME):

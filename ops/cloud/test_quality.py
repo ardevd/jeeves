@@ -188,6 +188,75 @@ class Tests(unittest.TestCase):
                 self.assertEqual(len(requests),1);self.assertFalse((folder/'response.sse').exists())
         finally:server.shutdown();server.server_close();thread.join()
 
+    def test_context_rejection_uses_exact_remaining_window_and_recovers_without_replay(self):
+        requests=[]
+        rejection={'error':{'message':"This model's maximum context length is 1048576 tokens. However, you requested 1183244 tokens (790028 in the messages, 393216 in the completion). Please reduce the length of the messages or completion."}}
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                payload=json.loads(self.rfile.read(int(self.headers['Content-Length'])));requests.append(payload)
+                if payload['max_tokens']==393216:
+                    body=json.dumps(rejection).encode();status=400;kind='application/json'
+                else:
+                    result={'verdict':'acceptable','summary':'Full evidence reviewed.','findings':[],'examples':[]}
+                    body=('data: '+json.dumps({'choices':[{'delta':{'content':json.dumps(result)}}]})+'\n\ndata: [DONE]\n\n').encode()
+                    status=200;kind='text/event-stream'
+                self.send_response(status);self.send_header('Content-Type',kind);self.send_header('Content-Length',str(len(body)))
+                self.end_headers();self.wfile.write(body)
+            def log_message(self,*args):pass
+        server=ThreadingHTTPServer(('127.0.0.1',0),Handler);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        try:
+            with tempfile.TemporaryDirectory() as temporary:
+                folder=Path(temporary);evidence={'code':'complete source and evidence '*1000}
+                quality.durable_json(folder/'evidence.json',evidence)
+                quality.durable_json(folder/'llm.json',{'providers':{'deepseek':{'model':'deepseek-v4-pro',
+                    'baseUrl':'http://127.0.0.1:'+str(server.server_port),'maxOutputTokens':393216,
+                    'extraParams':{'thinking':{'type':'enabled'},'reasoning_effort':'max'}}}})
+                quality.durable_json(folder/'llm-keys.json',{'deepseek':'synthetic-key'})
+                result=quality.provider_review(folder,evidence,'deepseek',folder)
+                self.assertEqual(result['status'],'complete');self.assertEqual(len(requests),2)
+                self.assertEqual(requests[1]['max_tokens'],258548)
+                self.assertEqual(requests[0]['messages'],requests[1]['messages'])
+                self.assertEqual(requests[0]['reasoning_effort'],requests[1]['reasoning_effort']);self.assertEqual(requests[1]['reasoning_effort'],'max')
+                self.assertEqual(json.loads(requests[1]['messages'][1]['content']),evidence)
+                correction=folder/result['review_attempt'];self.assertTrue((folder/'provider-error.json').exists())
+                self.assertEqual(result['context_adjustments'][0]['input_tokens'],790028)
+                self.assertEqual(json.loads((folder/'llm.json').read_text())['providers']['deepseek']['maxOutputTokens'],393216)
+                self.assertEqual(json.loads((correction/'request.json').read_text())['max_output_tokens'],258548)
+                quality.provider_review(folder,evidence,'deepseek',folder);self.assertEqual(len(requests),2)
+                (folder/'model-review.json').unlink();(correction/'model-review.json').unlink()
+                restored=quality.provider_review(folder,evidence,'deepseek',folder)
+                self.assertEqual(restored['status'],'complete');self.assertEqual(len(requests),2)
+                # A crash with only the corrected intent is ambiguous, even though
+                # its parent was explicitly rejected. Never repeat that attempt.
+                for path in [folder/'model-review.json',correction/'model-review.json',correction/'response.sse']:path.unlink()
+                lost=quality.provider_review(folder,evidence,'deepseek',folder)
+                self.assertEqual(lost['status'],'needs_manual_review');self.assertIn('unknown',lost['error'])
+                self.assertEqual(len(requests),2)
+        finally:server.shutdown();server.server_close();thread.join()
+
+    def test_context_adjustment_requires_consistent_checksummed_explicit_counts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder=Path(temporary);quality.durable_json(folder/'evidence.json',{'code':'all input'})
+            digest=quality.sha256(folder/'evidence.json')
+            quality.durable_json(folder/'request.json',{'provider':'deepseek','evidence_sha256':digest,'max_output_tokens':393216})
+            cases=[(1048576,1183244,790028,393216,258548),
+                   (1048576,1183245,790028,393216,None),
+                   (1048576,1183243,790028,393215,None),
+                   (1048576,1441792,1048576,393216,None),
+                   (1048576,393226,10,393216,None)]
+            for limit,total,prompt,completion,expected in cases:
+                with self.subTest(counts=(limit,total,prompt,completion)):
+                    body=json.dumps({'error':{'message':f"maximum context length is {limit} tokens. However, you requested {total} tokens ({prompt} in the messages, {completion} in the completion)"}}).encode()
+                    record=dict(provider='deepseek',status=400,body_complete=True,evidence_sha256=digest,
+                                body_base64=base64.b64encode(body).decode(),body_bytes=len(body),body_sha256=hashlib.sha256(body).hexdigest())
+                    quality.durable_json(folder/'provider-error.json',record)
+                    result=quality.context_adjustment(folder,'deepseek')
+                    self.assertEqual(result and result['max_output_tokens'],expected)
+                    self.assertIsNone(quality.context_adjustment(folder,'zai'))
+                    for change in [{'body_complete':False},{'status':429},{'body_sha256':'wrong'},{'evidence_sha256':'wrong'}]:
+                        quality.durable_json(folder/'provider-error.json',dict(record,**change))
+                        self.assertIsNone(quality.context_adjustment(folder,'deepseek'))
+
     def test_eight_reviews_overlap_publish_partial_results_and_resume_without_recharge(self):
         requests=[];lock=threading.Lock();arrived=threading.Event();release=[threading.Event() for _ in range(8)]
         class Handler(BaseHTTPRequestHandler):
