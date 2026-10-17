@@ -457,6 +457,33 @@ partial; a query overlay does not claim successful durable cache persistence.
 |---|---|---|
 | `system.doctor [--rows a,b,…]` | | the prerequisite rows a running server can answer (`--rows` = only those ids — the Runs preflight asks for adb,devices,frida,jeb-engine), same shape as `./provision.sh --json`: `{id, status: ok\|warn\|missing, required, found, want, fix, auto}` (`auto`: the fix runs unattended — no sudo, no secrets) — JDK; engine (vendored, version once a target opened); web build; python3 + the MCP bridge; frida sidecar (venv frida version, vendored server binary); adb (`WORKBENCH_ADB`, the macOS/Linux SDK paths, `$ANDROID_HOME`, PATH); attached devices with root capability `adbd-root` / `su` / `none`, SELinux and frida-server state (that row also carries a `devices[]` detail list — serial, state, model, android, root, selinux, fridaServer — the one key beyond the common shape; the row has a 20 s budget — devices beyond it are counted as "not probed" — and an ABI other than arm64-v8a is a warn, since the vendored frida-server is android-arm64); claude CLI (found, logged in); providers with keys (never the keys); the reversing depths' resolution. The subset a running server can see: no build-time rows (gradle, node, web-deps, server); the script's `frida-server` + `frida-venv` collapse into one `frida` row. Read-only (its one side effect is starting the frida sidecar). Operator-only like `llm.*` / `task.*`: a mission actor gets E_SCOPE (host paths and the provider inventory stay with the operator); an unmissioned MCP client — the user's assistant — may call it. The fixes are per-OS command lines; nothing is installed from the server — the operator (or their assistant, PROVISIONING.md) runs them |
 
+### 4.16 Diagnostics, saved view and review support
+
+These rows enumerate existing registry operations. `M` reflects the registry's
+mutation/scope gate; diagnostics can append logs without editing the target.
+
+| Op | M | Purpose |
+|---|---|---|
+| `system.logs [tail, level, grep]` | | Read server log lines and their source path; tail defaults to 200. |
+| `audit [tail, actor, op, since, summary]` | | Read recorded calls or per-actor summaries; tail defaults to 200. |
+| `log.client <message> [level, stack, url, context]` | | Append a browser/client diagnostic to the shared log. |
+| `target.rekeyUndo [target]` | ✓ | Restore the target's retained pre-rekey state through the operator-only recovery path. |
+| `target.view [target]` | | Read the saved artifact view. |
+| `target.view.set <view> [target]` | ✓ | Persist the view object containing class/caret/scroll/tabs. |
+| `target.changes [target]` | | Report distinct symbols renamed/commented since the last save. |
+| `target.saveStatus [target]` | | Read native-save progress. |
+| `locals.auto <symbol> [target, all]` | ✓ | Apply automatic local naming with the existing ownership and native-identity checks. |
+| `runs.import <target> <directory>` | ✓ | Import a run bundle into the target's project store. |
+| `runs.export <run> <destination> [target]` | ✓ | Export a stored run bundle. |
+| `review.policy` | | Read the active rename/comment review policy. |
+| `review.configure [mode, kinds, minConfidence]` | ✓ | Configure the existing review policy. |
+| `agent.revert <id>` | ✓ | Revert that mission's applied edits, newest first; its loop must have returned. |
+| `agent.dismiss <id> [undo]` | ✓ | Hide a finished mission card while retaining its record; optionally revert its edits. |
+| `agent.turns <mission>` | | List retained mission turns for the operator. |
+| `agent.turn <mission> [turn]` | | Read one retained turn; operator-facing, outside the curated MCP tools. |
+| `llm.models <id>` | | Discover a provider's models using its configured endpoint; never return its key. |
+| `llm.probe <id> [model]` | ✓ | Send a small real provider probe; may spend credit, so it is scope-gated and POST-only. |
+
 ## 5. Cross-cutting conventions
 
 - **Scoping params**: every project-scoped op takes an optional `project`

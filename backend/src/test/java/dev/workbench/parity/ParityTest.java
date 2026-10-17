@@ -57,6 +57,23 @@ public final class ParityTest {
     }
 
     public static void main(String[] args) throws Exception {
+        var extracted=extractSpecOps("""
+                ## 4. Op registry
+                | Op | M | Purpose |
+                | `target.saveStatus [target]` | | current `addr` and `confidence` |
+                | `naming.coverage <symbol>` | | receipt |
+                | `code.site <symbol>` — facade `code {view:site}` | | mapped site |
+                | `newnamespace.missing / variant` | | a real missing declaration must remain visible |
+                Prose mentioning `code.params.parameters` and `addr` is not a declaration.
+                `renamed` is a field, not an operation.
+                Orientation: `map.list · map.get`. Mutation: `map.create · addnode · type.add/set`.
+                `agent.pause/resume/stop`.
+                ## 5. Other
+                """);
+        check(extracted.equals(Set.of("target.saveStatus","naming.coverage","code.site",
+                        "newnamespace.missing","newnamespace.variant","map.list","map.get","map.create",
+                        "map.addnode","map.type.add","map.type.set","agent.pause","agent.resume","agent.stop")),
+                "extract declarations, relative lists and camel-case names without facade aliases or prose fields: "+extracted);
         Workspace ws = new Workspace();
         /* a workbench ROOT too (2026-09-10): the agent-actor rename below files a proposal, and
            proposals live under <root>/projects/<slug>/ since batch 2 — without a root that
@@ -64,6 +81,7 @@ public final class ParityTest {
         ws.setWorkbenchRoot(Files.createTempDirectory("wb-parity-root").toFile());
         ws.setAgents(new dev.workbench.server.AgentManager(ws, new dev.workbench.server.EventBus(),
                 Files.createTempDirectory("wb-parity").toFile()));
+        ws.agents().reviewPolicy().configure("manual",null,0);
         ws.setDevices(new dev.workbench.device.DeviceManager(
                 Files.createTempDirectory("wb-parity-dev").toFile()));
         Registry registry = Ops.registerAll(ws);
@@ -205,24 +223,27 @@ public final class ParityTest {
         Set<String> ops = new LinkedHashSet<>();
         Pattern spanPat = Pattern.compile("`([^`]+)`");
         Matcher sm = spanPat.matcher(section);
-        String ns = ""; // running namespace for prose lists (§4.9/§4.10)
         while (sm.find()) {
             String span = sm.group(1);
             boolean inTable = isTableLine(section, sm.start());
+            String prefix=section.substring(section.lastIndexOf('\n',sm.start())+1,sm.start()).strip();
+            if (!inTable && !prefix.isEmpty() && !prefix.endsWith("Orientation:") && !prefix.endsWith("Mutation:")) continue;
+            String ns = ""; // relative names apply only within an explicit operation list
             // In table rows the first cell names ops; later cells (M / Purpose)
             // mostly mention non-ops (`smali`, `all`) — but a few real ops are
             // named only there (`tag.family.add`), so later cells contribute
             // dotted, known-namespace tokens only.
             boolean laterCell = inTable && !isFirstTableCell(section, sm.start());
+            if (inTable && !laterCell && prefix.contains(" — ")) continue; // explanatory facade alias, not an op
             for (String group : span.split("\\s*·\\s*")) {
                 String lastOp = null;
                 for (String variant : group.split("\\s*/\\s*")) {
                     String tok = variant.trim().split("\\s+")[0];
-                    if (!tok.matches("[a-z][a-z0-9.]*") || tok.endsWith(".")) continue;
+                    if (!tok.matches("[a-z][A-Za-z0-9.]*") || tok.endsWith(".")) continue;
                     String op;
                     if (tok.contains(".")) {
                         String head = tok.substring(0, tok.indexOf('.'));
-                        if (KNOWN_NS.contains(head)) {
+                        if ((!laterCell && inTable) || KNOWN_NS.contains(head)) {
                             op = tok;                 // absolute
                             if (!laterCell) ns = head;
                         } else if (laterCell) {
@@ -239,6 +260,8 @@ public final class ParityTest {
                         op = lastOp.substring(0, lastOp.lastIndexOf('.')) + "." + tok;
                     } else if (!inTable && !ns.isEmpty()) {
                         op = ns + "." + tok;          // prose-list bare name: addnode → map.addnode
+                    } else if (!inTable) {
+                        continue;                     // standalone prose field or value
                     } else {
                         op = tok;                     // table bare name: callees, strings, rename…
                     }
