@@ -604,7 +604,9 @@ public final class Ops {
                 ws.autoNameLocals(req.str("target"), req.require("symbol"), req.bool("all", false), req.actor())));
         r.register(new Op("locals.list", "", false, Cost.cheap, req -> engine(ws, req).locals(noteResolution(ws, req))));
         r.register(new Op("naming.coverage", "", false, Cost.scan, req ->
-                dev.workbench.server.NamingCoverage.get(ws, req.str("target"), req.require("symbol"), req.str("recordedBy"))));
+                dev.workbench.server.NamingCoverage.get(ws, req.str("target"), req.require("symbol"),
+                        req.str("recordedBy") != null ? req.str("recordedBy")
+                                : req.actor().startsWith("llm:") ? req.actor() : null)));
         r.register(new Op("naming.coverage.record", "", true, Cost.scan, req ->
                 dev.workbench.server.NamingCoverage.record(ws, req.str("target"), req.require("symbol"), req.actor(), req.params())));
         // ---- tags (VIEWS_SPEC §4 — workspace-level, sidecar-persisted)

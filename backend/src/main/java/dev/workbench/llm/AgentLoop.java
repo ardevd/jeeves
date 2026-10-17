@@ -477,13 +477,19 @@ public final class AgentLoop {
             + "own names to fit a wrong one. Keep it only when every use you can see agrees with it. A name in humanNames is "
             + "final: names a human assigned are not yours to change. During a completion pass, audit arguments and locals "
             + "with naming_coverage and record evidence for suitable existing names. A fully audited class can legitimately "
-            + "need zero new renames; never replace a supported name just to produce a write.";
+            + "need zero new renames; never replace a supported name just to produce a write. Coverage reads default to your own actor; "
+            + "an explicitly selected prior actor's receipt is evidence to check, not work you have recorded. Before claiming a whole-class "
+            + "audit, record your assessment of every method, including items:[] with evidence for methods without variables. "
+            + "Reading a complete prior receipt never records your own assessment.";
 
     private String systemPrompt() {
         return "You are a reverse-engineering agent inside a workbench for Android/Java binaries. "
                 + "Work the mission goal with the provided tools: read code, follow xrefs, and write what "
                 + "you learn back into the target (renames, comments, tags, map verdicts) with confidence + rationale. "
                 + RENAME_AS_YOU_GO + " Be terse and evidence-driven."
+                + (mission.budgetUnlimited ? " This mission has no cumulative token budget. Do not stop because of an assumed remaining token budget." : "")
+                + (maxTurns == 0 ? " This mission has no turn-count limit. Continue until the requested work is finished or a concrete blocker is documented." : "")
+                + (mission.budgetUnlimited || maxTurns == 0 ? " Provider context and per-response output constraints still apply." : "")
                 + (mission.scope == null || mission.scope.isBlank() ? ""
                         : " Write-scope: " + mission.scope + " — mutations outside it are BLOCKED.");
     }

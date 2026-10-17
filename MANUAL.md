@@ -646,8 +646,12 @@ Missing entries, unresolved variables and collection errors prevent completion;
 changed names or inventories make old records stale. Records for other actors
 are retained separately. They are durably written under the artifact's
 `.workbench/naming-coverage/`, independent of bounded mission transcripts.
-`recordedBy` on get selects a particular actor; writes always use the operation
-actor. Recording coverage never renames symbols or bypasses review.
+Agent reads default to their own actor's receipt; human reads default to the
+latest writer. `availableRecords` lists prior actors, timestamps and whether
+their fingerprints still match. `recordedBy` explicitly selects another actor
+to inspect its evidence. Reading prior evidence does not record a new review.
+Writes always use the operation actor. Recording coverage never renames symbols
+or bypasses review.
 Agent write counts and mission revert include directly applied local/argument
 renames as well as accepted proposals, using the exact agent identity. Local
 rename rationale and confidence are retained in history. Reverting an HTTP

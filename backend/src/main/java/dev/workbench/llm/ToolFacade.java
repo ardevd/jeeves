@@ -199,6 +199,8 @@ public final class ToolFacade {
         tool("naming_coverage", true, List.of("naming.coverage", "naming.coverage.record"),
                 "Audit every formal argument and body local of ONE method, including methods whose class/members were already named."
                         + " get returns the fresh inventory, current/original identities, name provenance, inventoryFingerprint, and durable coverage."
+                        + " Agent reads default to YOUR actor's receipt. availableRecords identifies prior actors and matching fingerprints; inspect one with recordedBy."
+                        + " Another actor's complete receipt is prior evidence, not your own completed review. Reads never record an assessment."
                         + " After research and annotate batches, get again, then record each variable as renamed, retained with evidence, or unresolved."
                         + " record requires the fresh fingerprint, method evidence and items; partial lists merge for this actor and fingerprint."
                         + " An empty items list explicitly reviews a method with no variables. Missing variables, failed inventory reads and unresolved entries prevent completion."
@@ -210,7 +212,7 @@ public final class ToolFacade {
                         "inventoryFingerprint",str("record: exact fingerprint from the latest get", "sha256 from get"),
                         "evidence",str("record: method-level code evidence; also required for an empty method", "returns the received message unchanged"),
                         "items",arr("record: variable assessments; partial lists merge, with no item cap", "[{identity, disposition, evidence}]",coverageItem),
-                        "recordedBy",str("get: inspect a particular actor's record (optional; default latest)", "llm:agent-9")), "symbol");
+                        "recordedBy",str("get: inspect a particular actor's record (optional; agents default to their own actor, humans to latest)", "llm:agent-9")), "symbol");
         tool("xrefs", true, List.of("xref.to", "xref.from", "callers", "callees", "impls"),
                 "Cross-references of a symbol. direction to (default): who uses it; from: what it uses; impls: the implementations"
                         + " of an interface or abstract METHOD (a method symbol only — for a class, read its outline and follow xrefs to)."

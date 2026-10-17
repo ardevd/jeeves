@@ -70,6 +70,18 @@ public final class NamingCoverageIT {
             var complete=call(d,args(tid,current,decisions),ACTOR);
             check("complete".equals(complete.get("status")),"all current variables with evidence complete accounting");
             check("unreviewed".equals(get(d,tid,METHOD,"llm:different-agent").get("status")),"another agent cannot inherit this receipt as their own work");
+            var defaultOther=call(d,Map.of("target",tid,"symbol",METHOD),"llm:different-agent");
+            check("unreviewed".equals(defaultOther.get("status")) && "llm:different-agent".equals(defaultOther.get("recordedBy")),
+                    "agent default cannot mistake an earlier agent's complete receipt for its own audit");
+            check(((List<?>)defaultOther.get("availableRecords")).stream().map(NamingCoverageIT::map)
+                            .anyMatch(r->ACTOR.equals(r.get("recordedBy")) && Boolean.TRUE.equals(r.get("inventoryMatches"))),
+                    "prior actor and matching fingerprint are discoverable without inheriting its receipt");
+            var humanLatest=call(d,Map.of("target",tid,"symbol",METHOD),"human:coverage-reviewer");
+            check("complete".equals(humanLatest.get("status")) && ACTOR.equals(humanLatest.get("recordedBy")),
+                    "human default still inspects the latest assessment");
+            var explicitPrior=call(d,Map.of("target",tid,"symbol",METHOD,"recordedBy",ACTOR),"llm:different-agent");
+            check("complete".equals(explicitPrior.get("status")) && ACTOR.equals(explicitPrior.get("recordedBy")),
+                    "agent can explicitly inspect prior evidence without claiming it as its own");
             var one=variables(current).get(0);
             check("needs_review".equals(call(d,args(tid,current,List.of(item(one,"unresolved"))),ACTOR).get("status")),"unresolved explicitly prevents completion");
             check("complete".equals(call(d,args(tid,current,decisions),ACTOR).get("status")),"reassessment repairs unresolved receipt");
@@ -128,6 +140,12 @@ public final class NamingCoverageIT {
                 for(var future:pool.invokeAll(tasks))check(future.get(),"parallel actor's durable record acknowledged");
             }finally{pool.shutdown();}
             for(int i=0;i<8;i++)check("complete".equals(get(d,tid,METHOD,"llm:parallel-"+i).get("status")),"parallel records do not overwrite other actors");
+            for(int i=0;i<8;i++) {
+                String actor="llm:parallel-"+i;
+                var own=call(d,Map.of("target",tid,"symbol",METHOD),actor);
+                check("complete".equals(own.get("status")) && actor.equals(own.get("recordedBy")),
+                        "default still selects this actor after eight parallel writers");
+            }
             check(Boolean.TRUE.equals(ws.saveTarget(tid).get("saved")),"native save succeeds");
             Path database=Path.of(String.valueOf(ws.engineFor(tid).info().get("jdb2")));ws.closeAll();
             Path copy=output.resolve("independent");Files.createDirectory(copy);
@@ -145,6 +163,9 @@ public final class NamingCoverageIT {
             ws=new Workspace();d=dispatcher(ws,home);ws.openProject("CoverageFixture");
             tid=String.valueOf(ws.openTarget(input.toString(),"jeb").get("id"));ready(ws.engineFor(tid));
             check("complete".equals(get(d,tid,METHOD,ACTOR).get("status")),"coverage survives a fresh Workspace and native reopen");
+            var reopenedOwn=call(d,Map.of("target",tid,"symbol",METHOD),ACTOR);
+            check("complete".equals(reopenedOwn.get("status")) && ACTOR.equals(reopenedOwn.get("recordedBy")),
+                    "default actor selection survives native save and workspace reopen");
             var abstractReopened=get(d,tid,String.valueOf(abs.get("originalMethod")),"llm:abstract-owner");
             check("complete".equals(abstractReopened.get("status")) && variables(abstractReopened).stream().anyMatch(r->"entryKey".equals(r.get("name")) && r.get("nameProvenance") instanceof Map<?,?>),
                     "abstract argument rename receipt and authorship survive native reopen");

@@ -505,6 +505,10 @@ The loop-visible and MCP facade tool `naming_coverage` routes `action:get`
 (default) to `naming.coverage` and `action:record` to `naming.coverage.record`.
 All ordinary mutation scope checks apply to record; `recordedBy` cannot change
 its author. This is evidence storage, separate from native edits/proposals.
+Agent reads without `recordedBy` select the calling `llm:` actor; human reads
+select the latest writer. `availableRecords` lists actors, timestamps and
+`inventoryMatches` flags so earlier evidence remains discoverable. An explicit
+`recordedBy` can inspect another actor; reading never creates a new assessment.
 Mission write counts/revert include direct local/argument renames under the
 normalized exact actor identity. Local rename rationale persists in history.
 An HTTP mission cannot be reverted while its loop is alive or stop is unconfirmed;
@@ -514,7 +518,7 @@ unnecessary renames. Failed records and coverage reads do not suppress that nudg
 class completion still requires the whole inventory and independent review.
 
 `schema:naming-coverage-v1` returns `originalMethod`, `hasCode`, `variables`,
-`inventoryFingerprint`, `inventoryErrors`, `counts`, `recordedBy`, `record`, and
+`inventoryFingerprint`, `inventoryErrors`, `counts`, `recordedBy`, `record`, `availableRecords`, and
 `status` (`unreviewed|stale|needs_review|complete`). Parameter identities use the
 original method plus `#parameter:<formalIndex>`; body locals retain their exact
 `#local:<itemId>`. Rendered parameters also carry their local identity and item

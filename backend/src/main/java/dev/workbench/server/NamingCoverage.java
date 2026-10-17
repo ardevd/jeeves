@@ -170,6 +170,14 @@ public final class NamingCoverage {
         result.put("variables", rows); result.put("status", status);
         result.put("counts", Map.of("total",rows.size(),"missing",missing,"unresolved",unresolved,"renamed",renamed,"retained",retained));
         result.put("record", record); result.put("recordedBy", actor);
+        List<Object> available = new ArrayList<>();
+        for (var entry : records.entrySet()) {
+            if (!(entry.getValue() instanceof Map<?,?> value)) continue;
+            var prior=map(value);
+            available.add(Map.of("recordedBy",entry.getKey(),"at",text(prior.get("at")),
+                    "inventoryMatches",inventory.get("inventoryFingerprint").equals(prior.get("inventoryFingerprint"))));
+        }
+        result.put("availableRecords",available);
         result.put("note", "Inventory coverage is checked; semantic claims remain subject to independent code review. Arguments without a local target cannot be renamed by annotate.");
         return result;
     }

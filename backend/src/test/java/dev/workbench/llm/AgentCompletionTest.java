@@ -18,7 +18,7 @@ public final class AgentCompletionTest {
         if(!value) throw new AssertionError(message);
         checks++;System.out.println("PASS "+message);
     }
-    private static void run(String action,boolean succeeds,int expectedTurns) {
+    private static void run(String action,boolean succeeds,int expectedTurns,boolean unlimited) {
         Registry registry=new Registry();
         registry.register(new Op("naming.coverage.record","",true,Op.Cost.cheap,r->{
             if(!succeeds) throw OpException.syntax("fixture rejected coverage","retry the audit");
@@ -28,10 +28,20 @@ public final class AgentCompletionTest {
         registry.register(new Op("naming.coverage","",false,Op.Cost.cheap,r->Map.of("status","missing")));
         AgentManager.Mission mission=new AgentManager.Mission();
         mission.id="fixture";mission.agentId="completion-test";mission.goal="Audit Lfixture/Named;";
-        mission.state="running";mission.target="fixture";mission.budgetUnlimited=true;mission.turnsUnlimited=true;
+        mission.state="running";mission.target="fixture";mission.budgetUnlimited=unlimited;mission.turnsUnlimited=unlimited;
+        mission.budget=1000000;
         AtomicInteger requests=new AtomicInteger();List<Map<String,Object>> records=new ArrayList<>();
         AgentLoop.ChatClient provider=request->{
             int turn=requests.incrementAndGet();
+            if(turn==1) {
+                String prompt=Json.write(request.get("messages"));
+                check(prompt.contains("no cumulative token budget")==unlimited,
+                        "prompt reports the actual mission token-budget policy");
+                check(prompt.contains("no turn-count limit")==unlimited,
+                        "prompt reports the actual mission turn policy");
+                check(prompt.contains("items:[]") && prompt.contains("never records your own assessment"),
+                        "completion prompt distinguishes prior evidence and requires empty-method receipts");
+            }
             if(turn>3) throw new AssertionError("loop did not finish");
             Map<String,Object> message;
             if(turn==1) message=Map.of("role","assistant","tool_calls",List.of(Map.of("id","coverage","type","function",
@@ -50,14 +60,14 @@ public final class AgentCompletionTest {
             public void row(String kind,String text){}
             public void record(Map<String,Object> record){records.add(new java.util.LinkedHashMap<>(record));}
         };
-        new AgentLoop(new Dispatcher(registry),mission,provider,"fixture",activity,0).run();
+        new AgentLoop(new Dispatcher(registry),mission,provider,"fixture",activity,unlimited?0:4).run();
         check("done".equals(mission.state),"audit mission completes: "+action+"/"+succeeds);
         check(requests.get()==expectedTurns,"only successful recorded coverage avoids the extra rename nudge");
         check(records.stream().filter(r->"nudged".equals(r.get("outcome"))).count()==expectedTurns-2,
                 "transcript reports the actual completion behavior");
     }
     public static void main(String[] args) {
-        run("record",true,2);run("record",false,3);run("get",true,3);
+        run("record",true,2,true);run("record",false,3,true);run("get",true,3,true);run("record",true,2,false);
         System.out.println("Agent completion checks passed: "+checks);
     }
 }
