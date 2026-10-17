@@ -896,6 +896,11 @@ and local. Model completion claims and verified persistence are recorded separat
 Before each new agent starts, the controller refreshes its class display name
 from Jeeves using the original descriptor, so discovery-time labels do not
 misdescribe a class renamed in an earlier session. Active goals remain unchanged.
+Independent reviews can share repeated JSON evidence values by reference to fit
+more useful evidence in the provider context. The controller verifies exact
+reconstruction before dispatch and keeps the original evidence file unchanged;
+the reviewer receives explicit reference instructions. This changes encoding,
+not the review scope, Max reasoning setting or output allowance.
 The campaign dashboard shows coverage as each class is checked, with an explicit
 collecting state until the audit finishes. Possible unnamed-symbol flags include
 short locals such as `v`/`z12` and members such as `A0a`; these prompt review and

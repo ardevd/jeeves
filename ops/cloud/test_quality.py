@@ -4,6 +4,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 import quality
+from review_evidence import unpack
+
+def received_evidence(content):
+    value=json.loads(content)
+    return unpack(value) if value.get('encoding')=='shared-json-values-v1' else value
 
 class Tests(unittest.TestCase):
     def test_stream_preserves_usage_and_requires_terminal_marker(self):
@@ -152,9 +157,9 @@ class Tests(unittest.TestCase):
                 result=quality.provider_review(folder,evidence,'zai',folder)
                 self.assertEqual(result['status'],'complete');self.assertEqual(result['usage']['completion_tokens'],13)
                 self.assertEqual(requests[0]['reasoning_effort'],'max');self.assertNotIn('tools',requests[0])
-                self.assertEqual(json.loads(requests[0]['messages'][1]['content']),evidence)
+                self.assertEqual(received_evidence(requests[0]['messages'][1]['content']),evidence)
                 self.assertLess(len(requests[0]['messages'][1]['content']),len(json.dumps(evidence,ensure_ascii=False)))
-                self.assertEqual(json.loads((folder/'request.json').read_text())['evidence_encoding'],'compact-json-v1')
+                self.assertEqual(json.loads((folder/'request.json').read_text())['evidence_encoding'],'shared-json-values-v1')
                 self.assertEqual(json.loads((folder/'evidence.json').read_text()),evidence)
                 quality.provider_review(folder,evidence,'zai',folder)
                 self.assertEqual(len(requests),1)
@@ -223,7 +228,7 @@ class Tests(unittest.TestCase):
                 self.assertEqual(requests[1]['max_tokens'],258548)
                 self.assertEqual(requests[0]['messages'],requests[1]['messages'])
                 self.assertEqual(requests[0]['reasoning_effort'],requests[1]['reasoning_effort']);self.assertEqual(requests[1]['reasoning_effort'],'max')
-                self.assertEqual(json.loads(requests[1]['messages'][1]['content']),evidence)
+                self.assertEqual(received_evidence(requests[1]['messages'][1]['content']),evidence)
                 correction=folder/result['review_attempt'];self.assertTrue((folder/'provider-error.json').exists())
                 self.assertEqual(result['context_adjustments'][0]['input_tokens'],790028)
                 self.assertEqual(json.loads((folder/'llm.json').read_text())['providers']['deepseek']['maxOutputTokens'],393216)
@@ -268,7 +273,7 @@ class Tests(unittest.TestCase):
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 payload=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-                evidence=json.loads(payload['messages'][1]['content']);index=int(evidence['original_class'][2:-1])
+                evidence=received_evidence(payload['messages'][1]['content']);index=int(evidence['original_class'][2:-1])
                 with lock:
                     requests.append(payload)
                     if len(requests)==8:arrived.set()
@@ -311,7 +316,7 @@ class Tests(unittest.TestCase):
                         self.assertEqual(sum(p['model']=='zai-fixture' for p in requests),4)
                         self.assertEqual(sum(p['model']=='deepseek-fixture' for p in requests),4)
                         for payload in requests:
-                            evidence=json.loads(payload['messages'][1]['content'])
+                            evidence=received_evidence(payload['messages'][1]['content'])
                             self.assertEqual(evidence['code']['text'],'complete fixture source '*1000)
                             self.assertEqual(len(evidence['changes']),1);self.assertEqual(len(evidence['methods']),1)
                             self.assertNotIn('tools',payload);self.assertEqual(payload['reasoning_effort'],'max')

@@ -149,6 +149,15 @@ identity and persists the returned current display name with the admission.
 Already acknowledged or reconciled missions retain their original goals and are
 not spawned again. This refresh does not alter research scope or the run window.
 
+Independent static reviews retain their complete original evidence. For a smaller
+wire representation, shared-json-values-v1 supplies shared_values and evidence;
+an exact {$ref:N} object expands to shared_values[N], recursively. An exact
+{$literal:{...}} wrapper quotes its dictionary while still expanding values.
+The encoder verifies an exact JSON-value round trip before dispatch and uses
+ordinary compact JSON when sharing would not reduce bytes. The system prompt
+explains this data format; request receipts identify the encoding. Context
+limits, Max reasoning and no-replay handling of ambiguous requests are unchanged.
+
 ## 9. Open questions
 
 1. Auto-accept thresholds: per-confidence auto-accept (e.g. renames with

@@ -106,6 +106,13 @@ mismatched edits do not supply accepted evidence. This reads the archive without
 JEB/API calls or historical rewrites; missing/corrupt evidence remains explicit.
 These rationales are claims to check against code, not proof. The opposite
 provider makes one static Max review per class (GLM reviews DS, DS reviews GLM).
+Large repeated metadata is encoded as shared-json-values-v1 when that is smaller
+than ordinary compact JSON. Each {$ref:N} means shared_values[N]; {$literal:{...}}
+protects literal dictionaries that resemble the reference syntax. The reviewer
+receives explicit expansion instructions. Exact reconstruction is verified before
+dispatch, including source whitespace and every evidence value. The original
+evidence archive is unchanged, and request.json identifies its wire encoding.
+No input is omitted or summarized, and provider context limits still apply.
 The eight evidence packets are collected sequentially before provider requests
 start. Their eight reviews then run concurrently: four requests per provider,
 with the same settings and request count as before. Completed results are
