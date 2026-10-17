@@ -180,13 +180,18 @@ public final class Workspace {
     /** One atomic ownership check, engine mutation, and durable recovery record. */
     public Map<String,Object> renameSymbol(String targetParam, String symbol, String name, String actor,
                                            Object confidence, String expectedName) throws OpException {
-        return renameSymbol(targetParam, symbol, name, actor, confidence, expectedName, false);
+        return renameSymbol(targetParam, symbol, name, actor, confidence, expectedName, null, false);
+    }
+
+    public Map<String,Object> renameSymbol(String targetParam, String symbol, String name, String actor,
+                                           Object confidence, String expectedName, String rationale) throws OpException {
+        return renameSymbol(targetParam, symbol, name, actor, confidence, expectedName, rationale, false);
     }
 
     /* Only the human-only proposal-review operation supplies analystApproved. Its
        agent attribution belongs in history, not in the permission check. */
     Map<String,Object> renameSymbol(String targetParam, String symbol, String name, String actor,
-                                   Object confidence, String expectedName, boolean analystApproved) throws OpException {
+                                   Object confidence, String expectedName, String rationale, boolean analystApproved) throws OpException {
         String permissionActor = analystApproved ? "human" : actor;
         String tid;
         synchronized (this) { tid = resolveTargetIdOrActive(targetParam); }
@@ -227,6 +232,7 @@ public final class Workspace {
                 entry.put("renameTargets", renamed);
                 entry.put("owner", ownerOfAddr(String.valueOf(result.getOrDefault("addr", symbol))));
                 if (confidence != null) entry.put("confidence", confidence);
+                if (rationale != null) entry.put("rationale", rationale);
                 try { recordHistory(tid, entry); }
                 finally {
                     for (Map<String,Object> member : renamed)
@@ -5008,7 +5014,7 @@ public final class Workspace {
     }
 
     /** How many applied (not undone) History entries an agent's writes account for on a target. */
-    public int writesBy(String tid, String agentId) {
+    public synchronized int writesBy(String tid, String agentId) {
         int n = 0;
         for (Map<String, Object> e : historyFor(tid))
             if (!Boolean.TRUE.equals(e.get("undone")) && !Boolean.TRUE.equals(e.get("discarded")) && byAgent(e, agentId)) n++;
@@ -5020,8 +5026,10 @@ public final class Workspace {
      *  Returns {reverted, failed:[{id, reason}]}; a failure never stops the walk. */
     public Map<String, Object> revertBy(String tid, String agentId) {
         List<String> ids = new ArrayList<>();
-        for (Map<String, Object> e : historyFor(tid))
-            if (!Boolean.TRUE.equals(e.get("undone")) && !Boolean.TRUE.equals(e.get("discarded")) && byAgent(e, agentId)) ids.add(String.valueOf(e.get("id")));
+        synchronized (this) {
+            for (Map<String, Object> e : historyFor(tid))
+                if (!Boolean.TRUE.equals(e.get("undone")) && !Boolean.TRUE.equals(e.get("discarded")) && byAgent(e, agentId)) ids.add(String.valueOf(e.get("id")));
+        }
         java.util.Collections.reverse(ids);
         int ok = 0;
         List<Object> failed = new ArrayList<>();
@@ -5047,17 +5055,21 @@ public final class Workspace {
             original = stableSymbol(resolved, symbol);
             currentName = String.valueOf(resolved.get("name"));
         } catch (Exception e) { return null; }
-        Map<String,Object> latest = null;
-        for (Map<String,Object> entry : historyFor(tid)) {
-            if (!"rename".equals(entry.get("op")) || Boolean.TRUE.equals(entry.get("undone"))) continue;
-            if ("local".equals(entry.get("kind")) || "parameters".equals(entry.get("kind"))) continue;
-            if (!cur.equals(String.valueOf(entry.get("newAddr"))) && !renameOriginals(entry).contains(original)) continue;
-            if (!currentName.equals(String.valueOf(entry.get("newName")))) continue;
-            if (latest == null || !HistoryJournal.lastChange(entry).isBefore(HistoryJournal.lastChange(latest))) latest = entry;
+        // Resolve in the engine before taking the history monitor. Holding the
+        // workspace monitor across a native lookup would invert the write lock order.
+        synchronized (this) {
+            Map<String,Object> latest = null;
+            for (Map<String,Object> entry : historyFor(tid)) {
+                if (!"rename".equals(entry.get("op")) || Boolean.TRUE.equals(entry.get("undone"))) continue;
+                if ("local".equals(entry.get("kind")) || "parameters".equals(entry.get("kind"))) continue;
+                if (!cur.equals(String.valueOf(entry.get("newAddr"))) && !renameOriginals(entry).contains(original)) continue;
+                if (!currentName.equals(String.valueOf(entry.get("newName")))) continue;
+                if (latest == null || !HistoryJournal.lastChange(entry).isBefore(HistoryJournal.lastChange(latest))) latest = entry;
+            }
+            if (latest == null) return null;
+            String actor = String.valueOf(latest.get("actor"));
+            return "agent".equals(EventBus.actorKind(actor)) || actor.startsWith("agent:") ? null : String.valueOf(latest.get("id"));
         }
-        if (latest == null) return null;
-        String actor = String.valueOf(latest.get("actor"));
-        return "agent".equals(EventBus.actorKind(actor)) || actor.startsWith("agent:") ? null : String.valueOf(latest.get("id"));
     }
 
     private List<Map<String, Object>> historyFor(String tid) {
@@ -5212,12 +5224,10 @@ public final class Workspace {
 
     /** Whether a history entry is undone — null when the target is not open or the id is unknown. */
     public synchronized Boolean historyUndone(String tid, String id) {
-        try {
-            for (Object o : historyList(tid, Integer.MAX_VALUE)) {
-                if (o instanceof Map<?, ?> m && id.equals(String.valueOf(m.get("id"))))
-                    return Boolean.TRUE.equals(m.get("undone"));
-            }
-        } catch (Exception ignored) {}
+        if (!targets.containsKey(tid)) return null;
+        // An exact lookup is not a UI page: proposals can point to any older edit.
+        for (Map<String,Object> entry : historyFor(tid))
+            if (id.equals(String.valueOf(entry.get("id")))) return Boolean.TRUE.equals(entry.get("undone"));
         return null;
     }
 

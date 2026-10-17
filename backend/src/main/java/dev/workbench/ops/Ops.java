@@ -501,7 +501,7 @@ public final class Ops {
                 return ws.agents().propose("rename", body, req.actor());
             }
             return ws.renameSymbol(tp, symbol, name, req.actor(),
-                    req.params().get("confidence"), req.str("expectedName"));
+                    req.params().get("confidence"), req.str("expectedName"), req.str("rationale"));
         }));
         /* rename.revert {symbol}: back to the symbol's ORIGINAL dex name — the one restoration the
            Java-identifier rule must not block (an obfuscated "1cq" is a fine original and a refused
@@ -589,6 +589,8 @@ public final class Ops {
                     h.put("oldText", res.get("oldText"));
                     h.put("newText", text);
                     h.put("owner", historyOwner(res));
+                    if (req.str("rationale") != null) h.put("rationale", req.str("rationale"));
+                    if (req.params().get("confidence") != null) h.put("confidence", req.params().get("confidence"));
                     ws.recordHistory(tid, h);
                     res.put("historyId", h.get("id"));
                 }

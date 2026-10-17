@@ -1,4 +1,4 @@
-import json, tempfile, unittest, threading
+import hashlib, io, json, tarfile, tempfile, unittest, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -43,6 +43,56 @@ class Tests(unittest.TestCase):
         row={'originalSymbol':'LA;->a()I','renameTargets':[{'originalSymbol':'LB;->a()I'}]}
         self.assertTrue(quality.affects_class(row,'LB;'))
         self.assertFalse(quality.affects_class(row,'LC;'))
+
+    def test_checkpoint_rationales_match_artifact_author_and_applied_history(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);folder=root/'round';(folder/'barrier').mkdir(parents=True)
+            checkpoint=root/'checkpoint';checkpoint.mkdir();archive=checkpoint/'checkpoint.tar';artifact='/input/actual.apk'
+            proposal=dict(id='pp1',historyId='h1',kind='rename',agentId='writer',project='Actual Project',
+                          targetKey='actual-key',state='accepted',symbol='LA;->a:I',newName='rowId',rationale='Caller binds the row identifier.')
+            proposals=[proposal,dict(proposal,id='pending',state='pending'),dict(proposal,id='wrong-key',targetKey='other-key'),
+                       dict(proposal,id='wrong-project',project='Other Project'),dict(proposal,id='unchanged',state='unchanged'),
+                       dict(proposal,id='no-rationale',rationale=None)]
+            files={'project-state/project/.project-name':b'Actual Project',
+                   'project-state/project/targets.json':json.dumps({'targets':[{'key':'actual-key','storePath':artifact}]}).encode(),
+                   'project-state/project/proposals.json':json.dumps(proposals).encode(),
+                   'project-state/other/targets.json':json.dumps({'targets':[{'key':'actual-key','storePath':'/input/other.apk'}]}).encode(),
+                   'project-state/other/proposals.json':json.dumps([proposal]).encode()}
+            entries=[]
+            with tarfile.open(archive,'w') as tar:
+                for name,data in files.items():
+                    member=tarfile.TarInfo(name);member.size=len(data);tar.addfile(member,io.BytesIO(data))
+                    entries.append(dict(path=name,bytes=len(data),sha256=hashlib.sha256(data).hexdigest()))
+            receipt=dict(local_verified=True,sha256=quality.sha256(archive),archive=str(archive),entries=entries)
+            (checkpoint/'receipt.json').write_text(json.dumps(receipt))
+            (folder/'barrier/receipt.json').write_text(json.dumps(dict(ok=True,checkpoint=str(checkpoint),backup_sha256=receipt['sha256'])))
+            snapshot=quality.saved_proposals(folder,Path(artifact))
+            self.assertEqual(snapshot['gaps'],[]);self.assertEqual(len(snapshot['proposals']),1)
+            history=[dict(id='h1',op='rename',actor='agent:writer auto-applied',originalSymbol='LA;->a:I',newName='rowId')]
+            before=json.dumps(history)
+            evidence=quality.proposal_rationales(snapshot,history,'LA;')
+            self.assertEqual(evidence[0]['rationale'],proposal['rationale']);self.assertEqual(evidence[0]['originalSymbol'],'LA;->a:I')
+            self.assertEqual(json.dumps(history),before);self.assertEqual(quality.proposal_rationales(snapshot,history,'LB;'),[])
+            for change in ({'undone':True},{'discarded':True},{'actor':'agent:writer-extra auto-applied'},
+                           {'newName':'differentName'},{'op':'comment'},{'id':'different-id'}):
+                with self.subTest(change=change):self.assertEqual(quality.proposal_rationales(snapshot,[dict(history[0],**change)],'LA;'),[])
+            receipt['entries'][2]['sha256']='0'*64;(checkpoint/'receipt.json').write_text(json.dumps(receipt))
+            failed=quality.saved_proposals(folder,artifact)
+            self.assertEqual(failed['proposals'],[]);self.assertIn('checksum mismatch',failed['gaps'][0]['error'])
+
+    def test_checkpoint_proposal_evidence_reports_missing_verification(self):
+        with tempfile.TemporaryDirectory() as root:
+            snapshot=quality.saved_proposals(Path(root),Path('/input/actual.apk'))
+            self.assertEqual(snapshot['proposals'],[]);self.assertIn('Verified checkpoint',snapshot['gaps'][0]['error'])
+
+    def test_checkpoint_rationale_follows_native_family_and_human_review_attribution(self):
+        proposal=dict(id='pp1',historyId='h1',kind='rename',agentId='writer',newName='readValue',rationale='Shared getter contract.')
+        history=[dict(id='h1',op='rename',actor='agent:writer accepted by human',originalSymbol='LA;->a()I',
+                      newName='readValue',renameTargets=[{'originalSymbol':'LB;->a()I'}])]
+        self.assertEqual(len(quality.proposal_rationales({'proposals':[proposal]},history,'LB;')),1)
+        comment=dict(proposal,id='pp2',historyId='h2',kind='comment',newText='Verified caller.')
+        history.append(dict(id='h2',op='comment',actor='agent:writer auto-applied',originalSymbol='LB;->a()I',newText='Verified caller.'))
+        self.assertEqual(len(quality.proposal_rationales({'proposals':[proposal,comment]},history,'LB;')),2)
 
     def test_review_reuses_callers_and_prior_names_without_model_reasoning(self):
         class API:

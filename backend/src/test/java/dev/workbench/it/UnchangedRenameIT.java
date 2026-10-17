@@ -28,6 +28,11 @@ public final class UnchangedRenameIT {
                 &&Integer.valueOf(pending).equals(result.get("pending"))&&Integer.valueOf(failed).equals(result.get("failed")),
                 "batch distinguishes actual changes, unchanged names, pending requests and failures: "+result);
     }
+    private static void rationale(Workspace ws,String target,String key,String value,String expected) throws Exception {
+        var row=ws.historyList(target,0).stream().map(UnchangedRenameIT::map)
+                .filter(h->value.equals(h.get(key))).findFirst().orElseThrow();
+        check(expected.equals(row.get("rationale")),"durable history keeps the supplied rationale for "+value);
+    }
     private static void owner(Dispatcher d,String target,String identity) {
         var result=d.dispatch("locals.list",Map.of("target",target,"symbol",METHOD),"llm:reader");
         check(Boolean.TRUE.equals(result.get("ok")),"read decorated variables");
@@ -45,9 +50,11 @@ public final class UnchangedRenameIT {
             var variable=ws.engineFor(target).locals(METHOD).stream().map(UnchangedRenameIT::map)
                     .filter(x->Integer.valueOf(0).equals(x.get("parameterIndex"))).findFirst().orElseThrow();
             String identity=String.valueOf(variable.get("originalSymbol"));
-            List<Map<String,Object>> symbols=List.of(Map.of("symbol","Lfixture/1cq;","name","MessageKey"),
-                    Map.of("symbol","Lfixture/1cq;->b:I","name","rowId"),Map.of("symbol",METHOD,"name","sumBefore"));
+            List<Map<String,Object>> symbols=List.of(Map.of("symbol","Lfixture/1cq;","name","MessageKey","rationale","Fixture key owns the row identifier."),
+                    Map.of("symbol","Lfixture/1cq;->b:I","name","rowId","rationale","Fixture field stores a row identifier."),
+                    Map.of("symbol",METHOD,"name","sumBefore","rationale","The loop sums integers below its bound."));
             check(Integer.valueOf(3).equals(annotate(d,target,symbols,OWNER).get("applied")),"class, field and method names are first applied");
+            for(var symbol:symbols)rationale(ws,target,"newName",String.valueOf(symbol.get("name")),String.valueOf(symbol.get("rationale")));
             check(Integer.valueOf(1).equals(annotate(d,target,List.of(Map.of("symbol",METHOD,"local",variable.get("name"),"name","bound")),OWNER).get("applied")),
                     "argument is first named");
             counts(annotate(d,target,List.of(Map.of("symbol",METHOD,"local","bound","name","bound")),"llm:unsaved-reader"),0,0,0,1);
@@ -69,7 +76,8 @@ public final class UnchangedRenameIT {
             check(!Boolean.TRUE.equals(constructor.get("ok"))&&"E_SYNTAX".equals(map(constructor.get("error")).get("code")),"unchanged constructor spelling remains an invalid rename request");
             var stale=d.dispatch("rename",Map.of("target",target,"symbol",METHOD,"local","bound","name","bound","expectedName","oldBound"),"llm:second-owner");
             check(!Boolean.TRUE.equals(stale.get("ok"))&&"RENAME_CONFLICT".equals(map(stale.get("error")).get("code")),"unchanged name does not bypass expectedName");
-            counts(annotate(d,target,List.of(Map.of("symbol",METHOD,"local","bound","name","bound","comment","The fixture loop bound is exclusive.")),"llm:second-owner"),1,1,0,0);
+            counts(annotate(d,target,List.of(Map.of("symbol",METHOD,"local","bound","name","bound","comment","The fixture loop bound is exclusive.","rationale","The loop condition compares strictly below the argument.")),"llm:second-owner"),1,1,0,0);
+            rationale(ws,target,"newText","The fixture loop bound is exclusive.","The loop condition compares strictly below the argument.");
             check(ws.historyList(target,0).size()==5&&ws.writesBy(target,"second-owner")==1,"comment applies independently and only it adds a write");owner(d,target,identity);
             manager.reviewPolicy().configure("auto",List.of(),0);
             var pending=d.dispatch("rename",Map.of("target",target,"symbol","Lfixture/1cq;->b:I","name","rowId"),"llm:review-owner");
@@ -91,11 +99,13 @@ public final class UnchangedRenameIT {
             counts(mixed,1,1,0,1);
             check(Boolean.TRUE.equals(ws.saveTarget(target).get("saved")),"mixed outcome saves natively");
             ws.closeTarget(target);String reopened=String.valueOf(ws.openTarget(input.toString(),"jeb").get("id"));ready(ws,reopened);owner(d,reopened,identity);
+            for(var symbol:symbols)rationale(ws,reopened,"newName",String.valueOf(symbol.get("name")),String.valueOf(symbol.get("rationale")));
             check(ws.writesBy(reopened,"second-owner")==1&&ws.writesBy(reopened,"review-owner")==0,"accurate counts survive native reopen");
             manager.reviewPolicy().configure("auto",List.of(),0);
             var overHuman=map(d.dispatch("rename",Map.of("target",reopened,"symbol","Lfixture/1cq;","name","ReviewedMessageKey"),"llm:review-owner").get("data"));
-            var human=d.dispatch("rename",Map.of("target",reopened,"symbol","Lfixture/1cq;","name","HumanMessageKey"),"human");
+            var human=d.dispatch("rename",Map.of("target",reopened,"symbol","Lfixture/1cq;","name","HumanMessageKey","rationale","The analyst inspected the key's callers."),"human");
             check(Boolean.TRUE.equals(human.get("ok")),"analyst assignment applies");
+            rationale(ws,reopened,"newName","HumanMessageKey","The analyst inspected the key's callers.");
             counts(annotate(d,reopened,List.of(Map.of("symbol","Lfixture/1cq;","name","HumanMessageKey")),"llm:second-owner"),0,0,0,1);
             var denied=d.dispatch("agent.review",Map.of("id",overHuman.get("id"),"action","accept"),"llm:review-owner");
             check("E_SCOPE".equals(map(denied.get("error")).get("code")),"an agent cannot supply human review authority");
@@ -112,14 +122,45 @@ public final class UnchangedRenameIT {
             check("RENAME_CONFLICT".equals(map(staleDecision.get("error")).get("code")),"human approval still respects expectedName");
             check("freshRowId".equals(ws.engineFor(reopened).resolve("Lfixture/1cq;->b:I").get("name")),"stale reviewed rename leaves the native name intact");
             d.dispatch("agent.review",Map.of("id",staleReview.get("id"),"action","reject"),"human");
-            var override=map(d.dispatch("rename",Map.of("target",reopened,"symbol","Lfixture/1cq;->b:I","name","reviewedRowId","expectedName","freshRowId"),"llm:review-owner").get("data"));
+            var override=map(d.dispatch("rename",Map.of("target",reopened,"symbol","Lfixture/1cq;->b:I","name","reviewedRowId","expectedName","freshRowId","rationale","The reviewed callers identify the stored row."),"llm:review-owner").get("data"));
             var decision=d.dispatch("agent.review",Map.of("id",override.get("id"),"action","accept"),"human");
             check(Boolean.TRUE.equals(decision.get("ok"))&&"accepted".equals(map(decision.get("data")).get("state")),"explicit human approval can replace another agent's unsaved name");
             check("reviewedRowId".equals(ws.engineFor(reopened).resolve("Lfixture/1cq;->b:I").get("name")),"approved unsaved replacement reaches the native engine");
+            rationale(ws,reopened,"newName","reviewedRowId","The reviewed callers identify the stored row.");
             check(ws.historyList(reopened,0).stream().map(UnchangedRenameIT::map).anyMatch(h->"reviewedRowId".equals(h.get("newName"))
                     &&"agent:review-owner accepted by human".equals(h.get("actor"))),"review keeps the proposing agent's historical attribution");
             manager.reviewPolicy().configure("auto",ReviewPolicy.KINDS,0);
             counts(annotate(d,reopened,List.of(Map.of("symbol","Lfixture/1cq;->b:I","name","unapprovedRowId")),OWNER),0,0,0,1);
+            var humanComment=d.dispatch("comment",Map.of("target",reopened,"symbol","Lfixture/1cq;",
+                    "text","Analyst checked key construction.","rationale","Constructor writes identify the key fields."),"human");
+            check(Boolean.TRUE.equals(humanComment.get("ok")),"analyst comment applies");
+            rationale(ws,reopened,"newText","Analyst checked key construction.","Constructor writes identify the key fields.");
+            List<String> parallelMethods=new ArrayList<>();
+            for(String type:List.of("Lfixture/Params;","Lfixture/Branches;")) {
+                var outline=d.dispatch("code.outline",Map.of("target",reopened,"class",type),"human");
+                check(Boolean.TRUE.equals(outline.get("ok")),"parallel evidence fixture outline is readable");
+                for(Object value:(List<?>)map(outline.get("data")).get("methods")) {
+                    String original=String.valueOf(map(value).get("origSig"));
+                    if(!original.contains("-><"))parallelMethods.add(original);
+                }
+            }
+            check(parallelMethods.size()>=8,"eight distinct native methods are available for concurrent evidence writes");
+            var writers=Executors.newFixedThreadPool(8);
+            try {
+                List<Callable<Map<String,Object>>> writes=new ArrayList<>();
+                for(int i=0;i<8;i++) {
+                    int index=i;String method=parallelMethods.get(i),actor="llm:evidence-"+i;
+                    writes.add(()->annotate(d,reopened,List.of(Map.of("symbol",method,"name","parallelName"+index,
+                            "comment","Independent evidence "+index,"rationale","Fixture method "+method)),actor));
+                }
+                for(var result:writers.invokeAll(writes))counts(result.get(),2,0,0,0);
+            }finally{writers.shutdown();}
+            check(Boolean.TRUE.equals(ws.saveTarget(reopened).get("saved")),"eight-agent evidence writes save natively");
+            ws.closeTarget(reopened);String evidenceTarget=String.valueOf(ws.openTarget(input.toString(),"jeb").get("id"));ready(ws,evidenceTarget);
+            for(int i=0;i<8;i++) {
+                rationale(ws,evidenceTarget,"newName","parallelName"+i,"Fixture method "+parallelMethods.get(i));
+                rationale(ws,evidenceTarget,"newText","Independent evidence "+i,"Fixture method "+parallelMethods.get(i));
+            }
             Path family=output.resolve("UnchangedFamily.dex");Files.copy(Path.of(args[2]),family);
             String ft=String.valueOf(ws.openTarget(family.toString(),"jeb").get("id"));ready(ws,ft);
             String child="Lfixture/RenameFamily$Child;->a(I)I",reader="Lfixture/RenameFamily$Reader;->a(I)I";

@@ -1485,7 +1485,8 @@ public final class AgentManager {
             case "rename" -> {
                 Map<String, Object> res = ws.renameSymbol(target, String.valueOf(p.get("symbol")),
                         String.valueOf(p.get("newName")), human, p.get("confidence"),
-                        p.get("expectedName") == null ? null : String.valueOf(p.get("expectedName")), analystApproved);
+                        p.get("expectedName") == null ? null : String.valueOf(p.get("expectedName")),
+                        p.get("rationale") == null ? null : String.valueOf(p.get("rationale")), analystApproved);
                 /* The edits pane refers to the same history entry as the guarded mutation. */
                 if (res.get("historyId") != null) storeOf(p).stamp(String.valueOf(p.get("id")), "historyId", res.get("historyId"));
                 if (res.get("newAddr") != null) storeOf(p).stamp(String.valueOf(p.get("id")), "newAddr", res.get("newAddr"));
@@ -1500,6 +1501,7 @@ public final class AgentManager {
                     h.put("op", "comment");
                     h.put("actor", human);
                     if (p.get("confidence") != null) h.put("confidence", p.get("confidence"));
+                    if (p.get("rationale") != null) h.put("rationale", p.get("rationale"));
                     h.put("addr", res.get("addr"));
                     h.put("newAddr", res.get("addr"));
                     h.put("oldText", res.get("oldText"));

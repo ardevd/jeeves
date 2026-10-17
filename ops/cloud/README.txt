@@ -93,7 +93,13 @@ of callers/reference sites are included as supporting_reads, using the last
 result per exact request and preserving requested windows. These are historical
 observations, not a promise of current display names; original identities and
 history disambiguate them. Model reasoning is excluded. UI transcript clipping
-and missing turns are explicit evidence gaps, never fabricated full source. The opposite
+and missing turns are explicit evidence gaps, never fabricated full source.
+Earlier public edit rationales are recovered from the verified checkpoint's
+project proposals. Archived file hashes, project/artifact identity, history ID,
+author and applied value must agree. Pending, unchanged, undone, discarded or
+mismatched edits do not supply accepted evidence. This reads the archive without
+JEB/API calls or historical rewrites; missing/corrupt evidence remains explicit.
+These rationales are claims to check against code, not proof. The opposite
 provider makes one static Max review per class (GLM reviews DS, DS reviews GLM).
 It receives no mutation tools. Raw streamed responses, usage, evidence and
 findings are durable under rounds/cloud-NNNNNN/quality. Generic-name flags are

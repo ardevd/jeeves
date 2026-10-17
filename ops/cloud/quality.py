@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read-only, code-backed post-session review. Never exposes mutation tools."""
 from __future__ import annotations
-import json, os, re, time, urllib.error, urllib.request
+import hashlib, json, os, re, tarfile, time, urllib.error, urllib.request
 from pathlib import Path
 from checkpoint_backup import durable_json, sha256
 from barrier import LIVE_HOME
@@ -18,7 +18,10 @@ fresh inventory. Inspect retained names and their evidence as carefully as renam
 ones. Coverage completeness proves accounting only; it does not prove meaning.
 changes contains only this session's edits; prior_changes records earlier names
 and comments. A current name absent from changes is not evidence of an unlogged
-rename. supporting_reads contains code and reference-site results observed by
+rename. proposal_rationales preserves edit justifications from the verified
+checkpoint, matched to actual history entries, authors and applied values. These
+are the proposing agent's claims to check, not independent proof of meaning.
+supporting_reads contains code and reference-site results observed by
 the agent, including their requested windows and original request identities.
 These are historical observations and may show earlier display names. Use the
 original identities and rename history to disambiguate them. Truncated or missing
@@ -49,6 +52,59 @@ def entry_owner(row):
 
 def affects_class(row,original):
     return entry_owner(row)==original or any(entry_owner(target)==original for target in row.get('renameTargets',[]))
+
+def saved_proposals(folder,artifact):
+    """Read archived proposal evidence without changing live history or calling JEB."""
+    try:
+        barrier=read(Path(folder)/'barrier/receipt.json',{})
+        if not barrier.get('ok'):raise ValueError('Verified checkpoint receipt is missing')
+        checkpoint=Path(barrier['checkpoint']);receipt=read(checkpoint/'receipt.json',{})
+        if receipt.get('local_verified') is not True or receipt.get('sha256')!=barrier['backup_sha256']:
+            raise ValueError('Checkpoint verification receipts do not agree')
+        archive=checkpoint/'checkpoint.tar'
+        if receipt.get('archive')!=str(archive):raise ValueError('Checkpoint archive path does not match')
+        entries={row['path']:row for row in receipt['entries']};rows=[];matched=False
+        with tarfile.open(archive,'r') as tar:
+            def content(name):
+                member=tar.getmember(name)
+                if not member.isfile():raise ValueError('Expected an archived regular file: '+name)
+                data=tar.extractfile(member).read();entry=entries[name]
+                if len(data)!=entry['bytes'] or hashlib.sha256(data).hexdigest()!=entry['sha256']:
+                    raise ValueError('Archived proposal evidence checksum mismatch: '+name)
+                return data
+            for name in entries:
+                parts=Path(name).parts
+                if len(parts)!=3 or parts[0]!='project-state' or parts[2]!='targets.json':continue
+                targets=json.loads(content(name)).get('targets',[])
+                keys={row['key'] for row in targets if row.get('storePath')==str(artifact)}
+                if not keys:continue
+                matched=True
+                prefix=str(Path(name).parent);project=content(prefix+'/.project-name').decode().strip()
+                source=prefix+'/proposals.json'
+                if source not in entries:continue
+                for row in json.loads(content(source)):
+                    if (row.get('state')!='accepted' or row.get('project')!=project or row.get('targetKey') not in keys
+                            or not isinstance(row.get('historyId'),str) or not isinstance(row.get('rationale'),str)
+                            or not row['rationale'].strip()):continue
+                    public={key:row[key] for key in ('id','historyId','kind','agentId','symbol','oldName','newName','newText','rationale','confidence') if key in row}
+                    rows.append(dict(public,source=source))
+        if not matched:raise ValueError('No archived project identifies this artifact')
+        return {'checkpoint_sha256':receipt['sha256'],'proposals':rows,'gaps':[]}
+    except Exception as error:
+        return {'proposals':[],'gaps':[{'op':'checkpoint.proposals','error':str(error)}]}
+
+def proposal_rationales(snapshot,history,original):
+    relevant={row.get('id'):row for row in history if affects_class(row,original)
+              and not row.get('undone') and not row.get('discarded')}
+    result=[]
+    for proposal in snapshot['proposals']:
+        row=relevant.get(proposal['historyId']);agent=proposal.get('agentId')
+        if row is None or not isinstance(agent,str) or proposal.get('kind')!=row.get('op'):continue
+        if row.get('actor') not in ('agent:'+agent,'agent:'+agent+' auto-applied','agent:'+agent+' accepted by human'):continue
+        value='newName' if row.get('op')=='rename' else 'newText' if row.get('op')=='comment' else None
+        if value is None or value not in proposal or proposal[value]!=row.get(value):continue
+        result.append(dict(proposal,originalSymbol=row.get('originalSymbol') or row.get('addr')))
+    return result
 
 def research_evidence(api,slot,evidence,history,baseline_ids):
     """Reuse the recorded source evidence; do not send model reasoning or rerun tools.
@@ -199,6 +255,9 @@ def review_session(api,target,slots,folder,artifact):
     baseline_ids={r.get('id') for r in before}
     history_path=Path(str(artifact)+'.workbench/history.json')
     history=read(history_path,[]);history_hash=sha256(history_path)
+    proposal_snapshot=read(root/'proposal-evidence.json')
+    if proposal_snapshot is None:
+        proposal_snapshot=saved_proposals(folder,artifact);durable_json(root/'proposal-evidence.json',proposal_snapshot)
     delta=[r for r in history if r.get('id') not in baseline_ids and not r.get('undone') and not r.get('discarded')]
     durable_json(root/'changes.json',delta)
     results=[]
@@ -214,6 +273,9 @@ def review_session(api,target,slots,folder,artifact):
                             naming_coverage=coverage.get(slot['original_class']),
                             changes=[r for r in delta if affects_class(r,slot['original_class'])])
             evidence.update(research_evidence(api,slot,evidence,history,baseline_ids))
+            evidence['proposal_rationales']=proposal_rationales(proposal_snapshot,history,slot['original_class'])
+            evidence['proposal_rationale_gaps']=proposal_snapshot['gaps']
+            evidence['collection_errors'].extend(proposal_snapshot['gaps'])
             durable_json(evidence_path,evidence)
         evidence=read(evidence_path)
         reviewer='zai' if slot['model'].startswith('deepseek:') else 'deepseek'

@@ -138,6 +138,11 @@ public final class NameProvenanceTest {
             f.current(original,"Lfixture/Other"+i+";->"+name+"()V",name);
             f.history.add(rename("large"+i,original,original,original,name,"agent:other auto-applied",3));
         }
+        check(Boolean.FALSE.equals(f.ws.historyUndone("t1","h1")),"exact history lookup finds an applied entry older than the UI page");
+        f.history.get(0).put("undone",true);
+        check(Boolean.TRUE.equals(f.ws.historyUndone("t1","h1")),"exact history lookup finds an old undone entry");
+        f.history.get(0).put("undone",false);
+        check(f.ws.historyUndone("t1","absent")==null,"an unknown history id remains distinct from an applied entry");
         f.resolveCalls.set(0);
         var pool=java.util.concurrent.Executors.newFixedThreadPool(8);
         try {
