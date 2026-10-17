@@ -4929,6 +4929,20 @@ public final class Workspace {
         if (data instanceof List<?> l) return decorateRows((List<Object>) l, ledger, humans, null);
         if (!(data instanceof Map<?, ?>)) return null;
         Map<String, Object> out = new LinkedHashMap<>((Map<String, Object>) data);
+        // symbol.resolve returns the symbol itself, not a nested symbol/rows
+        // block. Attribute only that exact current identity; its owner and
+        // same-name override siblings are not authors of this lookup result.
+        Map<String,Object> resolvedProvenance = null;
+        if (opName.equals("symbol.resolve") && out.get("addr") instanceof String address) {
+            Map<String,Object> candidate = ledger.containsKey(address) ? ledger.get(address) : humans.get(address);
+            if (candidate != null && java.util.Objects.equals(out.get("origSig"), candidate.get("originalSymbol"))
+                    && java.util.Objects.equals(out.get("name"), candidate.get("name"))) {
+                resolvedProvenance = candidate;
+                if (candidate.containsKey("was")) out.put("was", candidate.get("was"));
+                out.put("namedBy", candidate.getOrDefault("by", "human"));
+                out.put("nameProvenance", candidate);
+            }
+        }
         for (String k : List.of("rows", "items", "hits", "groups", "methods", "fields", "parameters"))
             if (out.get(k) instanceof List<?> rl) out.put(k, decorateRows((List<Object>) rl, ledger, humans,
                     "parameters".equals(k) ? String.valueOf(out.get("original_method")) : null));
@@ -4938,7 +4952,8 @@ public final class Workspace {
             List<Object> names = new ArrayList<>();
             for (Map<String, Object> r : ledger.values()) {
                 String nm = String.valueOf(r.get("name"));
-                boolean hit = opName.equals("code.params") && java.util.Objects.equals(out.get("original_method"),r.get("originalMethod"))
+                boolean hit = r == resolvedProvenance
+                        || opName.equals("code.params") && java.util.Objects.equals(out.get("original_method"),r.get("originalMethod"))
                         || json.contains(String.valueOf(r.get("addr")))
                         || (!text.isEmpty() && java.util.regex.Pattern.compile("(?<![\\w$])" + java.util.regex.Pattern.quote(nm) + "(?![\\w$])").matcher(text).find());
                 if (hit) names.add(r);
@@ -4951,7 +4966,8 @@ public final class Workspace {
             List<Object> hn = new ArrayList<>();
             for (Map<String, Object> r : humans.values()) {
                 String nm = String.valueOf(r.get("name"));
-                boolean hit = opName.equals("code.params") && java.util.Objects.equals(out.get("original_method"),r.get("originalMethod"))
+                boolean hit = r == resolvedProvenance
+                        || opName.equals("code.params") && java.util.Objects.equals(out.get("original_method"),r.get("originalMethod"))
                         || json.contains(String.valueOf(r.get("addr")))
                         || (!text.isEmpty() && java.util.regex.Pattern.compile("(?<![\\w$])" + java.util.regex.Pattern.quote(nm) + "(?![\\w$])").matcher(text).find());
                 if (hit) hn.add(r);

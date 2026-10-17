@@ -164,6 +164,13 @@ legacy descriptor or unresolvable historical alias produces no attribution row.
 Provenance decoration does not mutate the database, rewrite history or replace
 the requested operation's resolution metadata.
 
+For `symbol.resolve` (the `symbols {symbol}` facade), the symbol is the top-level
+row. When its current address, original identity and name match active history,
+that row carries `was`, `namedBy` and `nameProvenance`, plus the corresponding
+`agentNames` or `humanNames` entry. An unnamed member does not inherit its class's
+author, and a same-name override or overload is not attributed to this identity.
+Human reads retain their existing undecorated response.
+
 `locals.list` and `code.params` participate in agent-read provenance. A local
 inventory row carries `originalMethod`, `originalSymbol` (original method plus
 `#local:<unsigned itemId>`), `originalName`, `itemId`, and `parameterIndex` for a

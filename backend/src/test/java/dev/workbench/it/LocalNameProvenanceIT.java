@@ -41,6 +41,18 @@ public final class LocalNameProvenanceIT {
     private static List<Map<String,Object>> names(Object data,String key) {
         return ((List<?>)map(data).getOrDefault(key,List.of())).stream().map(LocalNameProvenanceIT::map).toList();
     }
+    private static Map<String,Object> lookup(Dispatcher d,String target,String symbol) {
+        return map(call(d,"tool.call",Map.of("tool","symbols","args",Map.of("target",target,"symbol",symbol)),"llm:reader"));
+    }
+    private static void verifySymbols(Dispatcher d,String target) {
+        for(var entry:Map.of("Lfixture/Branches;","class-owner",METHOD,"owner",
+                "Lfixture/Params;->flagsMask:I","field-owner","Lfixture/Params;->flagsValues:I","human").entrySet()) {
+            var row=lookup(d,target,entry.getKey());
+            check(entry.getValue().equals(row.get("namedBy")) && entry.getKey().equals(map(row.get("nameProvenance")).get("originalSymbol")),"native symbols facade identifies the current author of "+entry.getKey());
+            var authors=names(row,"human".equals(entry.getValue())?"humanNames":"agentNames");
+            check(authors.size()==1 && entry.getKey().equals(authors.get(0).get("originalSymbol")),"lookup labels exactly its symbol, without inheriting its owner or sibling");
+        }
+    }
     private static void verify(Dispatcher d,String target,String identity,String originalName,String actor) {
         String wanted="human".equals(actor)?"humanLimit":"limit";
         Map<String,Object> params=Map.of("target",target,"symbol",METHOD);
@@ -86,7 +98,12 @@ public final class LocalNameProvenanceIT {
             rename(d,target,METHOD,String.valueOf(body.get("name")),"total");
             var history=ws.historyList(target,0);String argumentHistory=history.stream().map(LocalNameProvenanceIT::map).filter(row->identity.equals(row.get("originalSymbol"))).map(row->String.valueOf(row.get("id"))).findFirst().orElseThrow();
             verify(d,target,identity,originalName,"owner");
-            ws.renameSymbol(target,METHOD,"accumulate","llm:owner",null,null);ws.renameSymbol(target,"Lfixture/Branches;","Accumulation","llm:owner",null,null);
+            ws.renameSymbol(target,METHOD,"accumulate","llm:owner",null,null);ws.renameSymbol(target,"Lfixture/Branches;","Accumulation","llm:class-owner",null,null);
+            ws.renameSymbol(target,"Lfixture/Params;","NamedParams","llm:class-owner",null,null);
+            check(!lookup(d,target,"Lfixture/Params;->flagsValues:I").containsKey("namedBy"),"an untouched native field does not inherit its renamed class's author");
+            ws.renameSymbol(target,"Lfixture/Params;->flagsMask:I","maskBits","llm:field-owner",null,null);
+            ws.renameSymbol(target,"Lfixture/Params;->flagsValues:I","humanFlags","human",null,null);
+            verifySymbols(d,target);
             verify(d,target,identity,originalName,"owner");
             ws.historyUndo(target,argumentHistory);
             var undone=map(call(d,"code.decompile",Map.of("target",target,"symbol",METHOD),"llm:reader"));
@@ -95,9 +112,10 @@ public final class LocalNameProvenanceIT {
             check(Boolean.TRUE.equals(ws.saveTarget(target).get("saved")),"local and argument changes saved natively");
             ws.closeTarget(target);target=String.valueOf(ws.openTarget(input.toString(),"jeb").get("id"));ready(ws,target);
             verify(d,target,identity,originalName,"owner");
+            verifySymbols(d,target);
             String reopened=target;var pool=Executors.newFixedThreadPool(8);
             try{List<java.util.concurrent.Callable<Boolean>> readers=new ArrayList<>();
-                for(int i=0;i<8;i++)readers.add(()->{verify(d,reopened,identity,originalName,"owner");return true;});
+                for(int i=0;i<8;i++)readers.add(()->{verify(d,reopened,identity,originalName,"owner");verifySymbols(d,reopened);return true;});
                 for(var result:pool.invokeAll(readers))check(result.get(),"parallel native read completed");
             }finally{pool.shutdown();}
             ws.renameParameters(target,METHOD,List.of(new LinkedHashMap<>(Map.of("index",0,"name","humanLimit"))),"analyst","human");

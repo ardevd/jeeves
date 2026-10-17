@@ -313,6 +313,10 @@ and overrides in its `renameTargets`. Old labels are omitted when their name is
 no longer current or their identity cannot be established from legacy history.
 These labels describe recorded authorship; they do not rename anything.
 
+Direct `symbols {symbol}` lookups also show `namedBy`, `nameProvenance` and the
+matching agent or human label on the resolved symbol. These describe that exact
+current class/member identity, not the author of its owner or a same-name sibling.
+
 This also covers locals and method arguments in `code` Java, locals and params
 views. Local rows include `namedBy` and `nameProvenance`; argument rows match by
 formal `parameterIndex`, not by a name shared with another variable. The metadata

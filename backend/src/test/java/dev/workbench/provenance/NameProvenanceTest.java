@@ -62,6 +62,11 @@ public final class NameProvenanceTest {
             Object result = ws.decorateForAgent("code.decompile",Map.of("target","t1"),"llm:reader",data);
             return result == null ? data : map(result);
         }
+        Map<String,Object> resolve(String original) {
+            var data = new LinkedHashMap<>(symbols.get(original));
+            Object result = ws.decorateForAgent("symbol.resolve",Map.of("target","t1","symbol",original),"llm:reader",data);
+            return result == null ? data : map(result);
+        }
         List<Map<String,Object>> names(Map<String,Object> data, String key) {
             return ((List<?>)data.getOrDefault(key,List.of())).stream().map(NameProvenanceTest::map).toList();
         }
@@ -101,6 +106,11 @@ public final class NameProvenanceTest {
         check(names.stream().noneMatch(row->"parse".equals(row.get("name"))),"stale label cannot coexist with current family name");
         Map<String,Object> rowData=map(f.ws.decorateForAgent("code.outline",Map.of("target","t1"),"llm:reader",Map.of("methods",List.of(Map.of("addr",childAddr)))));
         check("second".equals(map(((List<?>)rowData.get("methods")).get(0)).get("namedBy")),"row-shaped output uses current family provenance");
+        var resolved=f.resolve(METHOD);
+        check("second".equals(resolved.get("namedBy")) && "a".equals(resolved.get("was")),"direct symbol lookup identifies the actual family author and original name");
+        check(f.names(resolved,"agentNames").size()==1 && METHOD.equals(map(resolved.get("nameProvenance")).get("originalSymbol")),"direct lookup attributes only its exact member, not its same-name sibling");
+        check(Boolean.TRUE.equals(resolved.get("exact")) && childAddr.equals(resolved.get("addr")),"direct lookup preserves native resolution fields");
+        check(!f.symbols.get(METHOD).containsKey("namedBy"),"provenance does not mutate the original engine result");
 
         Fixture human=new Fixture(); human.current(METHOD,childAddr,"currentParser");
         human.history.add(rename("h1",METHOD,METHOD,"Lfixture/OldChild;->oldName(I)V","oldName","human:analyst",1));
@@ -111,6 +121,8 @@ public final class NameProvenanceTest {
         human.history.add(rename("h3",METHOD,METHOD,"Lfixture/OtherOwner;->currentParser(I)V","currentParser","human:analyst",3));
         humanRead=human.read(METHOD,"currentParser();");
         check(human.names(humanRead,"agentNames").isEmpty() && human.names(humanRead,"humanNames").size()==1,"latest matching human assignment replaces agent provenance across owner aliases");
+        var humanResolved=human.resolve(METHOD);
+        check("human".equals(humanResolved.get("namedBy")) && human.names(humanResolved,"humanNames").size()==1 && human.names(humanResolved,"agentNames").isEmpty(),"direct lookup reports the current human assignment instead of an older agent");
 
         Fixture redo=new Fixture(); redo.current(METHOD,childAddr,"currentParser");
         Map<String,Object> first=rename("h1",METHOD,METHOD,childAddr,"currentParser","agent:earlier auto-applied",1);
@@ -120,6 +132,9 @@ public final class NameProvenanceTest {
         check(redoNames.size()==1 && "earlier".equals(redoNames.get(0).get("by")),"effective redo order controls latest current attribution");
         redo.history.get(0).put("undone",true);
         check(redo.names(redo.read(METHOD,"currentParser();"),"humanNames").size()==1,"undone entry does not supersede a current assignment");
+        check("human".equals(redo.resolve(METHOD).get("namedBy")),"direct lookup follows undo immediately");
+        redo.history.get(0).put("undone",false);
+        check("earlier".equals(redo.resolve(METHOD).get("namedBy")),"direct lookup follows effective redo order immediately");
 
         Fixture contradiction=new Fixture(); contradiction.current(METHOD,childAddr,"currentParser");
         Map<String,Object> wrong=rename("h1",null,METHOD,"Lfixture/Child;->currentParser(J)V","currentParser","agent:wrong auto-applied",1);
@@ -151,10 +166,25 @@ public final class NameProvenanceTest {
             for(var result:pool.invokeAll(jobs)) check(result.get(),"concurrent reader keeps complete current family attribution");
         } finally {pool.shutdownNow();}
         check(f.resolveCalls.get()==16,"eight reads resolve only their two relevant identities, not 2500 unrelated names each");
+        f.resolveCalls.set(0);
+        var lookupPool=java.util.concurrent.Executors.newFixedThreadPool(8);
+        try {
+            var jobs=new ArrayList<java.util.concurrent.Callable<Boolean>>();
+            for(int i=0;i<8;i++) jobs.add(()->"second".equals(f.resolve(METHOD).get("namedBy")));
+            for(var result:lookupPool.invokeAll(jobs))check(result.get(),"parallel direct lookup preserves current family attribution");
+        } finally {lookupPool.shutdown();}
+        check(f.resolveCalls.get()==16,"eight direct lookups avoid 2500 unrelated historical identities each");
         f.current(METHOD,"Lfixture/NamedChild;->freshParser(I)V","freshParser");
         f.history.add(rename("fresh",METHOD,METHOD,"Lfixture/NamedChild;->freshParser(I)V","freshParser","agent:fresh auto-applied",5));
         var fresh=f.names(f.read(METHOD,"freshParser();"),"agentNames");
         check(fresh.size()==1 && "fresh".equals(fresh.get(0).get("by")),"next read uses a newly renamed name without an attribution cache delay");
+        check("fresh".equals(f.resolve(METHOD).get("namedBy")),"direct lookup immediately attributes a fresh rename");
+
+        Fixture ownerOnly=new Fixture();String ownerOriginal="Lfixture/Child;",ownerAddress="Lfixture/NamedChild;";
+        ownerOnly.current(ownerOriginal,ownerAddress,"NamedChild");ownerOnly.current(METHOD,ownerAddress+"->a(I)V","a");
+        var ownerRename=rename("owner",ownerOriginal,ownerOriginal,ownerAddress,"NamedChild","llm:owner",1);ownerRename.put("kind","class");ownerOnly.history.add(ownerRename);
+        check(!ownerOnly.resolve(METHOD).containsKey("namedBy"),"an untouched member does not inherit its owner's authorship");
+        check("owner".equals(ownerOnly.resolve(ownerOriginal).get("namedBy")),"direct class lookup retains its own author");
 
         Fixture local=new Fixture(); local.current(METHOD,childAddr,"currentParser"); local.current(PARENT,parentAddr,"currentParser");
         Map<String,Object> arg=local.local(METHOD,"1","limit",0), body=local.local(METHOD,"2","total",null);
