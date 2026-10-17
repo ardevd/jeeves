@@ -3,6 +3,7 @@
 from __future__ import annotations
 import hashlib, json, os, re, tarfile, time, urllib.error, urllib.request
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from checkpoint_backup import durable_json, sha256
 from barrier import LIVE_HOME
 
@@ -247,7 +248,7 @@ def provider_review(folder,evidence,provider,settings_home=LIVE_HOME):
     durable_json(done,result)
     return result
 
-def review_session(api,target,slots,folder,artifact):
+def review_session(api,target,slots,folder,artifact,settings_home=LIVE_HOME):
     root=Path(folder)/'quality';root.mkdir(exist_ok=True)
     final=root/'receipt.json'
     if final.exists():return read(final)
@@ -260,11 +261,11 @@ def review_session(api,target,slots,folder,artifact):
         proposal_snapshot=saved_proposals(folder,artifact);durable_json(root/'proposal-evidence.json',proposal_snapshot)
     delta=[r for r in history if r.get('id') not in baseline_ids and not r.get('undone') and not r.get('discarded')]
     durable_json(root/'changes.json',delta)
-    results=[]
+    prepared=[];results={}
     coverage={c['original_class']:c for c in read(Path(folder)/'coverage-after.json',{}).get('classes',[])}
     for index,slot in enumerate(slots,1):
         directory=root/f'class-{index:02d}';directory.mkdir(exist_ok=True)
-        durable_json(root/'status.json',{'phase':'reviewing','class':slot['original_class'],'completed':len(results),'total':len(slots),'at':time.time()})
+        durable_json(root/'status.json',{'phase':'collecting','class':slot['original_class'],'collected':len(prepared),'total':len(slots),'at':time.time()})
         evidence_path=directory/'evidence.json'
         if not evidence_path.exists():
             evidence=inventory(api,target,slot['original_class'])
@@ -278,15 +279,28 @@ def review_session(api,target,slots,folder,artifact):
             evidence['collection_errors'].extend(proposal_snapshot['gaps'])
             durable_json(evidence_path,evidence)
         evidence=read(evidence_path)
-        reviewer='zai' if slot['model'].startswith('deepseek:') else 'deepseek'
-        reviewed=provider_review(directory,evidence,reviewer)
-        results.append({'original_class':slot['original_class'],'current_name':evidence['outline']['symbol'].get('name'),
-                        'changes':len(evidence['changes']),'possible_unnamed':len(evidence['possible_unnamed']),
-                        'collection_errors':evidence['collection_errors'],'review':reviewed})
-        durable_json(root/'partial.json',results)
+        prepared.append((index,slot,directory,evidence))
+    durable_json(root/'status.json',{'phase':'reviewing','completed':0,'total':len(slots),'at':time.time()})
+    if prepared:
+        # Native/API collection above stays sequential. Only the independent,
+        # durable provider requests overlap, one per existing class assignment.
+        with ThreadPoolExecutor(max_workers=len(prepared)) as pool:
+            futures={pool.submit(provider_review,directory,evidence,
+                     'zai' if slot['model'].startswith('deepseek:') else 'deepseek',settings_home):
+                     (index,slot,evidence) for index,slot,directory,evidence in prepared}
+            for future in as_completed(futures):
+                index,slot,evidence=futures[future];reviewed=future.result()
+                results[index]={'original_class':slot['original_class'],'current_name':evidence['outline']['symbol'].get('name'),
+                                'changes':len(evidence['changes']),'possible_unnamed':len(evidence['possible_unnamed']),
+                                'collection_errors':evidence['collection_errors'],'review':reviewed}
+                # A single writer publishes progress; concurrent workers only
+                # write their own class directory. No active request is cancelled.
+                durable_json(root/'partial.json',[results[i] for i in sorted(results)])
+                durable_json(root/'status.json',{'phase':'reviewing','completed':len(results),'total':len(slots),'at':time.time()})
+    ordered=[results[i] for i in sorted(results)]
     unchanged=history_hash==sha256(history_path)
     result={'status':'complete' if unchanged else 'stale','at':time.time(),'read_only':True,
-            'history_unchanged':unchanged,'history_sha256':history_hash,'classes':results,
+            'history_unchanged':unchanged,'history_sha256':history_hash,'classes':ordered,
             'note':'Independent static model reviews and coverage heuristics; not ground truth. No changes applied.'}
     durable_json(final,result);durable_json(root/'status.json',{'phase':result['status'],'completed':len(results),'total':len(slots),'at':time.time()})
     return result

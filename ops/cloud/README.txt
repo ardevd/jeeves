@@ -101,6 +101,13 @@ mismatched edits do not supply accepted evidence. This reads the archive without
 JEB/API calls or historical rewrites; missing/corrupt evidence remains explicit.
 These rationales are claims to check against code, not proof. The opposite
 provider makes one static Max review per class (GLM reviews DS, DS reviews GLM).
+The eight evidence packets are collected sequentially before provider requests
+start. Their eight reviews then run concurrently: four requests per provider,
+with the same settings and request count as before. Completed results are
+published incrementally in assignment order by one controller thread. Every
+review must settle before the campaign advances; a sibling failure does not
+cancel active paid requests. Durable per-class intents/results prevent a
+controller restart from blindly charging for the same review again.
 It receives no mutation tools. Raw streamed responses, usage, evidence and
 findings are durable under rounds/cloud-NNNNNN/quality. Generic-name flags are
 only heuristics; model assessments are not ground truth. No corrective renames

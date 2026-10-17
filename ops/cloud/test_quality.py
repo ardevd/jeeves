@@ -1,4 +1,5 @@
-import hashlib, io, json, tarfile, tempfile, unittest, threading
+import hashlib, io, json, tarfile, tempfile, time, unittest, threading
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -152,5 +153,80 @@ class Tests(unittest.TestCase):
                 quality.provider_review(folder,evidence,'zai',folder)
                 self.assertEqual(len(requests),1)
         finally:server.shutdown();server.server_close();thread.join()
+
+    def test_eight_reviews_overlap_publish_partial_results_and_resume_without_recharge(self):
+        requests=[];lock=threading.Lock();arrived=threading.Event();release=[threading.Event() for _ in range(8)]
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                payload=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                evidence=json.loads(payload['messages'][1]['content']);index=int(evidence['original_class'][2:-1])
+                with lock:
+                    requests.append(payload)
+                    if len(requests)==8:arrived.set()
+                release[index].wait(15)
+                result={'verdict':'acceptable','summary':'Fixture code agrees with the name.','findings':[],
+                        'examples':[{'symbol':evidence['original_class'],'old':'a','new':'count','assessment':'supported','evidence':'Returns the fixture count.'}]}
+                body=('data: '+json.dumps({'choices':[{'delta':{'content':json.dumps(result)}}],
+                      'usage':{'prompt_tokens':20,'completion_tokens':10}})+'\n\n'+('' if index==7 else 'data: [DONE]\n\n')).encode()
+                self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+            def log_message(self,*args):pass
+        server=ThreadingHTTPServer(('127.0.0.1',0),Handler);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        try:
+            with tempfile.TemporaryDirectory() as temporary,ThreadPoolExecutor(max_workers=1) as coordinator:
+                root=Path(temporary);folder=root/'round';folder.mkdir();artifact=root/'input.apk'
+                sidecar=Path(str(artifact)+'.workbench');sidecar.mkdir()
+                history=[dict(id='h'+str(i),op='rename',actor='agent:writer'+str(i)+' auto-applied',
+                              originalSymbol='LC'+str(i)+';->a:I',newName='count') for i in range(8)]
+                (sidecar/'history.json').write_text(json.dumps(history));before=(sidecar/'history.json').read_bytes()
+                (folder/'baseline-history.json').write_text('[]')
+                slots=[dict(original_class='LC'+str(i)+';',mission='m'+str(i),
+                            model='deepseek:fixture' if i<4 else 'zai:fixture',result={'status':'complete'}) for i in range(8)]
+                settings={'providers':{provider:{'model':provider+'-fixture','baseUrl':'http://127.0.0.1:'+str(server.server_port),
+                          'maxOutputTokens':393216 if provider=='deepseek' else 131072,'extraParams':{'reasoning_effort':'max'}} for provider in ('deepseek','zai')}}
+                (root/'llm.json').write_text(json.dumps(settings));(root/'llm-keys.json').write_text(json.dumps({'deepseek':'synthetic','zai':'synthetic'}))
+                class API:
+                    def call(self,op,**args):
+                        symbol=args.get('symbol',args.get('class',''))
+                        if op=='code.outline':return {'symbol':{'origSig':symbol,'addr':symbol,'name':'Fixture'},'fields':[],
+                                                    'methods':[{'origSig':symbol+'->getCount(I)I','name':'getCount'}]}
+                        if op=='code.decompile':return {'text':'complete fixture source '*1000,'symbol':{'origSig':symbol}}
+                        if op=='code.params':return {'parameters':[{'name':'count','index':0}]}
+                        if op=='locals.list':return [{'name':'count','originalSymbol':symbol+'#local:1'}]
+                        if op=='agent.turns':return []
+                        raise AssertionError(op)
+                with patch.object(quality,'saved_proposals',return_value={'proposals':[],'gaps':[]}):
+                    future=coordinator.submit(quality.review_session,API(),'t1',slots,folder,artifact,root)
+                    try:
+                        self.assertTrue(arrived.wait(10),'all eight requests must arrive before any response is released')
+                        self.assertEqual(len(requests),8)
+                        self.assertEqual(sum(p['model']=='zai-fixture' for p in requests),4)
+                        self.assertEqual(sum(p['model']=='deepseek-fixture' for p in requests),4)
+                        for payload in requests:
+                            evidence=json.loads(payload['messages'][1]['content'])
+                            self.assertEqual(evidence['code']['text'],'complete fixture source '*1000)
+                            self.assertEqual(len(evidence['changes']),1);self.assertEqual(len(evidence['methods']),1)
+                            self.assertNotIn('tools',payload);self.assertEqual(payload['reasoning_effort'],'max')
+                            self.assertEqual(payload['max_tokens'],393216 if payload['model']=='deepseek-fixture' else 131072)
+                        release[5].set();partial=folder/'quality/partial.json';deadline=time.monotonic()+10
+                        while not partial.exists() and time.monotonic()<deadline:time.sleep(.01)
+                        self.assertTrue(partial.exists());rows=json.loads(partial.read_text())
+                        self.assertEqual([row['original_class'] for row in rows],['LC5;'])
+                        self.assertFalse(future.done(),'unfinished paid requests continue while progress is published')
+                    finally:
+                        for gate in release:gate.set()
+                    result=future.result(timeout=15)
+                    self.assertEqual([row['original_class'] for row in result['classes']],[slot['original_class'] for slot in slots])
+                    self.assertTrue(result['read_only'] and result['history_unchanged']);self.assertEqual(result['status'],'complete')
+                    self.assertEqual(result['classes'][7]['review']['status'],'needs_manual_review')
+                    self.assertIn('completion marker',result['classes'][7]['review']['error'])
+                    self.assertEqual((sidecar/'history.json').read_bytes(),before)
+                    (folder/'quality/receipt.json').unlink()  # coordinator died before publishing this file
+                    resumed=quality.review_session(API(),'t1',slots,folder,artifact,root)
+                    self.assertEqual(len(requests),8);self.assertEqual(len(resumed['classes']),8)
+                    self.assertEqual(resumed['classes'][7]['review']['status'],'needs_manual_review')
+                    self.assertTrue((folder/'quality/class-08/response.sse').exists())
+        finally:
+            for gate in release:gate.set()
+            server.shutdown();server.server_close();thread.join()
 
 if __name__=='__main__':unittest.main()
