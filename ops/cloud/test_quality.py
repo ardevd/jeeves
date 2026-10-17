@@ -142,7 +142,10 @@ class Tests(unittest.TestCase):
         server=ThreadingHTTPServer(('127.0.0.1',0),Handler);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
         try:
             with tempfile.TemporaryDirectory() as root:
-                folder=Path(root);evidence={'code':'complete evidence '*1000}
+                folder=Path(root);evidence={'code':'complete evidence '*1000,
+                    'methods':[{'original_method':'LX/Fixture;->query()V',
+                        'text':'  String label = "a: b, λ";\n\t// keep source indentation and spaces\n',
+                        'variables':[{'name':'queryText','evidence':'SELECT x FROM messages WHERE x = ?'}]} for _ in range(100)]}
                 (folder/'evidence.json').write_text(json.dumps(evidence))
                 (folder/'llm.json').write_text(json.dumps({'providers':{'zai':{'model':'glm-5.3','baseUrl':'http://127.0.0.1:'+str(server.server_port),'maxOutputTokens':131072,'extraParams':{'thinking':{'type':'enabled','clear_thinking':False},'reasoning_effort':'max'}}}}))
                 (folder/'llm-keys.json').write_text(json.dumps({'zai':'synthetic-test-key'}))
@@ -150,6 +153,9 @@ class Tests(unittest.TestCase):
                 self.assertEqual(result['status'],'complete');self.assertEqual(result['usage']['completion_tokens'],13)
                 self.assertEqual(requests[0]['reasoning_effort'],'max');self.assertNotIn('tools',requests[0])
                 self.assertEqual(json.loads(requests[0]['messages'][1]['content']),evidence)
+                self.assertLess(len(requests[0]['messages'][1]['content']),len(json.dumps(evidence,ensure_ascii=False)))
+                self.assertEqual(json.loads((folder/'request.json').read_text())['evidence_encoding'],'compact-json-v1')
+                self.assertEqual(json.loads((folder/'evidence.json').read_text()),evidence)
                 quality.provider_review(folder,evidence,'zai',folder)
                 self.assertEqual(len(requests),1)
         finally:server.shutdown();server.server_close();thread.join()

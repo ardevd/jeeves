@@ -199,6 +199,10 @@ Preparing a focus manifest never resets a completed invocation or starts a round
 - Exactly eight API agents per session (operator requirement), sharing one JEB.
 - No headless turn or mission-token ceiling. Explicit provider context/output
   bounds still apply: configured 1,000,000 context; DS 393,216 output; GLM 131,072.
+  Review input uses compact JSON: only formatting spaces outside values are
+  removed; source-string whitespace, every evidence value and saved evidence
+  bytes remain intact. Request intents record compact-json-v1. This saves context
+  without guaranteeing that arbitrarily large classes fit a provider window.
   Independent DeepSeek reviews retain all input when a confirmed HTTP 400 gives
   exact message/output/window token counts: they request the remaining context
   for output, preserving Max reasoning. Each corrected attempt keeps a separate
