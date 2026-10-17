@@ -224,6 +224,16 @@ tasks.register('agentContextRecoveryTest', JavaExec) {
     dependsOn 'compileTestJava'
 }
 
+tasks.register('agentStreamFailureTest', JavaExec) {
+    group = 'verification'
+    description = 'Interrupted SSE diagnostics and eight concurrent HTTP agents without partial execution'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.llm.AgentStreamFailureTest'
+    workingDir = repoRoot
+    environment 'WORKBENCH_MOCK', '1'
+    dependsOn 'compileTestJava'
+}
+
 tasks.register('searchIndexPersistenceIT', JavaExec) {
     group = 'verification'
     description = 'Pending search-index work survives cancellation and failed corpus writes'

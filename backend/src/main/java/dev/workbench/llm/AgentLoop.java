@@ -999,6 +999,10 @@ public final class AgentLoop {
                             + usageSummary());
                 } catch (Exception e) {
                     rec.put("outcome", "error"); rec.put("error", String.valueOf(e));
+                    if (e instanceof WireFailure failure) {
+                        Map<String, Object> metadata = failureMetadata(failure.raw);
+                        if (!metadata.isEmpty()) rec.put("failure", metadata);
+                    }
                     throw e;
                 } finally {
                     /* the read-only streak: a turn with calls and no write counts one; a write reset it to -1 above */
@@ -1075,6 +1079,19 @@ public final class AgentLoop {
     public static final class WireFailure extends IllegalStateException {
         public final transient Map<String, Object> raw;
         public WireFailure(String message, Map<String, Object> raw) { super(message); this.raw = raw == null ? Map.of() : raw; }
+        public WireFailure(String message, Map<String, Object> raw, Throwable cause) {
+            super(message, cause); this.raw = raw == null ? Map.of() : raw;
+        }
+    }
+
+    /** Safe failure receipt for the public turn archive. Wire content stays at the private capture hook. */
+    private static Map<String, Object> failureMetadata(Map<String, Object> raw) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        for (String key : List.of("status", "providerRequestId", "replay", "transportError"))
+            if (raw.containsKey(key)) metadata.put(key, raw.get(key));
+        if (raw.get("segments") instanceof List<?> segments) metadata.put("receivedSegments", segments.size());
+        if (raw.get("partialEventData") instanceof String partial) metadata.put("partialEventChars", partial.length());
+        return metadata;
     }
 
     /** Why a response body is not a chat completion the loop can read, or null when it is. */
@@ -1258,7 +1275,7 @@ public final class AgentLoop {
         String finish = null;
         boolean done = false;
         StringBuilder data = new StringBuilder();
-        for (String line; (line = in.readLine()) != null; ) {
+        for (String line; (line = readSseLine(in, status, headers, segments, data)) != null; ) {
             if (line.isEmpty()) {   // the event ends
                 if (data.length() == 0) continue;
                 String seg = data.toString(); data.setLength(0);
@@ -1312,6 +1329,24 @@ public final class AgentLoop {
         if (usage != null) out.put("usage", usage);
         out.put("_capture", wireRecord(status, headers, null, segments));
         return out;
+    }
+
+    private static String readSseLine(java.io.BufferedReader in, int status,
+            Map<String, List<String>> headers, List<String> segments, StringBuilder data) throws java.io.IOException {
+        try { return in.readLine(); }
+        catch (java.io.IOException failure) {
+            Map<String, Object> raw = wireRecord(status, headers, null, segments);
+            if (data.length() > 0) raw.put("partialEventData", data.toString());
+            Throwable cause = failure;
+            Set<Throwable> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+            while (cause.getCause() != null && seen.add(cause)) cause = cause.getCause();
+            raw.put("transportError", Map.of("type", failure.getClass().getName(),
+                    "message", String.valueOf(failure.getMessage()), "causeType", cause.getClass().getName(),
+                    "cause", String.valueOf(cause.getMessage())));
+            throw new WireFailure("provider stream interrupted after " + segments.size()
+                    + " segment(s): " + cause.getClass().getSimpleName() + ": " + cause.getMessage()
+                    + " — the partial answer was not used", raw, failure);
+        }
     }
 
     /** Models-list endpoint for a provider baseUrl, mirroring {@link #endpointFor}'s

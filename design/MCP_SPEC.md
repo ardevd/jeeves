@@ -59,6 +59,15 @@ palette/MCP is a build error; the UI can do nothing an LLM can't.
 - Error model: `E_UNSUPPORTED · E_SCOPE · E_NOTFOUND · E_BUSY · E_SYNTAX · E_IO · RENAME_CONFLICT`
   with human-readable `message` and machine `detail`.
 
+Failed HTTP-agent turn records may include `failure` with available `status`,
+`providerRequestId`, `replay`, `receivedSegments`, `partialEventChars` and
+`transportError` (`type`, `message`, `causeType`, `cause`). These diagnostics omit
+response content. An I/O interruption preserves already-read SSE segments and
+unfinished event data for the optional private capture hook, blocks the mission,
+and executes no partial tool calls. It does not trigger an automatic retry or
+make the blocked mission resumable. Full capture storage remains separately
+configured; the public turn archive is a diagnostic summary.
+
 ### Concurrent rename ownership
 
 Under the auto review policy, renames apply immediately and are undoable;

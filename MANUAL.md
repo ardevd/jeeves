@@ -615,6 +615,15 @@ It recognizes Z.ai's `Prompt exceeds max length` refusal and retries only when
 the rejected request changes; an unchanged rejection or partial stream is not
 replayed. Ordinary reads below the context allowance remain intact.
 
+A response stream that throws an I/O error blocks the mission without applying
+partial tool calls or automatically retrying the paid request. Its failed turn
+retains available HTTP status, provider request ID, received segment count and
+transport cause in `failure`, without exposing partial response content. Complete
+segments and any unfinished event data already read are passed to the optional
+private capture hook; this does not enable a durable full-response capture store.
+The original exception remains in the server log. Existing applied edits survive
+and can be audited by a subsequent mission after the save boundary.
+
 For large bytecode listings, `code {view: smali, symbol, window: "from,to"}` reads
 inclusive 1-based rows. The result reports returned `count`, overall `total`,
 `window.from/to/totalRows/more`, and `window.next` when another page exists.
