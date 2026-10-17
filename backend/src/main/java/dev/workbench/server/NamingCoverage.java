@@ -41,9 +41,12 @@ public final class NamingCoverage {
                     || !(params.get("hasCode") instanceof Boolean))
                 errors.add("Engine does not supply a verified formal-argument inventory and code-presence flag");
         } catch (OpException e) { errors.add("code.params: " + e.getMessage()); }
-        if (!Boolean.FALSE.equals(params.get("hasCode"))) {
-            try { locals = engine.locals(original); }
-            catch (OpException e) { errors.add("locals.list: " + e.getMessage()); }
+        // A declaration can expose renameable argument identifiers even without a
+        // method body. JEB's Java view supports these abstract/native parameters.
+        try { locals = engine.locals(original); }
+        catch (OpException e) {
+            if (!Boolean.FALSE.equals(params.get("hasCode")) || !"E_UNSUPPORTED".equals(e.code))
+                errors.add("locals.list: " + e.getMessage());
         }
         Map<String,Map<String,Object>> variables = new TreeMap<>();
         List<?> formal = params.get("parameters") instanceof List<?> rows ? rows : List.of();
@@ -91,7 +94,10 @@ public final class NamingCoverage {
         for (Map<String,Object> row : variables.values()) {
             Map<String,Object> pair = new LinkedHashMap<>();
             pair.put("identity", row.get("identity")); pair.put("name", row.get("name"));
-            pair.put("localIdentity", row.get("originalSymbol"));
+            // No-body arguments were always identified by formal index + name.
+            // Preserve that verified fingerprint while enriching their native
+            // capability/provenance metadata; body-local identities remain exact.
+            pair.put("localIdentity", Boolean.FALSE.equals(params.get("hasCode")) ? null : row.get("originalSymbol"));
             pairs.add(pair);
         }
         Map<String,Object> out = new LinkedHashMap<>();

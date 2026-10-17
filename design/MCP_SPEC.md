@@ -480,7 +480,13 @@ class completion still requires the whole inventory and independent review.
 original method plus `#parameter:<formalIndex>`; body locals retain their exact
 `#local:<itemId>`. Rendered parameters also carry their local identity and item
 ID. `renameableLocal` describes whether annotate can target the current local
-name. JEB's zero item ID means no actionable item: such locals carry
+name, including declaration arguments on abstract/native methods with
+`hasCode:false`. Their native IDs provide capability and provenance; the existing
+no-body fingerprint remains based on original method, formal index and name.
+Current names use the rendered declaration; differing low-level parameter
+bindings are exposed as `parameterBindingName`/`parameterBindingMismatch` metadata
+and must not replace another argument's displayed name.
+JEB's zero item ID means no actionable item: such locals carry
 `identityKind:rendered-only`, `renameableLocal:false`, and `renameUnavailableReason`.
 Rename and rename-ownership lookup return `E_UNSUPPORTED` with
 `reason:JEB_NO_ACTIONABLE_ITEM`. They cannot be repaired by trying collision suffixes.

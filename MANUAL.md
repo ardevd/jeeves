@@ -614,6 +614,14 @@ variables without an actionable identifier. The latter carry
 `renameUnavailableReason`; attempts return `E_UNSUPPORTED`, not a collision.
 Keep an unresolved assessment if such a variable still needs a meaningful name.
 This audit does not add an agent-accessible parameter-mapping operation.
+Abstract/native declarations can expose actionable argument identifiers even
+without a body. Coverage checks the rendered declaration, reports those native
+targets and their rename authors, and accepts their real edits as `renamed`.
+`hasCode:false` alone does not imply that arguments cannot be renamed.
+Current parameter names follow the rendered identifiers. If JEB's separate
+parameter binding reports a different name for that index, `code.params` keeps
+it as `parameterBindingName` with `parameterBindingMismatch:true`, rather than
+displaying the wrong name on a neighboring argument.
 
 Partial item lists merge for the same actor and fingerprint, without an item
 cap. Empty methods require an explicit record with `items:[]` and evidence.

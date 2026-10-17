@@ -80,15 +80,51 @@ public final class NamingCoverageIT {
             check("complete".equals(call(d,args(tid,zero,List.of()),ACTOR).get("status")),"explicit empty receipt completes variable-free method");
             var abs=get(d,tid,"Lfixture/Params;->abstractNamed(Ljava/lang/String;I)V",ACTOR);
             check(variables(abs).size()==2 && Boolean.FALSE.equals(abs.get("hasCode")),"abstract formal arguments are included without inventing a body");
-            check(variables(abs).stream().noneMatch(r->Boolean.TRUE.equals(r.get("renameableLocal"))),"abstract arguments disclose unavailable local rename targets");
+            check("8b99377f669a4997f0748acf1825476262bda3967ebaabb64f847cab70663996".equals(abs.get("inventoryFingerprint")),
+                    "previously verified no-body fingerprint remains valid when native capability is enriched");
+            check(variables(abs).stream().allMatch(r->Boolean.TRUE.equals(r.get("renameableLocal"))),
+                    "abstract arguments expose their real native rename targets: "+abs);
+            var abstractArgument=variables(abs).get(0);
+            var abstractRename=d.dispatch("tool.call",Map.of("tool","annotate","args",Map.of("target",tid,"items",List.of(
+                    Map.of("symbol",abs.get("originalMethod"),"local",abstractArgument.get("name"),"name","entryKey",
+                            "rationale","Authored abstract fixture key; native argument provenance test.")))),"llm:abstract-owner");
+            check(Boolean.TRUE.equals(abstractRename.get("ok")) && "applied".equals(map(map(((List<?>)map(abstractRename.get("data")).get("results")).get(0)).get("rename")).get("status")),
+                    "abstract argument accepts a real native annotate rename");
+            var abstractCurrent=get(d,tid,String.valueOf(abs.get("originalMethod")),"llm:abstract-owner");
+            var abstractRenamed=variables(abstractCurrent).stream().filter(r->"entryKey".equals(r.get("name"))).findFirst().orElseThrow();
+            check(variables(abstractCurrent).stream().filter(r->"entryKey".equals(r.get("name"))).count()==1
+                            && "arg2".equals(variables(abstractCurrent).get(1).get("name")),
+                    "declaration argument rename does not appear on its unchanged neighbor");
+            check(abstractRenamed.get("nameProvenance") instanceof Map<?,?>,"abstract argument shows the native rename author");
+            var abstractDecisions=variables(abstractCurrent).stream().map(r->item(r,r.containsKey("nameProvenance")?"renamed":"retained")).toList();
+            var abstractReceipt=call(d,args(tid,abstractCurrent,abstractDecisions),"llm:abstract-owner");
+            check("complete".equals(abstractReceipt.get("status")),
+                    "abstract argument rename records as renamed instead of retained: "+abstractReceipt);
+            String abstractFingerprint=String.valueOf(abstractCurrent.get("inventoryFingerprint"));
             check(((List<?>)abs.get("inventoryErrors")).isEmpty(),"no-code body is not a collection error");
+            var nativeMethod=get(d,tid,"Lfixture/Params;->nativeNamed(J)J","llm:abstract-owner");
+            check(Boolean.FALSE.equals(nativeMethod.get("hasCode")) && variables(nativeMethod).size()==1
+                            && Boolean.TRUE.equals(variables(nativeMethod).get(0).get("renameableLocal")),
+                    "native static declaration exposes its one wide formal argument");
+            var nativeRename=d.dispatch("tool.call",Map.of("tool","annotate","args",Map.of("target",tid,"items",List.of(
+                    Map.of("symbol",nativeMethod.get("originalMethod"),"local",variables(nativeMethod).get(0).get("name"),"name","nativeHandle")))),"llm:abstract-owner");
+            check(Boolean.TRUE.equals(nativeRename.get("ok")) && "applied".equals(map(map(((List<?>)map(nativeRename.get("data")).get("results")).get(0)).get("rename")).get("status")),
+                    "native static argument accepts the public native rename action");
+            var nativeCurrent=get(d,tid,String.valueOf(nativeMethod.get("originalMethod")),"llm:abstract-owner");
+            check("nativeHandle".equals(variables(nativeCurrent).get(0).get("name"))
+                            && variables(nativeCurrent).get(0).get("nameProvenance") instanceof Map<?,?>,
+                    "native static argument retains its name and exact author");
+            String nativeFingerprint=String.valueOf(nativeCurrent.get("inventoryFingerprint"));
             String fingerprint=String.valueOf(current.get("inventoryFingerprint"));
             var pool=Executors.newFixedThreadPool(8);String target=tid;Dispatcher active=d;
             try {
                 List<Callable<Boolean>> tasks=new ArrayList<>();
                 for(int i=0;i<8;i++){String actor="llm:parallel-"+i;tasks.add(()->{
                     var view=get(active,target,METHOD,actor);var all=variables(view).stream().map(r->item(r,"retained")).toList();
-                    return "complete".equals(call(active,args(target,view,all),actor).get("status"));});}
+                    var declaration=get(active,target,String.valueOf(abs.get("originalMethod")),actor);
+                    var declarationItems=variables(declaration).stream().map(r->item(r,"retained")).toList();
+                    return "complete".equals(call(active,args(target,view,all),actor).get("status"))
+                            && "complete".equals(call(active,args(target,declaration,declarationItems),actor).get("status"));});}
                 for(var future:pool.invokeAll(tasks))check(future.get(),"parallel actor's durable record acknowledged");
             }finally{pool.shutdown();}
             for(int i=0;i<8;i++)check("complete".equals(get(d,tid,METHOD,"llm:parallel-"+i).get("status")),"parallel records do not overwrite other actors");
@@ -101,10 +137,17 @@ public final class NamingCoverageIT {
             try{independent.openAsync();ready(independent);
                 check(!independent.info().containsKey("recoveredEdits"),"independent copy has no history replay");
                 check(fingerprint.equals(NamingCoverage.inventory(independent,METHOD).get("inventoryFingerprint")),"entire variable inventory persists natively without coverage/history sidecars");
+                check(abstractFingerprint.equals(NamingCoverage.inventory(independent,String.valueOf(abs.get("originalMethod"))).get("inventoryFingerprint")),
+                        "abstract argument inventory persists natively without history or coverage sidecars");
+                check(nativeFingerprint.equals(NamingCoverage.inventory(independent,String.valueOf(nativeMethod.get("originalMethod"))).get("inventoryFingerprint")),
+                        "native declaration argument persists without history or coverage sidecars");
             }finally{independent.discardUnsaved();independent.close();}
             ws=new Workspace();d=dispatcher(ws,home);ws.openProject("CoverageFixture");
             tid=String.valueOf(ws.openTarget(input.toString(),"jeb").get("id"));ready(ws.engineFor(tid));
             check("complete".equals(get(d,tid,METHOD,ACTOR).get("status")),"coverage survives a fresh Workspace and native reopen");
+            var abstractReopened=get(d,tid,String.valueOf(abs.get("originalMethod")),"llm:abstract-owner");
+            check("complete".equals(abstractReopened.get("status")) && variables(abstractReopened).stream().anyMatch(r->"entryKey".equals(r.get("name")) && r.get("nameProvenance") instanceof Map<?,?>),
+                    "abstract argument rename receipt and authorship survive native reopen");
             Path receipt;
             try(var paths=Files.walk(output)){receipt=paths.filter(p->p.getParent().getFileName().toString().equals("naming-coverage")&&p.toString().endsWith(".json"))
                     .filter(p->{try{return METHOD.equals(Json.parseObject(Files.readString(p)).get("originalMethod"));}catch(Exception e){return false;}}).findFirst().orElseThrow();}
@@ -114,7 +157,7 @@ public final class NamingCoverageIT {
             Files.writeString(receipt,saved);
             check(ws.writesBy(tid,"coverage-owner")==4,"agent write count includes direct class/method and argument/local renames after reopen");
             check(ws.writesBy(tid,"coverage")==0,"agent attribution uses exact identity, not an agent-ID prefix");
-            var recorded=ws.historyList(tid,100).stream().map(NamingCoverageIT::map).filter(r->"local".equals(r.get("kind"))).toList();
+            var recorded=ws.historyList(tid,100).stream().map(NamingCoverageIT::map).filter(r->"local".equals(r.get("kind")) && ACTOR.equals(r.get("actor"))).toList();
             check(recorded.size()==2 && recorded.stream().allMatch(r->Set.of("loop bound","accumulation").contains(r.get("rationale"))),
                     "local/argument rationale persists in durable history across reopen");
             ws.renameSymbol(tid,"Lfixture/Params;","OtherAgentFixture","agent:coverage-owner-more auto-applied",null,null);

@@ -23,6 +23,10 @@ the agent, including their requested windows and original request identities.
 These are historical observations and may show earlier display names. Use the
 original identities and rename history to disambiguate them. Truncated or missing
 transcript evidence is explicitly reported; do not invent the omitted content.
+Method renameTargets are the native override family selected through JEB's public
+QUERY_OVERRIDES traversal, not a same-spelling sweep across unrelated methods.
+Family membership does not prove the chosen name describes every implementation;
+check the shared contract and do not infer semantics from one specialized member.
 Distinguish supported names, misleading/overconfident names, generic names and
 uncertain cases needing caller/context evidence. Do not accept the first agent's
 completion claim as proof. Explain concrete examples using original identities,

@@ -4945,10 +4945,19 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             p.put("index", i); p.put("type", ptypes.get(i)); p.put("register", regs.get(i));
             String set = null;
             try { set = m.getParameterName(i); } catch (Throwable ignored) {}
-            String cur = set != null ? set : shown != null && i < shown.size() ? shown.get(i) : null;
+            String rendered = shown != null && i < shown.size() ? shown.get(i) : null;
+            // JEB 5.46's abstract declaration RENAME action may store an
+            // identifier's name at an index including the receiver, whereas
+            // getParameterName documents formal indices. Do not project that
+            // binding onto the next argument: report the actual rendered names.
+            String cur = rendered != null ? rendered : set;
+            if (set != null && rendered != null && !set.equals(rendered)) {
+                p.put("parameterBindingName", set);
+                p.put("parameterBindingMismatch", true);
+            }
             if (cur != null) p.put("name", cur);
             String src;
-            if (set != null) src = "analyst";
+            if (set != null && set.equals(cur)) src = "analyst";
             else if (cur == null) src = "unknown";
             else if (debugNames != null && i < debugNames.size() && cur.equals(debugNames.get(i))) src = "debug_info";
             else if (names != null && names.size() == ptypes.size() && cur.equals(names.get(i))) src = "annotation (applied by the engine by position — unverified)";
