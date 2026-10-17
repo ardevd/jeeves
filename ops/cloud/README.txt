@@ -6,6 +6,18 @@ from its official distribution and activate the service account normally first.
 The runtime must use the committed backend/web build and Java 21. This directory
 contains no JEB library, license, database or API key.
 
+On Ubuntu hosts using needrestart, install needrestart-jeeves.conf as
+/etc/needrestart/conf.d/jeeves.conf before launching a campaign. The APT hook's
+automatic mode otherwise restarts live Jeeves services during library upgrades,
+interrupting all model conversations even when systemd Restart=on-failure is set.
+This configuration defers only Jeeves services; package updates remain enabled
+and needrestart continues reporting pending restarts. Apply those restarts at a
+verified save boundary. Check the host's effective merged override_rc selection
+for every installed Jeeves service: another earlier-matching override can win.
+This protects against the needrestart hook, not power loss, reboot, operator
+restarts, or other package scripts. A JVM interruption still cannot resume an
+in-flight model conversation; its accepted edits go through the save barrier.
+
 Set JEEVES_CAMPAIGN_ROOT, JEEVES_REPO, JEB_HOME, JAVA_HOME, WORKBENCH_HOME and
 JEEVES_APK_SHA256 in the service EnvironmentFile. Set WORKBENCH_HEADLESS=1 and
 WORKBENCH_UNLIMITED_BUDGET=1; the runner checks both effective flags at spawn.
