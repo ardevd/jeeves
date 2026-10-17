@@ -939,3 +939,16 @@ There is no repair-round or retry cap. Provider context/output limits, credit,
 available disk and unsupported native rename targets can still prevent progress;
 the gate does not waive them. The existing continuous credit-stop behavior drains,
 saves and records the active session before stopping new admission.
+
+
+### Reading cloud progress while the last agent finishes
+
+The campaign dashboard reports how many of the eight agents have finished and
+names the agents still holding the session open. Each card shows the latest
+completed tool turn and its timestamp. A running agent's current-turn counter
+advances when a turn starts; it is not a count of completed responses. Token
+usage and tool progress are published between responses, so a long model answer
+can leave those counters unchanged. A fresh cloud snapshot alone does not prove
+that inference is making progress. The snapshot age and last-progress age remain
+visible while waiting. Saving, coverage and independent review still follow the
+session boundary; a finished agent does not start a new class on its own.
