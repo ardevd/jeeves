@@ -43,7 +43,7 @@ def snapshot(config,api):
             'deployment':read(root/'deployment.json',{}),'errors':[],
             'disk_free_bytes':shutil.disk_usage(root).free,'invocation':read(root/'invocation.json',{}),
             'qualification':read(root/'rounds/qualification-save-barrier-20261016/barrier/state.json',{}),
-            'quality':{'status':'pending','classes':[]}}
+            'quality':{'status':'pending','classes':[]},'quality_history':[]}
     try:missions={m['id']:m for m in api.call('agent.missions')}
     except Exception as error:missions={};result['errors'].append(str(error))
     try:
@@ -62,6 +62,10 @@ def snapshot(config,api):
         saved=read(folder/'barrier/state.json',{})
         row={'id':session['id'],'phase':session['phase'],'created':session['created'],'barrier':saved}
         result['sessions'].append(row)
+        quality=read(folder/'quality/receipt.json')
+        if quality is None:quality={'status':read(folder/'quality/status.json',{}).get('phase','pending'),'classes':read(folder/'quality/partial.json',[])}
+        if quality.get('classes') or quality.get('status')!='pending':
+            result['quality_history'].append({'session':session['id'],'quality':quality})
         if baseline is None:baseline={r.get('id') for r in read(folder/'baseline-history.json',history)}
         if session['id']!=sessions[-1]['id']:continue
         session_baseline={r.get('id') for r in read(folder/'baseline-history.json',history)}
@@ -75,8 +79,6 @@ def snapshot(config,api):
             worker.update(apiWrites=worker.get('writes'),writes=len(applied),localWrites=sum(r.get('kind')=='local' for r in applied),
                           writesBasis='current-session durable history; excludes undone/discarded edits')
             result['workers'].append(worker)
-        quality=read(folder/'quality/receipt.json')
-        if quality is None:quality={'status':read(folder/'quality/status.json',{}).get('phase','pending'),'classes':read(folder/'quality/partial.json',[])}
         result['quality']=quality
         result['barrier']=saved
         coverage=read(folder/'coverage-after.json') or read(folder/'coverage-before.json')

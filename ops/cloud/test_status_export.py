@@ -33,4 +33,33 @@ class Tests(unittest.TestCase):
         self.assertNotEqual(status_export.agent_owner('llm:agent-10'),'agent-1')
         self.assertIsNone(status_export.agent_owner('human:agent-1'))
 
+    def test_prior_reviews_remain_available_during_the_next_session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);artifact=root/'input.apk';sidecar=Path(str(artifact)+'.workbench');sidecar.mkdir()
+            (sidecar/'history.json').write_text('[]')
+            slots=[dict(mission='m'+str(i),original_class='LC'+str(i)+';',current_name='C'+str(i),model='fixture') for i in range(8)]
+            db=campaign.catalog_db(root)
+            try:
+                for sid,phase in [(1,'complete'),(2,'quality')]:
+                    db.execute('INSERT INTO sessions(id,phase,slots,created) VALUES(?,?,?,0)',(sid,phase,json.dumps(slots)))
+                db.commit()
+            finally:db.close()
+            prior={'status':'complete','read_only':True,'history_unchanged':True,'classes':[{'original_class':'LOld;','review':{'verdict':'needs_review'}}]}
+            current=[{'original_class':'LNew;','review':{'status':'needs_manual_review','error':'Interrupted response'}}]
+            for sid in (1,2):(root/'rounds'/f'cloud-{sid:06d}'/'quality').mkdir(parents=True)
+            (root/'rounds/cloud-000001/quality/receipt.json').write_text(json.dumps(prior))
+            (root/'rounds/cloud-000002/quality/status.json').write_text('{"phase":"reviewing"}')
+            (root/'rounds/cloud-000002/quality/partial.json').write_text(json.dumps(current))
+            class API:
+                def call(self,op):
+                    if op=='ops.active':return {'calls':[]}
+                    if op=='agent.missions':return [dict(id='m'+str(i),agentId='agent-'+str(i),state='done') for i in range(8)]
+                    raise AssertionError(op)
+            result=status_export.snapshot(dict(root=str(root),artifact=str(artifact)),API())
+            self.assertEqual(len(result['workers']),8)
+            self.assertEqual([r['session'] for r in result['quality_history']],[1,2])
+            self.assertEqual(result['quality_history'][0]['quality'],prior)
+            self.assertEqual(result['quality']['classes'],current)
+            self.assertEqual(result['quality_history'][1]['quality'],result['quality'])
+
 if __name__=='__main__':unittest.main()
