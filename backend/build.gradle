@@ -240,6 +240,7 @@ tasks.register('searchIndexPersistenceIT', JavaExec) {
     generatedLocalIT: ['dev.workbench.it.GeneratedLocalIT', 'params/params-fixture.dex'],
     renameFamilyIT: ['dev.workbench.it.RenameFamilyIT', 'rename-family/rename-family.dex'],
     callSiteCalleeIT: ['dev.workbench.it.CallSiteCalleeIT', 'rename-family/rename-family.dex'],
+    variableRenderingIT: ['dev.workbench.it.VariableRenderingIT', 'rename-family/rename-family.dex'],
 ].each { taskName, fixture ->
     tasks.register(taskName, JavaExec) {
         group = 'verification'

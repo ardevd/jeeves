@@ -2538,7 +2538,31 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             try {
                 if (e.getValue() instanceof Integer) pm.setInteger(e.getKey(), (Integer) e.getValue());
                 else if (e.getValue() instanceof Boolean) pm.setBoolean(e.getKey(), (Boolean) e.getValue());
+                else if (e.getValue() == null) pm.setBoolean(e.getKey(), null);
             } catch (Exception ex) {}
+    }
+
+    /** Variable inventories need identifier items, not resolved call/field navigation targets.
+     *  Keep these overrides local to the inventory render and restore even absent properties. */
+    private static Map<String, Object> setVariableRender(IPropertyManager pm) {
+        Map<String, Object> saved = setCleanRender(pm);
+        if (pm != null) for (String key : List.of(JavaDocument.propnameResolveMethodCallTargets,
+                JavaDocument.propnameResolveFieldAccessTargets)) {
+            try {
+                saved.put(key, pm.getValue(key, IPropertyManager.DEPTH_FULL, false, false));
+                pm.setBoolean(key, false);
+            } catch (Exception ignored) {}
+        }
+        return saved;
+    }
+
+    /** A single anchor represents the entire document (JEB's public ITextDocument contract).
+     *  The line hint is not a cap: the part includes the whole anchor. Preserve the old
+     *  complete-render path if a future JavaDocument implementation uses multiple anchors. */
+    private static ITextDocumentPart completeDocumentPart(JavaDocument doc) {
+        if (doc.getAnchorCount() == 1) return doc.getDocumentPart(doc.getFirstAnchor(), 1, 0);
+        String text = doc.format();
+        return doc.getDocumentPart(doc.getFirstAnchor(), countLines(text) + 5);
     }
 
     /** The per-class semantic token map: {line, cs, ce, kind, addr?, type?, params?} — 1-based line,
@@ -5054,11 +5078,11 @@ public final class JebEngine implements Engine, SearchIndex.Host {
             java.util.IdentityHashMap<IJavaIdentifier, Boolean> localIds = new java.util.IdentityHashMap<>();
             try { collectIdentifiers(jm.getBody(), want, localIds); } catch (Throwable ignored) {}
             IPropertyManager pm = ju.getPropertyManager();
-            Map<String, Object> saved = setCleanRender(pm);
-            JavaDocument doc = new JavaDocument(ju);
+            Map<String, Object> saved = setVariableRender(pm);
+            JavaDocument doc = null;
             try {
-                String text = doc.format();
-                ITextDocumentPart part = doc.getDocumentPart(doc.getFirstAnchor(), countLines(text) + 5);
+                doc = new JavaDocument(ju);
+                ITextDocumentPart part = completeDocumentPart(doc);
                 if (part != null) {
                     java.util.List<? extends com.pnfsoftware.jeb.core.output.text.ILine> lines = part.getLines();
                     for (IObjectLocation loc : part.getObjectLocations()) {
@@ -5076,7 +5100,10 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                         if (k != null) out.set(k, shown); else locals.add(shown);
                     }
                 }
-            } finally { doc.dispose(); restoreRender(pm, saved); }
+            } finally {
+                try { if (doc != null) doc.dispose(); }
+                finally { restoreRender(pm, saved); }
+            }
             for (Map.Entry<IJavaIdentifier, Integer> w : want.entrySet()) if (out.get(w.getValue()) == null) out.set(w.getValue(), w.getKey().getName());   // never shown in the text (unused): the AST's own name
             resolved = true;
         } catch (Throwable ignored) {}
@@ -5332,11 +5359,11 @@ public final class JebEngine implements Engine, SearchIndex.Host {
         if (offset == 1 && definitions.get(0) != null && definitions.get(0).getIdentifier() != null)
             identifiers.put(definitions.get(0).getIdentifier(), Boolean.TRUE);
         IPropertyManager pm = ju.getPropertyManager();
-        Map<String, Object> savedProps = setCleanRender(pm);
-        JavaDocument doc = new JavaDocument(ju);
+        Map<String, Object> savedProps = setVariableRender(pm);
+        JavaDocument doc = null;
         try {
-            String text = doc.format();
-            ITextDocumentPart part = doc.getDocumentPart(doc.getFirstAnchor(), countLines(text) + 5);
+            doc = new JavaDocument(ju);
+            ITextDocumentPart part = completeDocumentPart(doc);
             java.util.List<? extends com.pnfsoftware.jeb.core.output.text.ILine> lines = part == null ? List.of() : part.getLines();
             if (part != null) for (IObjectLocation loc : part.getObjectLocations()) {
                 if (!(loc.getObject() instanceof IJavaIdentifier ident)) continue;
@@ -5360,8 +5387,8 @@ public final class JebEngine implements Engine, SearchIndex.Host {
                 out.add(new LocalRef(shown, ident.getName(), type, itemId, lb + 1, start, parameters.get(ident), ident));
             }
         } finally {
-            doc.dispose();
-            restoreRender(pm, savedProps);
+            try { if (doc != null) doc.dispose(); }
+            finally { restoreRender(pm, savedProps); }
         }
         out.sort(java.util.Comparator.comparingInt(LocalRef::line).thenComparingInt(LocalRef::column));
         return out;

@@ -814,6 +814,11 @@ verdicts arrive as proposals). `map.export` renders md/json posters.
 
 `locals.list` includes each native local’s original method, original name, and identifier. Its `originalSymbol` stays the same through a local rename and containing-class rename; `itemId` is a decimal string so JSON clients do not round it. A saved-name check should compare this identity and the displayed name together.
 
+Variable and argument inventories render the complete class once and skip call
+and field navigation resolution that those inventories do not use. They retain
+current names, native identifiers and source positions. Renderer settings are
+restored before returning; ordinary code and navigation keep their usual behavior.
+
 JEB sometimes introduces a rendered variable with `itemId:"0"` (no actionable
 item). It remains visible with `identityKind:"rendered-only"` and
 `renameableLocal:false`. Distinct zero-ID variables get distinct inventory labels:
