@@ -89,10 +89,10 @@ public final class M7IT {
            46 per-op tools → 24 facade tools on 2026-09-18 (one server, merged calls, the approved
            cruft removed). Bump the number WITH the change that adds a tool. */
         check(tools.size() == 26 && toolNames.size() == tools.size(),
-                "ops.tools → 26 distinct facade tools (got " + tools.size() + ") — a change to the MCP surface must update this pin (26: Message Lab, 2026-10-09)");
+                "ops.tools → 26 distinct facade tools (got " + tools.size() + ") — a change to the MCP surface must update this pin (includes naming_coverage)");
         check(loopN == 10 && toolNames.containsAll(List.of("symbols", "code", "xrefs", "strings", "search", "annotate", "map",
                         "map_verdict", "presence", "map_edit", "flow", "devices", "runs", "run", "breakpoints", "project", "target",
-                        "mission", "review", "llm", "reversing_agent", "index", "workspace", "history", "audit")),
+                        "mission", "review", "llm", "reversing_agent", "index", "workspace", "history", "audit", "naming_coverage")),
                 "ops.tools: the 26 designed tools, 10 of them loop-visible (got " + loopN + ")");
         check(!toolNames.contains("rename") && !toolNames.contains("agent_review") && !toolNames.contains("bookmark")
                         && !toolNames.contains("device_pull") && !toolNames.contains("agent_follow"),
@@ -129,7 +129,7 @@ public final class M7IT {
         // NOT dispatchable by the internal loop (regression guard)
         java.util.Set<String> loop = dev.workbench.llm.AgentLoop.loopToolNames();
         check(!loop.contains("mission") && !loop.contains("review") && !loop.contains("llm") && !loop.contains("target")
-                        && loop.contains("annotate") && loop.contains("code") && loop.contains("symbols") && loop.size() == 10 && loop.contains("message_lab"),
+                        && loop.contains("annotate") && loop.contains("code") && loop.contains("symbols") && loop.size() == 10 && loop.contains("naming_coverage"),
                 "loop boundary: mission/review/llm/target NOT loop-callable, annotate/code/symbols are (10 loop tools)");
         // tool.call: the bridge's one entry point — unknown tool, bad action, an agent on an operator tool
         Map<String, Object> unknownTool = post("tool.call", Map.of("tool", "nope", "args", Map.of()));
@@ -788,15 +788,18 @@ public final class M7IT {
             }
             // ---- locals: rename {symbol: method, local, name} renames a local variable through JEB's Java unit; undo restores it
             Map<String, Object> lcDec = data(post("code.decompile", Map.of("target", tid, "symbol", "Lm76/at;", "scope", "class")));
-            String[] lcLines = String.valueOf(lcDec.get("text")).split("\n");
             String lcMethod = null, lcName = null;
-            for (int li = 0; li < lcLines.length && lcMethod == null; li++) {
-                java.util.regex.Matcher lm = java.util.regex.Pattern.compile("\\b(v\\d+(?:_\\d+)?)\\b").matcher(lcLines[li]);
-                if (!lm.find()) continue;
-                for (Object mo : (List<?>) lcDec.get("methods")) {
-                    Map<?, ?> mm = (Map<?, ?>) mo;
-                    if (mm.get("line") instanceof Number a && mm.get("endLine") instanceof Number b && li + 1 >= a.intValue() && li + 1 <= b.intValue()) { lcMethod = String.valueOf(mm.get("addr")); lcName = lm.group(1); }
+            // Native inventories identify body locals without assuming the renderer
+            // starts at v0: JEB 5.46 renders this fixture's integer simply as v.
+            for (Object mo : (List<?>) lcDec.get("methods")) {
+                String method = String.valueOf(((Map<?, ?>) mo).get("addr"));
+                for (Object value : dataList(post("locals.list", Map.of("target", tid, "symbol", method)))) {
+                    Map<?, ?> local = (Map<?, ?>) value;
+                    if (Boolean.TRUE.equals(local.get("renameableLocal")) && !local.containsKey("parameterIndex")) {
+                        lcMethod = method; lcName = String.valueOf(local.get("name")); break;
+                    }
                 }
+                if (lcMethod != null) break;
             }
             if (lcMethod != null) {
                 Map<String, Object> lr = post("rename", Map.of("target", tid, "symbol", lcMethod, "local", lcName, "name", "probeLocal"));
@@ -819,6 +822,12 @@ public final class M7IT {
                     if (a.contains("<init>") && a.contains("Lm76/")) { laMethod = a; break; }
                 }
                 check(laMethod != null, "the fixture's Lm76/aaf; has a constructor with a class-typed parameter: " + laMethod);
+                // Set up the generic name this behavior tests. The vendor now
+                // supplies type-based names (e.g. abf0) instead of old argN names.
+                Map<?, ?> genericCandidate = dataList(post("locals.list", Map.of("target", tid, "symbol", laMethod))).stream()
+                        .map(o -> (Map<?, ?>) o).filter(local -> Boolean.TRUE.equals(local.get("renameableLocal"))
+                                && String.valueOf(local.get("type")).startsWith("Lm76/")).findFirst().orElseThrow();
+                data(post("rename", Map.of("target", tid, "symbol", laMethod, "local", genericCandidate.get("name"), "name", "v9001")));
                 Map<String, Object> la = data(post("locals.auto", Map.of("target", tid, "symbol", laMethod)));
                 List<?> lren = (List<?>) la.get("renames");
                 check(lren != null && !lren.isEmpty() && la.get("historyIds") instanceof List<?> hl && hl.size() == lren.size(),
