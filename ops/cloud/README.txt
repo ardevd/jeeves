@@ -115,6 +115,12 @@ are implied by flags for short locals such as v/s/z12 or members such as A0a.
 A meaningful one-letter counter can be retained with evidence. No renames
 or second reversing session are launched by review. A failed/ambiguous paid
 review is retained for manual review instead of automatically repeating it.
+HTTP rejections retain exact response bytes, status, content type and checksum
+in the private provider-error.json record, without request headers or secrets.
+The dashboard receives only status and the diagnostic filename. If reading the
+error body fails, retained bytes are explicitly marked incomplete. Recovery
+reuses a recorded rejection without another provider call, even if the final
+model-review.json had not yet been written. No retry or output policy changes.
 Collection errors, reported issues and missing claims keep classes needs_review.
 Full inventory uses native reads and history.json rather than history.list's
 existing 200-entry default / 2000-entry ceiling. This collector adds no truncation;

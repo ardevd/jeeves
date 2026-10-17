@@ -1,4 +1,4 @@
-import hashlib, io, json, tarfile, tempfile, time, unittest, threading
+import base64, hashlib, io, json, tarfile, tempfile, time, unittest, threading
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -152,6 +152,40 @@ class Tests(unittest.TestCase):
                 self.assertEqual(json.loads(requests[0]['messages'][1]['content']),evidence)
                 quality.provider_review(folder,evidence,'zai',folder)
                 self.assertEqual(len(requests),1)
+        finally:server.shutdown();server.server_close();thread.join()
+
+    def test_http_rejection_bytes_survive_result_recovery_without_replay(self):
+        requests=[];body=b'provider diagnostic '+b'\xff\x00'+('full context diagnosis '*5000).encode()
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                requests.append(self.rfile.read(int(self.headers['Content-Length'])))
+                self.send_response(400);self.send_header('Content-Type','application/octet-stream')
+                self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+            def log_message(self,*args):pass
+        server=ThreadingHTTPServer(('127.0.0.1',0),Handler);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        try:
+            with tempfile.TemporaryDirectory() as temporary:
+                folder=Path(temporary);evidence={'code':'fixture source'}
+                (folder/'evidence.json').write_text(json.dumps(evidence))
+                (folder/'llm.json').write_text(json.dumps({'providers':{'deepseek':{'model':'deepseek-v4-pro',
+                    'baseUrl':'http://127.0.0.1:'+str(server.server_port),'maxOutputTokens':393216}}}))
+                (folder/'llm-keys.json').write_text(json.dumps({'deepseek':'private-fixture-secret'}))
+                result=quality.provider_review(folder,evidence,'deepseek',folder)
+                path=folder/'provider-error.json'
+                self.assertTrue(path.exists(),'the actual provider rejection must be retained')
+                saved=json.loads(path.read_text());self.assertEqual(saved['status'],400)
+                self.assertEqual(base64.b64decode(saved['body_base64']),body)
+                self.assertEqual(saved['body_bytes'],len(body));self.assertEqual(saved['body_sha256'],hashlib.sha256(body).hexdigest())
+                self.assertEqual(saved['content_type'],'application/octet-stream');self.assertNotIn('private-fixture-secret',path.read_text())
+                self.assertEqual(result['status'],'needs_manual_review');self.assertEqual(result['http_status'],400)
+                self.assertEqual(result['provider_error_file'],'provider-error.json');self.assertNotIn('full context diagnosis',json.dumps(result))
+                self.assertEqual(path.stat().st_mode&0o777,0o600)
+                quality.provider_review(folder,evidence,'deepseek',folder)
+                self.assertEqual(len(requests),1)
+                (folder/'model-review.json').unlink()  # interrupted after saving rejection, before final result
+                restored=quality.provider_review(folder,evidence,'deepseek',folder)
+                self.assertEqual(restored['http_status'],400);self.assertEqual(restored['provider_error_file'],'provider-error.json')
+                self.assertEqual(len(requests),1);self.assertFalse((folder/'response.sse').exists())
         finally:server.shutdown();server.server_close();thread.join()
 
     def test_eight_reviews_overlap_publish_partial_results_and_resume_without_recharge(self):

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read-only, code-backed post-session review. Never exposes mutation tools."""
 from __future__ import annotations
-import hashlib, json, os, re, tarfile, time, urllib.error, urllib.request
+import base64, hashlib, json, os, re, tarfile, time, urllib.error, urllib.request
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from checkpoint_backup import durable_json, sha256
@@ -211,12 +211,29 @@ def validate_review(text):
     if result['findings']:result['verdict']='needs_review'
     return result
 
+def provider_rejection(provider,record):
+    return {'status':'needs_manual_review','provider':provider,'verdict':'needs_review',
+            'summary':'Independent model review did not complete.',
+            'error':f"Provider HTTP {record['status']}; rejection details retained in provider-error.json",
+            'http_status':record['status'],'provider_error_file':'provider-error.json',
+            'findings':[],'examples':[],'at':record['at']}
+
 def provider_review(folder,evidence,provider,settings_home=LIVE_HOME):
     """A durable request intent prevents automatic duplicate paid review after a crash."""
     done=folder/'model-review.json'
     if done.exists():return read(done)
-    raw=folder/'response.sse';intent=folder/'request.json'
+    raw=folder/'response.sse';intent=folder/'request.json';rejected=folder/'provider-error.json'
     try:
+        if rejected.exists():
+            # The response can be durable before the final review result. Reuse
+            # it after a crash, without describing a known rejection as unknown
+            # or sending another potentially billed request.
+            record=read(rejected,{});request_record=read(intent,{})
+            body=base64.b64decode(record['body_base64'],validate=True)
+            if (record.get('provider')!=provider or record.get('evidence_sha256')!=request_record.get('evidence_sha256')
+                    or len(body)!=record.get('body_bytes') or hashlib.sha256(body).hexdigest()!=record.get('body_sha256')):
+                raise ValueError('Stored provider rejection does not match its request or checksum')
+            result=provider_rejection(provider,record);durable_json(done,result);return result
         if intent.exists():
             if not raw.exists():raise RuntimeError('Prior review request outcome is unknown; no automatic duplicate sent')
             response=decode_stream(raw.read_text().splitlines())
@@ -242,6 +259,20 @@ def provider_review(folder,evidence,provider,settings_home=LIVE_HOME):
             response=decode_stream(raw.read_text().splitlines())
         durable_json(folder/'response.json',response)
         result=dict(validate_review(response['text']),status='complete',provider=provider,usage=response['usage'],at=time.time())
+    except urllib.error.HTTPError as error:
+        # HTTPError.__str__ omits the actual provider diagnosis. Keep exact bytes
+        # privately, including non-UTF8 responses, and publish only safe metadata.
+        record={'provider':provider,'status':error.code,'reason':str(error.reason),
+                'content_type':error.headers.get('Content-Type','') if error.headers else '',
+                'evidence_sha256':read(intent,{}).get('evidence_sha256'),'at':time.time(),'body_complete':True}
+        with error:
+            try:body=error.read()
+            except Exception as failure:
+                body=getattr(failure,'partial',b'')
+                if not isinstance(body,bytes):body=b''
+                record.update(body_complete=False,body_read_error=str(failure))
+        record.update(body_base64=base64.b64encode(body).decode('ascii'),body_bytes=len(body),body_sha256=hashlib.sha256(body).hexdigest())
+        durable_json(rejected,record);result=provider_rejection(provider,record)
     except Exception as error:
         result={'status':'needs_manual_review','provider':provider,'verdict':'needs_review',
                 'summary':'Independent model review did not complete.','error':str(error),'findings':[],'examples':[],'at':time.time()}
