@@ -294,8 +294,12 @@ public final class Ops {
             ws.resolveSymbol(tid, symbol);   // a lenient caller reference is said in meta.resolution
             return ws.engineFor(tid).callSite(symbol, offset, opts);
         }));
-        r.register(new Op("code.smali", "smali", false, Cost.scan,
-                req -> engine(ws, req).smali(strictSymbol(ws, req))));   // the byte-check source: a contradicting descriptor is refused
+        r.register(new Op("code.smali", "smali", false, Cost.scan, req -> {
+            if(req.params().containsKey("maxInstructions"))throw OpException.syntax(
+                    "maxInstructions applies to code view=packet, not smali; use window=\"from,to\" for smali rows", "code {view:smali, window:\"1,80\"}");
+            var range=SmaliWindow.parse(req.str("window")); // validate before rendering a potentially large class
+            return SmaliWindow.select(engine(ws, req).smali(strictSymbol(ws, req)),range);
+        }));   // the byte-check source: a contradicting descriptor is refused
         r.register(new Op("code.hover", "", false, Cost.cheap,
                 req -> engine(ws, req).hover(noteResolution(ws, req), req.num("offset", 0))));
         // outline {class, inherited?}: members with ORIGINAL names/descriptors, field type/kind, same-name collisions; the superclass chain on request

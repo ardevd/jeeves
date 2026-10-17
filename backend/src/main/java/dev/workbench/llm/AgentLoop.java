@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * HTTP agent loop (multi-LLM): an OpenAI-compatible chat-completions tool-use
@@ -190,7 +191,9 @@ public final class AgentLoop {
 
     private static boolean looksLikeContextOverflow(Throwable e) {
         String m = String.valueOf(e.getMessage());
-        return java.util.regex.Pattern.compile("(?i)context.length|context_length|maximum context|too many tokens|exceeds the (model|maximum)|prompt is too long|request too large|input is too long").matcher(m).find();
+        if (e instanceof WireFailure failure && failure.raw.get("status") instanceof Number status
+                && status.intValue()!=400 && status.intValue()!=413) return false; // never replay an accepted partial stream
+        return java.util.regex.Pattern.compile("(?i)context.length|context_length|maximum context|too many tokens|exceeds the (model|maximum)|prompt is too long|prompt exceeds max length|request too large|input is too long").matcher(m).find();
     }
     /** The maximum a provider's refusal states ("maximum context length is 131072 tokens"), or 0. */
     static int windowFromError(String msg) {
@@ -264,10 +267,10 @@ public final class AgentLoop {
      *  (DeepSeek: a hit costs ~1/10 of a miss), so re-sending an untouched history is cheap, while
      *  rewriting old messages — what the sliding window did every turn — breaks the prefix and
      *  forfeits the cache. The only thing that must be bounded is the model's context window:
-     *  above this estimate the OLDEST unprotected tool results become stubs, never the working
-     *  set (the last KEEP_TURNS turns) and never the mission's subject decompile. */
+     *  above this estimate the OLDEST unprotected tool results become stubs first. If the recent
+     *  working set alone exceeds the window, read-only results receive explicit reread notices. */
 
-    /** The last N turns' tool results are ALWAYS kept in full — the working set of an agent
+    /** The last N turns' tool results are kept in full while they fit — the working set of an agent
      *  reading a method is what it fetched a turn or two ago (m1: the count-based window threw
      *  the previous turn's windows away every turn). */
     private static final int KEEP_TURNS = 3;
@@ -424,6 +427,30 @@ public final class AgentLoop {
             history.set(i, stub);
             elided++;
             est -= Math.max(0, (content.length() - String.valueOf(stub.get("content")).length()) / 4);
+        }
+        // A recent class listing can itself exceed the provider's whole window.
+        // Pinning it forever makes every request impossible. Keep the ordinary
+        // working-set policy above; only an over-window remainder permits this
+        // emergency reread notice, and only for unambiguously read-only tools.
+        est=estimateTokens(history);
+        while (est>limit) {
+            int candidate=-1,bestGain=0;String notice=null;
+            for(int i=0;i<history.size();i++) {
+                var m=asMap(history.get(i));
+                if(m==null || !"tool".equals(m.get("role")) || !Set.of("code","symbols","xrefs","strings","search").contains(m.get("name")))continue;
+                String content=String.valueOf(m.getOrDefault("content",""));if(content.startsWith(ELIDED_PREFIX))continue;
+                String id=String.valueOf(m.get("tool_call_id"));
+                String replacement=ELIDED_PREFIX+m.get("name")+" "+argsById.getOrDefault(id,"")+" returned "
+                        +count(rawChars.getOrDefault(id,content.length()))+" chars; this read cannot stay in the provider context window. "
+                        +"Read the needed sections again: code with an exact method and window \"from,to\" for Java lines or smali rows; "
+                        +"use outline for class structure and narrow symbol/search/xref queries. Do not repeat an oversized whole-class read. "
+                        +"The original tool call remains above; this notice is not complete source evidence.]";
+                int gain=content.length()-replacement.length();
+                if(gain>bestGain){candidate=i;bestGain=gain;notice=replacement;}
+            }
+            if(candidate<0)break; // no safely reducible read: never discard recent writes to force a request
+            var stub=new LinkedHashMap<>(asMap(history.get(candidate)));stub.put("content",notice);
+            history.set(candidate,stub);elided++;est=estimateTokens(history);
         }
         return new ContextStats(history.size(), elided, stripped, estimateTokens(history));
     }
@@ -646,8 +673,10 @@ public final class AgentLoop {
                     long chatT0 = System.nanoTime();
                     Map<String, Object> resp;
                     int attempt = 1;
+                    while (true) {
                     try {
                         resp = send(req, turn, attempt);
+                        break;
                     } catch (CaptureRefused e) {
                         /* a strict capture: the request was not admitted durably — nothing is
                            dispatched uncaptured, and the mission says why. A stop that interrupted
@@ -665,9 +694,9 @@ public final class AgentLoop {
                         return;
                     } catch (RuntimeException e) {
                         if (!looksLikeContextOverflow(e)) throw e;
-                        /* the model's window is smaller than configured: adopt what the provider
-                           states, save it for the provider, evict the oldest results to fit and retry
-                           once — a mission must not die on a number */
+                        /* Only a known refusal is replayable, and only with a changed request.
+                           A partial stream or an identical rejected payload is never retried. */
+                        String before=Json.write(messages);
                         int learned = windowFromError(e.getMessage());
                         if (learned >= 8_192 && learned < contextTokens) {
                             contextTokens = learned;
@@ -675,11 +704,12 @@ public final class AgentLoop {
                             activity.row("note", "turn " + turn + " · the provider says the model's window is " + count(learned) + " tokens — adopted and saved for this provider");
                         }
                         ContextStats again = compact(messages, rawResultChars, callArgsSummary, subject, (int) (contextLimit() * 0.7));
+                        if(before.equals(Json.write(messages))) throw e;
                         activity.row("note", "turn " + turn + " · the provider refused the context (" + firstLine(e.getMessage())
                                 + ") — evicted the oldest results (" + again.elided() + " stubs, ~" + count(again.estTokens())
-                                + " tok) and retrying once");
-                        attempt = 2;
-                        resp = send(req, turn, attempt);
+                                + " tok) and retrying the changed request");
+                        attempt++;
+                    }
                     }
                     rec.put("ms", (System.nanoTime() - chatT0) / 1_000_000);
                     if (attempt > 1) rec.put("attempts", attempt);

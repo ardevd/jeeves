@@ -503,7 +503,7 @@ public final class M10aIT {
         check(Pattern.compile("context: \\d+ messages · [1-9]\\d* elided").matcher(feed2).find(),
                 "R2 the context row reports the eviction");
 
-        // (f) a provider's context-length refusal: adopt the stated window, evict to fit, retry once
+        // (f) one explicit context refusal: adopt the stated window and retry a changed request
         Scripted refusing = new Scripted(12);
         refusing.refuseOnTurn = 8;
         refusing.refusal = "This model's maximum context length is 16384 tokens. However, you requested 20000 tokens.";
@@ -520,8 +520,9 @@ public final class M10aIT {
         StringBuilder refusalRows = new StringBuilder();
         synchronized (rows3) { for (String r : rows3) if (r.contains("refus") || r.contains("window") || r.contains("blocked") || r.contains("failed")) refusalRows.append(" | ").append(r); }
         check(learned[0] == 16_384, "R2 the provider's stated window is adopted and handed back for the provider (learned=" + learned[0] + ")" + refusalRows);
-        check(feed3.contains("the provider says the model's window is 16,384 tokens") && feed3.contains("retrying once"),
-                "R2 the feed reports the adopted window and the single retry");
+        check(feed3.contains("the provider says the model's window is 16,384 tokens")
+                        && rows3.stream().filter(r->r.contains("retrying the changed request")).count()==1,
+                "R2 the feed reports the adopted window and one changed-request retry");
         int peakAfter = 0;
         for (int i = 7; i < refusing.promptChars.size(); i++) peakAfter = Math.max(peakAfter, refusing.promptChars.get(i));
         check(peakAfter > 0 && peakAfter / 4 < 16_384, "R2 after the refusal every prompt stays under the learned window (peak ≈" + (peakAfter / 4) + " tok)");

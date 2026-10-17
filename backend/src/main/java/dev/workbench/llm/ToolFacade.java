@@ -165,7 +165,8 @@ public final class ToolFacade {
                         + " with signatures; view packet is an evidence packet for ONE method (a class is refused): original descriptor,"
                         + " the code in the dex's ORIGINAL names with stable refs (descriptor+offset), the calls/fields/types/strings touched,"
                         + " analyst names kept apart as provenance, omissions declared; entry (an offset \"0040\" or a block \"b0040\") selects"
-                        + " the CFG blocks reachable from there, never a text cut. window \"from,to\" slices lines of a java result."
+                        + " the CFG blocks reachable from there, never a text cut. window \"from,to\" slices Java lines or smali rows (1-based inclusive), with totals and smali continuation."
+                        + " maxInstructions is only for packet, not smali. For large classes, read the outline and exact methods or windows instead of an entire listing."
                         + " view params is a method's retained parameter metadata alone: the dex's MethodParameters annotation (names"
                         + " and flags verbatim, in encoded order, its count checked against the prototype), the debug_info names as a"
                         + " second source, the arguments as the decompiler currently names them and why — a method's java/smali result"
@@ -184,7 +185,7 @@ public final class ToolFacade {
                         "context", num("site: DEX instructions each side (default 6)", "6"),
                         "lines", num("site: decompiled lines each side (default 8)", "8"),
                         "inherited", bool("outline: add the superclass chain's fields (in-dex supers; framework supers listed as unknown)", "true"),
-                        "window", str("1-based line slice \"from,to\" of a java result (optional)", "\"1,80\""),
+                        "window", str("1-based inclusive \"from,to\" slice of Java lines or smali rows (optional)", "\"1,80\""),
                         "question", str("view packet: the research question the packet answers (optional, recorded)", "\"what does the tag-7 branch schedule?\""),
                         "entry", str("view packet: a branch entry — an instruction offset or a CFG block id (optional; absent = the whole method)", "\"0040\""),
                         "maxInstructions", num("view packet: cap on listed instructions (default 400; the cut is declared)", "400")),
@@ -722,7 +723,7 @@ public final class ToolFacade {
                 String view = args.get("view") == null ? "java" : s(args, "view");
                 switch (view) {
                     case "java": return new Route("code.decompile", pass(args, SEL));
-                    case "smali": return new Route("code.smali", pass(args, Set.of("view", "window", "scope", "at", "context", "lines")));
+                    case "smali": return new Route("code.smali", pass(args, Set.of("view", "scope", "at", "context", "lines")));
                     case "outline": return new Route("code.outline", pass(args, Set.of("view", "window", "scope"), "symbol", "class"));
                     case "packet": {
                         /* an agent reads the packet through the loop's result cap: the optional student

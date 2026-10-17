@@ -214,6 +214,16 @@ tasks.register('agentCompletionTest', JavaExec) {
     dependsOn 'compileTestJava'
 }
 
+tasks.register('agentContextRecoveryTest', JavaExec) {
+    group = 'verification'
+    description = 'Oversized recent reads, provider refusals and preserved write receipts'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.llm.AgentContextRecoveryTest'
+    workingDir = repoRoot
+    environment 'WORKBENCH_MOCK', '1'
+    dependsOn 'compileTestJava'
+}
+
 tasks.register('searchIndexPersistenceIT', JavaExec) {
     group = 'verification'
     description = 'Pending search-index work survives cancellation and failed corpus writes'
@@ -237,6 +247,7 @@ tasks.register('searchIndexPersistenceIT', JavaExec) {
     renameCollisionIT: ['dev.workbench.it.RenameCollisionIT', 'params/params-fixture.dex'],
     localNameProvenanceIT: ['dev.workbench.it.LocalNameProvenanceIT', 'params/params-fixture.dex'],
     namingCoverageIT: ['dev.workbench.it.NamingCoverageIT', 'params/params-fixture.dex'],
+    smaliWindowIT: ['dev.workbench.it.SmaliWindowIT', 'params/params-fixture.dex'],
     generatedLocalIT: ['dev.workbench.it.GeneratedLocalIT', 'params/params-fixture.dex'],
     renameFamilyIT: ['dev.workbench.it.RenameFamilyIT', 'rename-family/rename-family.dex'],
     callSiteCalleeIT: ['dev.workbench.it.CallSiteCalleeIT', 'rename-family/rename-family.dex'],

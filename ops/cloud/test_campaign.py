@@ -101,6 +101,25 @@ class Tests(unittest.TestCase):
             def call(self,*a,**k):return []
         self.assertEqual(campaign.completion(API(),'m1','LA;')['status'],'needs_review')
 
+    def test_blocked_provider_diagnosis_survives_session_save_review_and_catalog(self):
+        reason='provider failure: provider HTTP 400: Prompt exceeds max length'
+        class BlockedAPI(SessionAPI):
+            def call(self,op,**params):
+                result=super().call(op,**params)
+                if op=='agent.missions' and len(self.missions)==8:
+                    self.missions[-1].update(state='blocked',stopReason=reason)
+                    return list(self.missions)
+                return result
+        api=BlockedAPI();session=campaign.claim_session(self.db,MODELS);slots=json.loads(session['slots'])
+        quality={'status':'complete','classes':[{'original_class':s['original_class'],'review':{'verdict':'acceptable'}} for s in slots]}
+        with patch.object(campaign,'ensure_target',return_value='t1'),patch.object(campaign,'run_barrier',return_value={'ok':True,'target':'t2'}),patch.object(campaign,'review_session',return_value=quality):
+            campaign.run_session(api,self.db,session,self.root/'input.apk',self.root)
+        row=self.db.execute('SELECT state,result FROM classes WHERE original=?',(slots[-1]['original_class'],)).fetchone()
+        self.assertEqual(row['state'],'needs_review');self.assertEqual(json.loads(row['result'])['unresolved'],[reason])
+        self.assertEqual(len(api.missions),8);self.assertEqual(api.calls.count('agent.spawn'),8)
+        saved=json.loads((self.root/'rounds/cloud-000001/assignments.json').read_text())
+        self.assertEqual(saved[-1]['result']['unresolved'],[reason])
+
     def test_optimistic_class_claim_and_quality_cannot_hide_missing_variable_coverage(self):
         api=SessionAPI();api.coverage_status='needs_review';session=campaign.claim_session(self.db,MODELS)
         quality={'status':'complete','classes':[{'original_class':s['original_class'],'review':{'verdict':'acceptable'}} for s in json.loads(session['slots'])]}

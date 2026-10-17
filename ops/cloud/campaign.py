@@ -163,7 +163,7 @@ def run_session(api,db,session,artifact,root):
         for slot in slots:
             m=by_id[slot['mission']]
             slot['coverage_actor']='llm:'+m['agentId']
-            result=completion(api,slot['mission'],slot['original_class']) if m['state']=='done' else {'status':'needs_review','unresolved':[m.get('reason') or m['state']]}
+            result=completion(api,slot['mission'],slot['original_class']) if m['state']=='done' else {'status':'needs_review','unresolved':[m.get('stopReason') or m.get('reason') or m['state']]}
             slot['result']=result;slot['usage']={k:m.get(k) for k in ['inputTokens','outputTokens','cacheHitTokens','turnsDone','state']}
         save_slots(db,sid,slots)
         durable_json(folder/'assignments.json',slots)

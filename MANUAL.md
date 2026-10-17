@@ -608,6 +608,18 @@ checked 16 October 2026). The loop uses that allowance, or the mission's explici
 configured provider. Unconfigured providers still fall back to 4096. Provider
 context limits and context maintenance still apply; a long reasoning trace
 consumes output tokens. Terminal provider errors remain visible as blocked runs.
+When recent read results alone exceed the context allowance, the loop replaces
+large code/search results with explicit notices to fetch narrower sections.
+This fallback preserves recent write/assessment receipts and tool-call pairing.
+It recognizes Z.ai's `Prompt exceeds max length` refusal and retries only when
+the rejected request changes; an unchanged rejection or partial stream is not
+replayed. Ordinary reads below the context allowance remain intact.
+
+For large bytecode listings, `code {view: smali, symbol, window: "from,to"}` reads
+inclusive 1-based rows. The result reports returned `count`, overall `total`,
+`window.from/to/totalRows/more`, and `window.next` when another page exists.
+Without a window the whole listing remains available. `maxInstructions` belongs
+to `view: packet`; passing it to smali returns a clear error before rendering.
 
 In headless execution the loop preserves complete tool payloads and all matching
 name-provenance rows instead of applying its 6K/16K character and 60-name display

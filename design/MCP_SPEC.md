@@ -202,7 +202,7 @@ the full result and whether the response includes all of it.
 | Op | M | Purpose |
 |---|---|---|
 | `code.decompile <symbol> [--window from,to]` | | source + semantic token map (classTokens) |
-| `code.smali <symbol>` | | listing with offsets + opcode bytes (cap `smali`; native engines: disassembly) |
+| `code.smali <symbol> [window]` | | listing with offsets + opcode bytes (cap `smali`; native engines: disassembly). Optional `window:"from,to"` selects inclusive 1-based rows; returned `count` is the page size, `total` the whole listing, and `window` reports `from`, `to`, `totalRows`, `more` and an exact `next` window when present. No window preserves the whole listing. Invalid ranges or `maxInstructions` (a packet-only option) are rejected before rendering. |
 | `code.hover <symbol> <offset>` | | tooltip model (kind, owner, sig, comment) |
 | `locals.list <method> [target]` | | Displayed local variables with `name`, optional `type`, and `line`. Native JEB rows also include `originalMethod` (the original method descriptor), `originalName` (the identifier’s original name), `itemId` (unsigned decimal string to avoid JSON precision loss), and `originalSymbol` (`originalMethod + "#local:" + itemId`). This is the same identity used by `resolveLocal` and rename ownership. Match both identity and name when checking a saved/reopened database; name alone can identify a different variable. |
 | `naming.coverage <symbol> [target, recordedBy]` | | Fresh per-method argument/local inventory and durable actor-specific assessments. See the naming coverage contract below. |
