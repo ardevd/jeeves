@@ -344,14 +344,20 @@ for another investigation; its prior results are preserved. This priority is
 consumed by the first completed session, not reapplied on each iteration.
 
 DeepSeek HTTP 402 and Z.ai business code 1113 (or an explicit insufficient-balance
-diagnosis) create a durable credit-stop.json. Blocked missions' complete failure
-records and checksummed review HTTP responses are checked; ordinary 429 rate
+diagnosis) create a durable credit-stop.json. Blocked missions' recorded failure
+diagnostics and checksummed review HTTP responses are checked; ordinary 429 rate
 limits and context errors do not falsely signal exhausted funds. No active
 mission is cancelled. After saving/verifying and recording all review outcomes,
 the invocation completes with the credit reason and starts no new session.
 Either required provider's refusal pauses this fixed model mix. There is no
 automatic top-up, additional dollar cap, or server teardown. A new operator-
 authorized invocation ignores credit evidence predating that invocation.
+The existing native client abbreviates an HTTP error body to 200 characters in
+the agent turn record (the streaming reader collects up to 64,000 characters).
+A late Z.ai business code can therefore be missed at the agent-failure step.
+The subsequent cross-provider reviews retain complete HTTP rejection bytes and
+check them before any next session, covering exhausted credit at that boundary.
+This controller release does not claim to remove the native diagnostic bounds.
 Official error references:
  https://api-docs.deepseek.com/quick_start/error_codes/
  https://docs.z.ai/api-reference/api-code
