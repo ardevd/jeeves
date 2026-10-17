@@ -8,6 +8,7 @@ from checkpoint_backup import durable_json, sha256
 from quality import review_session
 from naming_coverage import audit_session
 from maintenance import wait_at_boundary
+from credit import mission_exhaustion, review_exhaustion, record_exhaustion
 
 HERE=Path(__file__).resolve().parent
 TERMINAL={'done','blocked','stopped','interrupted'}
@@ -49,7 +50,7 @@ def catalog(api,target,db):
             db.execute('INSERT INTO classes(original,name) VALUES(?,?) ON CONFLICT(original) DO UPDATE SET name=excluded.name',(original,name))
     return expected
 
-def claim_session(db,models,focus=None,repairs=None):
+def claim_session(db,models,focus=None,repairs=None,priority=None,revisit_completed=False):
     if len(models)!=8:raise ValueError('This campaign requires exactly eight model slots')
     # One transaction reserves all eight; binary original descriptors never fold case.
     with db:
@@ -80,12 +81,29 @@ def claim_session(db,models,focus=None,repairs=None):
             rows=db.execute("SELECT * FROM classes WHERE state IN ('pending','needs_review') ORDER BY attempts, original COLLATE BINARY").fetchall()
             rows.sort(key=lambda r:(0 if repair_for(r) else 1,r['attempts'],r['original']))
             rows=rows[:8]
+        priority=priority or []
+        if len(priority)>len(models) or len(set(priority))!=len(priority):
+            raise ValueError('First-session priorities must be distinct and fit the eight slots')
+        preferred=[]
+        for original in priority:
+            row=db.execute('SELECT * FROM classes WHERE original=?',(original,)).fetchone()
+            if row is None or (focused is not None and original not in focused):
+                raise ValueError('Priority class must exist in the selected focus: '+original)
+            if row['state'] not in ('pending','needs_review','done'):
+                raise ValueError('Priority class is already claimed: '+original)
+            preferred.append(row)
+        rows=(preferred+[r for r in rows if r['original'] not in priority])[:8]
+        if not rows and revisit_completed:
+            rows=([r for r in eligible if r['state']=='done'][:8] if focused is not None else
+                  db.execute("SELECT * FROM classes WHERE state='done' ORDER BY attempts, original COLLATE BINARY LIMIT 8").fetchall())
         if not rows:return None
         if len(rows)<8:
             # Finish the last partial page with distinct previously completed
             # classes for a verification pass, retaining exactly eight agents.
-            rows+=([r for r in eligible if r['state']=='done'][:8-len(rows)] if focused is not None else
-                   db.execute("SELECT * FROM classes WHERE state='done' ORDER BY attempts, original COLLATE BINARY LIMIT ?",(8-len(rows),)).fetchall())
+            selected={r['original'] for r in rows}
+            completed=(eligible if focused is not None else
+                       db.execute("SELECT * FROM classes WHERE state='done' ORDER BY attempts, original COLLATE BINARY").fetchall())
+            rows+=[r for r in completed if r['state']=='done' and r['original'] not in selected][:8-len(rows)]
             if len(rows)!=8:raise RuntimeError('The target itself contains fewer than eight classes')
         slots=[{'original_class':r['original'],'current_name':r['name'],'model':models[i],
                 'assignment_id':str(uuid.uuid4()),'spawn':'prepared','mission':None} for i,r in enumerate(rows)]
@@ -172,6 +190,8 @@ def run_session(api,db,session,artifact,root):
         for slot in slots:
             m=by_id[slot['mission']]
             slot['coverage_actor']='llm:'+m['agentId']
+            exhaustion=mission_exhaustion(api,m,slot['model'])
+            if exhaustion:record_exhaustion(root,sid,[exhaustion])
             result=completion(api,slot['mission'],slot['original_class']) if m['state']=='done' else {'status':'needs_review','unresolved':[m.get('stopReason') or m.get('reason') or m['state']]}
             slot['result']=result;slot['usage']={k:m.get(k) for k in ['inputTokens','outputTokens','cacheHitTokens','turnsDone','state']}
         save_slots(db,sid,slots)
@@ -189,6 +209,7 @@ def run_session(api,db,session,artifact,root):
     with db:db.execute("UPDATE sessions SET phase='quality' WHERE id=?",(sid,))
     durable_json(root/'status.json',{'phase':'quality','session':sid,'updated_at':time.time()})
     quality=review_session(api,receipt['target'],slots,folder,artifact)
+    record_exhaustion(root,sid,review_exhaustion(folder/'quality'))
     reviews={r['original_class']:r for r in quality.get('classes',[])}
     receipt=dict(receipt,quality=str(folder/'quality/receipt.json'))
     with db:
@@ -203,17 +224,21 @@ def run_session(api,db,session,artifact,root):
         db.execute("UPDATE sessions SET phase='complete',receipt=? WHERE id=?",(json.dumps(receipt),sid))
     return receipt
 
-def invocation_state(root,db,*,rounds=None,hours=None):
+def invocation_state(root,db,*,rounds=None,hours=None,continuous=False):
     path=root/'invocation.json'
     if path.exists():return json.loads(path.read_text())
+    if sum((rounds is not None,hours is not None,bool(continuous)))!=1:
+        raise ValueError('Specify exactly one of --rounds, --hours or --continuous')
     now=time.time()
     invocation={'phase':'running','started_at':now,
                 'start_completed':db.execute("SELECT count(*) FROM sessions WHERE phase='complete'").fetchone()[0]}
-    if hours is not None:
+    invocation['start_session_id']=db.execute('SELECT coalesce(max(id),0) FROM sessions').fetchone()[0]
+    if continuous:invocation.update(mode='continuous')
+    elif hours is not None:
         if not math.isfinite(hours) or hours<=0:raise ValueError('--hours must be positive and finite')
         invocation.update(mode='window',hours=hours,deadline_at=now+hours*3600)
     elif rounds is not None and rounds>=1:invocation.update(mode='rounds',rounds=rounds)
-    else:raise ValueError('Specify --rounds or --hours for this invocation')
+    else:raise ValueError('Specify positive --rounds, positive --hours or --continuous')
     durable_json(path,invocation)
     return invocation
 
@@ -222,6 +247,13 @@ def boundary_reason(root,db,invocation,now):
     # saving and reviewing the current session must finish, even after the deadline.
     if db.execute("SELECT 1 FROM sessions WHERE phase!='complete'").fetchone():return None
     if (root/'stop-after-session').exists():return 'Graceful stop requested; active session saved and reviewed'
+    credit=root/'credit-stop.json'
+    if credit.exists():
+        evidence=json.loads(credit.read_text())
+        if evidence['session']>invocation.get('start_session_id',invocation['start_completed']):
+            providers=', '.join(sorted({r['provider'] for r in evidence['failures']}))
+            return 'Provider credit exhausted ('+providers+'); active session saved and review outcomes recorded'
+    if invocation.get('mode')=='continuous':return None
     if invocation.get('mode')=='window':
         return 'Run window finished; active session saved and reviewed' if now>=invocation['deadline_at'] else None
     completed=db.execute("SELECT count(*) FROM sessions WHERE phase='complete'").fetchone()[0]
@@ -245,7 +277,10 @@ def run_invocation(api,db,config,artifact,root,invocation,before_session=None):
             if not path.is_relative_to(root.resolve()):raise ValueError('Repair queue must be inside the campaign root')
             repairs=json.loads(path.read_text())
             if not isinstance(repairs,list):raise ValueError('Repair queue must contain a list')
-        session=claim_session(db,config['models'],focus,repairs)
+        first=db.execute("SELECT count(*) FROM sessions WHERE phase='complete'").fetchone()[0]==invocation['start_completed']
+        session=claim_session(db,config['models'],focus,repairs,
+                              priority=config.get('priority_classes') if first else None,
+                              revisit_completed=invocation.get('mode')=='continuous')
         if session is None:
             reason='All eligible classes have completed the coverage and quality checks'
             break
@@ -267,6 +302,7 @@ def main():
     duration=parser.add_mutually_exclusive_group()
     duration.add_argument('--rounds',type=int)
     duration.add_argument('--hours',type=float,help='Start new sessions for this many hours; finish the active session before pausing')
+    duration.add_argument('--continuous',action='store_true',help='Continue eight-agent sessions until a graceful stop or exhausted provider credit')
     args=parser.parse_args();config=json.loads(Path(args.config).read_text())
     root=Path(config['root']).resolve()
     if root!=ROOT:raise ValueError('Config root must match JEEVES_CAMPAIGN_ROOT')
@@ -280,7 +316,7 @@ def main():
         api.call('project.open',name=config['project'])
         target=ensure_target(api,artifact)
         count=catalog(api,target,db);durable_json(root/'catalog-receipt.json',{'classes':count,'apk_sha256':APK_SHA,'at':time.time()});print('Catalog verified:',count);return
-    invocation=invocation_state(root,db,rounds=args.rounds,hours=args.hours)
+    invocation=invocation_state(root,db,rounds=args.rounds,hours=args.hours,continuous=args.continuous)
     try:
         # On restart this must precede project.open or any other native call: the
         # deployer may have deliberately closed the database for verification.

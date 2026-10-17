@@ -327,3 +327,39 @@ before making any API call. The original deadline and stop-after-session remain
 in force; maintenance never creates a new invocation or grants extra run time.
 The maintenance service, coordinator and their request files live on the cloud.
 
+
+Continuous execution (17 October 2026)
+--------------------------------------
+Use campaign.py run --config CONFIG --continuous, supervised by the pinned
+jeeves-continuous.service. This has no hour, round, mission-turn or token-total
+ceiling. Every eight-agent session still completes its save/native reopen/live
+verification and independent review before the next eight are admitted. Recovery
+reuses the durable invocation and unfinished assignments. If all focused classes
+pass, continuous mode schedules further verification passes in attempt order.
+
+priority_classes may list distinct original class descriptors for the first
+session of a newly authorized invocation, fitting its eight slots. They must
+exist in the selected focus. An explicitly requested completed class is eligible
+for another investigation; its prior results are preserved. This priority is
+consumed by the first completed session, not reapplied on each iteration.
+
+DeepSeek HTTP 402 and Z.ai business code 1113 (or an explicit insufficient-balance
+diagnosis) create a durable credit-stop.json. Blocked missions' complete failure
+records and checksummed review HTTP responses are checked; ordinary 429 rate
+limits and context errors do not falsely signal exhausted funds. No active
+mission is cancelled. After saving/verifying and recording all review outcomes,
+the invocation completes with the credit reason and starts no new session.
+Either required provider's refusal pauses this fixed model mix. There is no
+automatic top-up, additional dollar cap, or server teardown. A new operator-
+authorized invocation ignores credit evidence predating that invocation.
+Official error references:
+ https://api-docs.deepseek.com/quick_start/error_codes/
+ https://docs.z.ai/api-reference/api-code
+
+Archive a completed invocation before a newly authorized run and disable old
+campaign instances before enabling the continuous unit. Never restart the Java
+backend for a controller-only deployment. stop-after-session remains the graceful
+stop marker. The cloud unit, saves, review and progress exporter require no laptop;
+the localhost:7930 relay still needs an awake connected laptop and catches up on
+reconnection. Check actual deployed ownership, effective unlimited model flags,
+recovery and disk capacity before declaring the execution hibernation-safe.

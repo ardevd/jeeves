@@ -905,3 +905,14 @@ The campaign dashboard shows coverage as each class is checked, with an explicit
 collecting state until the audit finishes. Possible unnamed-symbol flags include
 short locals such as `v`/`z12` and members such as `A0a`; these prompt review and
 do not prove that a name is wrong. Supported short names can be retained.
+
+For an explicitly authorized ongoing campaign, `--continuous` and
+`jeeves-continuous.service` repeat eight-agent sessions with no hour or round
+ceiling. `priority_classes` selects requested original class identities for the
+first session, including classes already completed; prior evidence is preserved.
+A graceful stop marker or an explicit insufficient-credit response from either
+required provider prevents the next session after the active session is saved,
+verified and its review outcomes recorded. Ordinary rate limits and oversized
+contexts are not treated as exhausted funds. Recovery retains the invocation.
+There is no automatic recharge or server teardown. The local dashboard relay
+needs the laptop; the cloud controller, verification and reviews do not.

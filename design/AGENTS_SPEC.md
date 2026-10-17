@@ -158,6 +158,16 @@ ordinary compact JSON when sharing would not reduce bytes. The system prompt
 explains this data format; request receipts identify the encoding. Context
 limits, Max reasoning and no-replay handling of ambiguous requests are unchanged.
 
+The cloud controller also supports an explicitly authorized continuous invocation:
+eight distinct class agents, verified save/reopen, independent review, then the
+next session. No time or session-count ceiling is implied. First-session priority
+descriptors may revisit a completed class while retaining earlier evidence.
+Explicit exhausted-credit errors from either required provider prevent the next
+session after the active session is saved and review outcomes are recorded.
+The durable stop applies across controller restart and never cancels active work.
+Ordinary rate limiting and context errors are not interpreted as exhausted credit.
+See ops/cloud/README.txt for the operational contract and provider error sources.
+
 ## 9. Open questions
 
 1. Auto-accept thresholds: per-confidence auto-accept (e.g. renames with
