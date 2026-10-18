@@ -369,3 +369,26 @@ stop marker. The cloud unit, saves, review and progress exporter require no lapt
 the localhost:7930 relay still needs an awake connected laptop and catches up on
 reconnection. Check actual deployed ownership, effective unlimited model flags,
 recovery and disk capacity before declaring the execution hibernation-safe.
+
+Verification-copy cleanup
+-------------------------
+verification_cleanup.py --root <campaign-root> audits restored native JDB copies;
+--apply removes only those whose completed verification and byte-identical
+retained checkpoint have been checked. It preserves full checkpoint archives,
+the current writable database, keys, receipts, logs, coverage and review evidence.
+Historical failed attempts are removable only after their enclosing qualification
+succeeded and their original bytes remain in a verified checkpoint. Initial
+qualification may use a matching inputs/.save-checkpoints native file.
+
+The cleanup refuses symlinks, unknown directory layouts, corrupt/missing restore
+sources and copies in use. It checks both the complete archive checksum and the
+restored member checksum, and records a durable intent before unlinking the JDB.
+A restart finishes an interrupted cleanup receipt without losing restore evidence.
+The optional root-owned jeeves-verification-cleanup.timer checks every 60 seconds
+after the previous cleanup exits; work has no execution deadline. Root is needed
+to inspect all process file descriptors and old protected maintenance directories.
+No agent, JVM, API provider or campaign coordinator is stopped or restarted.
+Deploy the timer with a pinned, committed local source directory, then verify its
+receipts and restart behavior before reporting laptop-independent cleanup.
+This removes derivative verification files, not historical checkpoint versions.
+No count-based or age-based full-checkpoint retention is implemented.

@@ -1,0 +1,13 @@
+[Unit]
+Description=Remove reproducible Jeeves native verification copies
+After=local-fs.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/jeeves/source/ops/cloud
+ExecStart=/usr/bin/python3 -B /opt/jeeves/source/ops/cloud/verification_cleanup.py --root /var/lib/jeeves/campaign --apply
+TimeoutStartSec=infinity
+TimeoutStopSec=infinity
+UMask=0077

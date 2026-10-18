@@ -1,0 +1,10 @@
+[Unit]
+Description=Clean completed Jeeves verification copies automatically
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=60s
+Unit=jeeves-verification-cleanup.service
+
+[Install]
+WantedBy=timers.target
