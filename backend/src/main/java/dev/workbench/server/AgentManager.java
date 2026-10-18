@@ -593,13 +593,15 @@ public final class AgentManager {
            REVERT would undo. Counted outside this monitor (the workspace has its own). */
         try {
             List<String> open = ws.openTargetIds();
+            Map<String, Map<String, Integer>> writes = new LinkedHashMap<>();
+            for (String tid : open) writes.put(tid, ws.writeCountsByAgent(tid));
             for (Object o : out) {
                 @SuppressWarnings("unchecked") Map<String, Object> row = (Map<String, Object>) o;
                 String tid = row.get("target") == null ? null : String.valueOf(row.get("target"));
                 String agent = row.get("agentId") == null ? null : String.valueOf(row.get("agentId"));
                 if (agent == null) continue;
                 int n = 0;
-                for (String t : (tid != null && open.contains(tid)) ? List.of(tid) : open) n += ws.writesBy(t, agent);
+                for (String t : (tid != null && open.contains(tid)) ? List.of(tid) : open) n += writes.get(t).getOrDefault(agent, 0);
                 row.put("writes", n);
             }
         } catch (Exception ignored) {}

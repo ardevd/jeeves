@@ -5029,6 +5029,23 @@ public final class Workspace {
                 && agentId.equals(RenameCoordinator.owner(actor));
     }
 
+    /** Fresh write counts for every agent in one history pass. Mission polling must
+     * not rescan the same target once per historical mission while holding this
+     * monitor: that starves native operations and mission persistence. Owner
+     * normalization is shared only within this snapshot, never across edits. */
+    public synchronized Map<String, Integer> writeCountsByAgent(String tid) {
+        Map<String, Integer> counts = new java.util.HashMap<>();
+        Map<String, String> owners = new java.util.HashMap<>();
+        for (Map<String, Object> entry : historyFor(tid)) {
+            if (Boolean.TRUE.equals(entry.get("undone")) || Boolean.TRUE.equals(entry.get("discarded"))) continue;
+            String actor = String.valueOf(entry.get("actor"));
+            if (!"agent".equals(EventBus.actorKind(actor))) continue;
+            String owner = owners.computeIfAbsent(actor, RenameCoordinator::owner);
+            if (!owner.isBlank()) counts.merge(owner, 1, Integer::sum);
+        }
+        return counts;
+    }
+
     /** How many applied (not undone) History entries an agent's writes account for on a target. */
     public synchronized int writesBy(String tid, String agentId) {
         int n = 0;

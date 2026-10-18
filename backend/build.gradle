@@ -192,6 +192,24 @@ tasks.register('opsActiveTest', JavaExec) {
     dependsOn 'compileTestJava'
 }
 
+// Status polling must not scale with missions times history.
+tasks.register('missionProgressTest', JavaExec) {
+    group = 'verification'
+    description = 'History-scale mission polling and sixteen concurrent HTTP readers'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.workbench.server.MissionProgressTest'
+    workingDir = repoRoot
+    environment 'WORKBENCH_MOCK', '1'
+    environment 'WORKBENCH_PORT', '7832'
+    dependsOn 'compileTestJava'
+    doFirst {
+        def parent = file("${buildDir}/tmp")
+        parent.mkdirs()
+        def run = java.nio.file.Files.createTempDirectory(parent.toPath(), 'mission-progress-').toFile()
+        environment 'WORKBENCH_HOME', run.absolutePath
+    }
+}
+
 // Current name/actor provenance over original identities, without the SDK or a server.
 tasks.register('nameProvenanceTest', JavaExec) {
     group = 'verification'
