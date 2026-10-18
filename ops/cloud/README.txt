@@ -1,6 +1,6 @@
 CLOUD CATALOG CAMPAIGN
 
-Run one activated JEB/Jeeves process and eight API agents on the remote host.
+Run one activated JEB/Jeeves process and the configured API agents on the remote host.
 No laptop, SSH tunnel or local agent process supervises a session. Install JEB
 from its official distribution and activate the service account normally first.
 The runtime must use the committed backend/web build and Java 21. This directory
@@ -24,14 +24,15 @@ WORKBENCH_UNLIMITED_BUDGET=1; the runner checks both effective flags at spawn.
 The supplied socket proxy can expose the loopback server on an explicit Tailscale
 IP, bound to tailscale0. Replace its example address before enabling it and include
 that exact authority in WORKBENCH_PROXY_HOSTS. It accepts 4096 TCP connections;
-this is a transport setting, independent of the eight model slots. No public
+this is a transport setting, independent of the model slot count. No public
 listener is enabled. Tailscale encrypts traffic; browser HTTPS via Tailscale Serve
 is an optional alternative when that tailnet feature is enabled.
 
 Configure native Max reasoning and exact model IDs in Jeeves llm.json; store
 provider keys in its owner-only llm-keys.json. The example uses four DeepSeek V4
-Pro and four GLM-5.3 slots. All-eight of either provider uses the same runner by
-changing the eight model entries. There is no silent model substitution.
+Pro and four GLM-5.3 slots. config.sixteen.example.json prepares eight DS plus eight GLM slots.
+The model list determines new-session concurrency; existing sessions keep their
+persisted assignments through recovery. There is no silent model substitution.
 
 Before launch, import a hash-verified checkpoint, its sidecars/project metadata,
 and historical-aliases.json. Remap targets.json storePath to the new APK path.
@@ -45,7 +46,7 @@ With the service environment loaded, run:
 Catalog preparation walks every package, passes the actual class count as the
 listing limit and rejects truncation/count disagreement. SQLite keys preserve
 original descriptors byte-for-byte, including case and Unicode distinctions.
-Each session reserves eight distinct classes transactionally. A final partial
+Each session reserves one distinct class per configured slot transactionally. A final partial
 page is filled with completed classes for another verification pass. Pending
 classes precede ordinary retries of incomplete classes. There is no attempt ceiling.
 An optional repair_queue config path points to a JSON list inside the campaign
@@ -55,7 +56,7 @@ until the class is assigned after the cited session; that assignment consumes it
 priority even if the class still needs review. Ordinary eligibility remains.
 Duplicate requests and classes outside the focus are rejected. Prior class
 results and review findings accompany every later assignment as evidence to
-check, never proof. This preserves exactly eight distinct slots and their model mix.
+check, never proof. This preserves distinct slots and their configured model mix.
 The catalog and focus manifest contain discovery-time display labels. Immediately
 before each new spawn, the runner resolves the original descriptor in the live
 target and persists its current display name with the admission record. A missing
@@ -72,14 +73,14 @@ another invocation. For a newly authorized run, first archive that completed fil
 under an unused timestamped name; the next start then creates the new intent.
 For reboot continuation, enable the requested instance. A graceful stop is:
  touch /var/lib/jeeves/campaign/stop-after-session
-It permits the current eight agents and save/verification barrier to finish.
+It permits the current session agents and save/verification barrier to finish.
 Remove that file before an explicitly requested continuation. The website's
 individual pause/stop controls still work; paused missions wait for manual resume.
 The server is a separately managed service; stopping the controller does not
 stop in-flight agents. Never restart the server during an active session as a
 routine deployment operation.
 
-After eight terminal missions, the runner also waits for loopActive and
+After all assigned missions are terminal, the runner also waits for loopActive and
 cancellationUnconfirmed to clear and for their tool operations to finish. It
 captures current expectations for all edit-history symbols (including locals
 and argument metadata), requests a fresh save, closes the database, builds and
@@ -102,7 +103,7 @@ Counts and unresolved items are recorded. Native/live verification proves that
 accepted names/comments survived saving; it does not establish their meaning.
 Missing/malformed receipts and failed missions remain needs_review.
 
-After the save barrier, quality.py inventories each of the eight classes and
+After the save barrier, quality.py inventories each assigned class and
 collects full decompiled class text, every method's argument/local metadata,
 the session's history delta and the agent's completion claim. Earlier per-class
 history is separately included as prior_changes. Successful recorded code reads
@@ -125,9 +126,9 @@ receives explicit expansion instructions. Exact reconstruction is verified befor
 dispatch, including source whitespace and every evidence value. The original
 evidence archive is unchanged, and request.json identifies its wire encoding.
 No input is omitted or summarized, and provider context limits still apply.
-The eight evidence packets are collected sequentially before provider requests
-start. Their eight reviews then run concurrently: four requests per provider,
-with the same settings and request count as before. Completed results are
+The session evidence packets are collected sequentially before provider requests
+start. Their reviews then run concurrently: four requests per provider for
+the default eight slots, eight per provider for the prepared sixteen-slot mix. Completed results are
 published incrementally in assignment order by one controller thread. Every
 review must settle before the campaign advances; a sibling failure does not
 cancel active paid requests. Durable per-class intents/results prevent a
@@ -177,7 +178,7 @@ session, artifact, project and loopback url. The unit and its save child use tha
 immutable maintenance bundle, not modules from the older running source tree.
 Enable the unit only for an authorized deployment.
 It waits without a deadline for the requested invocation to finish, all agents
-and writes to drain, the save/native/live verification receipt, and all eight
+and writes to drain, the save/native/live verification receipt, and all assigned
 quality records. Findings may require review; they do not trigger new agents.
 It checks unchanged history, preserves any additional read-only decompilation
 through another verified save if needed, and closes the clean database before
@@ -207,7 +208,7 @@ collection from an APK/history-pinned cache. It does not decompile, rename or ca
 a provider. This is a direct-reference scope, not a whole-program transitive walk.
 
 The runner selects only this focused queue; a missing/invalid manifest prevents
-new assignments instead of falling back to generic classes. Eight distinct class
+new assignments instead of falling back to generic classes. Distinct class
 owners still run per session. Tail verification uses already-completed focused
 classes only. Assignments include the FMessage relationship and entry symbols;
 agents read reference bodies, preserve supported earlier names and batch ready
@@ -220,7 +221,8 @@ Preparing a focus manifest never resets a completed invocation or starts a round
   reads own-member outlines and uncapped incoming references. Unknown subclasses
   are included when referenced directly; this is not proof of an exhaustive
   transitive subtype inventory.
-- Exactly eight API agents per session (operator requirement), sharing one JEB.
+- The configured number of API agents per session, sharing one JEB; the
+  default example has eight and the prepared sixteen-slot example has sixteen.
 - No headless turn or mission-token ceiling. Explicit provider context/output
   bounds still apply: configured 1,000,000 context; DS 393,216 output; GLM 131,072.
   Review input uses compact JSON: only formatting spaces outside values are
@@ -261,7 +263,7 @@ Durable completion-pass coverage (16 October 2026)
 The class prompt preserves supported Kimi/K3 names and requires naming_coverage
 for every own method. Assessments are durable per actor and current inventory;
 the CLASS_RESULT counters alone never qualify a class. The coordinator writes
-coverage-before.json after all eight settle, includes each available whole-method
+coverage-before.json after all agents settle, includes each available whole-method
 inventory fingerprint in the native/live barrier, and writes coverage-after.json
 before independent semantic review. Missing/unresolved/stale assessments or
 collection errors keep the class in needs_review even if the agent and reviewer
@@ -289,7 +291,7 @@ Overnight execution
 -------------------
 campaign.py run --config /var/lib/jeeves/campaign/config.json --hours 8
 uses an eight-hour admission window, with no session-count limit. Each session
-has eight agents, then a verified native save/reopen and independent quality
+has the configured agents, then a verified native save/reopen and independent quality
 review. Only after those finish can another session start. The active session
 finishes even if the window expires during inference, verification or review.
 
@@ -332,13 +334,13 @@ Continuous execution (17 October 2026)
 --------------------------------------
 Use campaign.py run --config CONFIG --continuous, supervised by the pinned
 jeeves-continuous.service. This has no hour, round, mission-turn or token-total
-ceiling. Every eight-agent session still completes its save/native reopen/live
-verification and independent review before the next eight are admitted. Recovery
+ceiling. Every session still completes its save/native reopen/live
+verification and independent review before the next session is admitted. Recovery
 reuses the durable invocation and unfinished assignments. If all focused classes
 pass, continuous mode schedules further verification passes in attempt order.
 
 priority_classes may list distinct original class descriptors for the first
-session of a newly authorized invocation, fitting its eight slots. They must
+session of a newly authorized invocation, fitting its configured slots. They must
 exist in the selected focus. An explicitly requested completed class is eligible
 for another investigation; its prior results are preserved. This priority is
 consumed by the first completed session, not reapplied on each iteration.
@@ -392,3 +394,22 @@ Deploy the timer with a pinned, committed local source directory, then verify it
 receipts and restart behavior before reporting laptop-independent cleanup.
 This removes derivative verification files, not historical checkpoint versions.
 No count-based or age-based full-checkpoint retention is implemented.
+
+
+Prepared sixteen-slot configuration (18 October 2026)
+--------------------------------------------------
+The sixteen example is preparation only; it does not change an installed config
+or a running controller. Focus validation requires enough distinct classes for
+the next configured session. Existing eight-slot sessions resume from SQLite
+without revalidating a new sixteen-slot focus. The deploy boundary matches the
+exact unique assignment/review identities, and dashboard counts come from each
+session's persisted slots so historical eight-slot reviews remain labelled eight.
+
+Local tests cover sixteen claims, repair-only tails, focus and priorities, lost
+spawn acknowledgements, failed-save recovery, coverage-before/save/coverage-after/
+review ordering, exhausted-credit draining, and sixteen simultaneous streamed
+review requests to synthetic loopback providers (eight per provider). They do
+not qualify sixteen concurrent native JEB reversing missions or paid provider
+load. Complete the isolated native workload and measure heap/tool waits before
+activating the prepared mix at a verified session boundary. The JEB target write
+lock, unlimited headless turns/budget, full evidence and review-debt policy remain.

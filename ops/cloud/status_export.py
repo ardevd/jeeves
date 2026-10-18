@@ -44,7 +44,8 @@ def snapshot(config,api):
             'deployment':read(root/'deployment.json',{}),'errors':[],
             'disk_free_bytes':shutil.disk_usage(root).free,'invocation':read(root/'invocation.json',{}),
             'qualification':read(root/'rounds/qualification-save-barrier-20261016/barrier/state.json',{}),
-            'quality':{'status':'pending','classes':[]},'quality_history':[]}
+            'quality':{'status':'pending','classes':[]},'quality_history':[],
+            'configured_agents':len(config.get('models',[]))}
     result['review_debt']=debt_progress(catalog,sessions,config.get('review_debt_first'))
     try:missions={m['id']:m for m in api.call('agent.missions')}
     except Exception as error:missions={};result['errors'].append(str(error))
@@ -62,12 +63,13 @@ def snapshot(config,api):
     for session in sessions:
         folder=root/'rounds'/f"cloud-{session['id']:06d}"
         saved=read(folder/'barrier/state.json',{})
-        row={'id':session['id'],'phase':session['phase'],'created':session['created'],'barrier':saved}
+        row={'id':session['id'],'phase':session['phase'],'created':session['created'],'barrier':saved,
+             'agent_count':len(json.loads(session['slots']))}
         result['sessions'].append(row)
         quality=read(folder/'quality/receipt.json')
         if quality is None:quality={'status':read(folder/'quality/status.json',{}).get('phase','pending'),'classes':read(folder/'quality/partial.json',[])}
         if quality.get('classes') or quality.get('status')!='pending':
-            result['quality_history'].append({'session':session['id'],'quality':quality})
+            result['quality_history'].append({'session':session['id'],'agent_count':row['agent_count'],'quality':quality})
         if baseline is None:baseline={r.get('id') for r in read(folder/'baseline-history.json',history)}
         if session['id']!=sessions[-1]['id']:continue
         session_baseline={r.get('id') for r in read(folder/'baseline-history.json',history)}

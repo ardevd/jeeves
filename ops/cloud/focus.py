@@ -95,7 +95,7 @@ def build(api,target,db,folder,artifact,first_classes=()):
                                       'reference_sites':reference_count,'at':time.time()})
     return result
 
-def load(path,db,apk_sha):
+def load(path,db,apk_sha,required_slots=8):
     manifest=read(path)
     if manifest.get('schema')!='fmessage-focus-v1' or manifest.get('apk_sha256')!=apk_sha:
         raise RuntimeError('Focus manifest belongs to a different executable/schema')
@@ -105,7 +105,7 @@ def load(path,db,apk_sha):
         if original in seen or not db.execute('SELECT 1 FROM classes WHERE original=?',(original,)).fetchone():
             raise RuntimeError('Duplicate or unknown focus class: '+original)
         seen.add(original)
-    if len(rows)<8:raise RuntimeError('Focused queue needs eight distinct classes for the requested eight agents')
+    if len(rows)<required_slots:raise RuntimeError(f'Focused queue needs {required_slots} distinct classes for the requested agents')
     return rows
 
 def context(row):
@@ -134,6 +134,6 @@ def main():
         try:result=build(api,target,db,Path(config['focus_manifest']).parent,Path(config['artifact']),config.get('focus_first_classes',[]))
         finally:db.close()
         print(json.dumps({'classes':len(result['classes']),'seeds':len(result['seed_classes']),
-                          'reference_sites':result['reference_sites'],'next_eight':[r['current_name'] for r in result['classes'][:8]]}))
+                          'reference_sites':result['reference_sites'],'next_session':[r['current_name'] for r in result['classes'][:len(config['models'])]]}))
 
 if __name__=='__main__':main()

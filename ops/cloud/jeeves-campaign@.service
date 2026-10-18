@@ -1,5 +1,5 @@
 [Unit]
-Description=Jeeves catalog campaign (%i eight-agent sessions)
+Description=Jeeves catalog campaign (%i sessions; configured model slots)
 Requires=jeeves.service
 After=jeeves.service
 StartLimitIntervalSec=0

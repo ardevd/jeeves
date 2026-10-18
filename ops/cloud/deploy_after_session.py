@@ -23,13 +23,17 @@ def boundary(root,session,api,revision=None):
     invocation=read(root/'invocation.json')
     if invocation.get('phase')!='complete' and not admission_held(root,session,revision,invocation):return None
     with closing(sqlite3.connect('file:'+str(root/'catalog.sqlite3')+'?mode=ro',uri=True)) as db:
-        sessions=db.execute('SELECT id,phase FROM sessions ORDER BY id').fetchall()
-    if not sessions or sessions[-1][0]!=session or any(phase!='complete' for _,phase in sessions):return None
+        sessions=db.execute('SELECT id,phase,slots FROM sessions ORDER BY id').fetchall()
+    if not sessions or sessions[-1][0]!=session or any(phase!='complete' for _,phase,_ in sessions):return None
     folder=root/'rounds'/f'cloud-{session:06d}'
     receipt=read(folder/'barrier/receipt.json');quality=read(folder/'quality/receipt.json')
     if not receipt.get('ok') or receipt.get('phase')!='complete':return None
     if quality.get('status')!='complete' or not quality.get('read_only') or not quality.get('history_unchanged'):return None
-    if len(quality.get('classes',[]))!=8:return None
+    assignments=[s.get('original_class') for s in json.loads(sessions[-1][2])]
+    reviewed=[r.get('original_class') for r in quality.get('classes',[])]
+    if (not assignments or any(not isinstance(s,str) or not s for s in assignments)
+            or len(set(assignments))!=len(assignments) or len(reviewed)!=len(assignments)
+            or set(reviewed)!=set(assignments)):return None
     missions=api.call('agent.missions')
     if any(m.get('state') not in TERMINAL or m.get('loopActive') or m.get('cancellationUnconfirmed') for m in missions):return None
     calls=api.call('ops.active')

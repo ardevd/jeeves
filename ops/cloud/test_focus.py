@@ -64,7 +64,7 @@ class Tests(unittest.TestCase):
         result=self.build()
         with self.assertRaisesRegex(RuntimeError,'different executable'):focus.load(self.folder/'manifest.json',self.db,'wrong apk')
         result['classes']=result['classes'][:7];(self.folder/'manifest.json').write_text(json.dumps(result))
-        with self.assertRaisesRegex(RuntimeError,'eight distinct'):focus.load(self.folder/'manifest.json',self.db,sha256(self.artifact))
+        with self.assertRaisesRegex(RuntimeError,'8 distinct'):focus.load(self.folder/'manifest.json',self.db,sha256(self.artifact))
         self.assertIsNone(campaign.claim_session(self.db,MODELS,[]))
         self.assertEqual(self.db.execute('SELECT count(*) FROM sessions').fetchone()[0],0)
     def test_truncated_references_are_not_accepted(self):

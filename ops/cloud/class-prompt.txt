@@ -86,7 +86,7 @@ needs_review if anything still needs naming or any write failed. There is no tur
 or mission-token ceiling; only provider context/output limits apply. Keep useful
 findings in code comments so another session can recover them.
 
-The coordinator saves and independently verifies the native JDB after ALL eight
+The coordinator saves and independently verifies the native JDB after ALL agents in this session
 agents finish. You must not save, close, reopen or switch the shared target.
 
 Finish with one compact JSON object in exactly this line format:

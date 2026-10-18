@@ -1,0 +1,24 @@
+{
+  "root": "/var/lib/jeeves/campaign",
+  "url": "http://127.0.0.1:7800",
+  "artifact": "/var/lib/jeeves/campaign/inputs/WhatsApp_2.26.38.70.apk",
+  "project": "WhatsApp_2.26.38.70",
+  "models": [
+    "deepseek:deepseek-v4-pro",
+    "deepseek:deepseek-v4-pro",
+    "deepseek:deepseek-v4-pro",
+    "deepseek:deepseek-v4-pro",
+    "deepseek:deepseek-v4-pro",
+    "deepseek:deepseek-v4-pro",
+    "deepseek:deepseek-v4-pro",
+    "deepseek:deepseek-v4-pro",
+    "zai:glm-5.3",
+    "zai:glm-5.3",
+    "zai:glm-5.3",
+    "zai:glm-5.3",
+    "zai:glm-5.3",
+    "zai:glm-5.3",
+    "zai:glm-5.3",
+    "zai:glm-5.3"
+  ]
+}

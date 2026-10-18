@@ -1,5 +1,5 @@
 [Unit]
-Description=Jeeves continuous campaign (eight agents per session)
+Description=Jeeves continuous campaign (configured agents per session)
 Wants=jeeves.service network-online.target
 After=jeeves.service network-online.target
 StartLimitIntervalSec=0

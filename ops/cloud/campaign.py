@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cloud-resident eight-agent catalog runner. No SSH, model keys, or laptop loop."""
+"""Cloud-resident catalog runner with configured model slots. No SSH, model keys, or laptop loop."""
 from __future__ import annotations
 import argparse, fcntl, json, math, os, sqlite3, time, uuid
 from pathlib import Path
@@ -52,11 +52,14 @@ def catalog(api,target,db):
     return expected
 
 def claim_session(db,models,focus=None,repairs=None,priority=None,revisit_completed=False,review_debt_first=False):
-    if len(models)!=8:raise ValueError('This campaign requires exactly eight model slots')
-    # One transaction reserves all eight; binary original descriptors never fold case.
+    # Recovery owns its persisted assignments even when the next-session config changes.
+    # One transaction reserves every slot; original descriptors never fold case.
     with db:
         existing=db.execute("SELECT * FROM sessions WHERE phase!='complete' ORDER BY id LIMIT 1").fetchone()
         if existing:return dict(existing)
+        if not isinstance(models,list) or not models or any(not isinstance(m,str) or not m.strip() for m in models):
+            raise ValueError('Configure a nonempty list of model slots')
+        count=len(models)
         focused={r['original_class']:r for r in focus} if focus is not None else None
         repair_by_class={}
         for repair in repairs or []:
@@ -76,21 +79,21 @@ def claim_session(db,models,focus=None,repairs=None,priority=None,revisit_comple
                    if review_debt_first else [])
         repairing=bool(debt_rows)
         if repairing:
-            rows=debt_rows[:8]
+            rows=debt_rows[:count]
         else:
             if focused is not None:
                 rank={s:i for i,s in enumerate(focused)}
                 eligible=[db.execute('SELECT * FROM classes WHERE original=?',(s,)).fetchone() for s in focused]
                 if any(r is None for r in eligible):raise RuntimeError('Focus contains an unknown class')
                 eligible.sort(key=lambda r:(0 if repair_for(r) else 1,r['attempts'],rank[r['original']]))
-                rows=[r for r in eligible if r['state'] in ('pending','needs_review')][:8]
+                rows=[r for r in eligible if r['state'] in ('pending','needs_review')][:count]
             else:
                 rows=db.execute("SELECT * FROM classes WHERE state IN ('pending','needs_review') ORDER BY attempts, original COLLATE BINARY").fetchall()
                 rows.sort(key=lambda r:(0 if repair_for(r) else 1,r['attempts'],r['original']))
-                rows=rows[:8]
+                rows=rows[:count]
             priority=priority or []
             if len(priority)>len(models) or len(set(priority))!=len(priority):
-                raise ValueError('First-session priorities must be distinct and fit the eight slots')
+                raise ValueError('First-session priorities must be distinct and fit the configured model slots')
             preferred=[]
             for original in priority:
                 row=db.execute('SELECT * FROM classes WHERE original=?',(original,)).fetchone()
@@ -99,19 +102,19 @@ def claim_session(db,models,focus=None,repairs=None,priority=None,revisit_comple
                 if row['state'] not in ('pending','needs_review','done'):
                     raise ValueError('Priority class is already claimed: '+original)
                 preferred.append(row)
-            rows=(preferred+[r for r in rows if r['original'] not in priority])[:8]
+            rows=(preferred+[r for r in rows if r['original'] not in priority])[:count]
         if not rows and revisit_completed:
-            rows=([r for r in eligible if r['state']=='done'][:8] if focused is not None else
-                  db.execute("SELECT * FROM classes WHERE state='done' ORDER BY attempts, original COLLATE BINARY LIMIT 8").fetchall())
+            rows=([r for r in eligible if r['state']=='done'][:count] if focused is not None else
+                  db.execute("SELECT * FROM classes WHERE state='done' ORDER BY attempts, original COLLATE BINARY LIMIT ?",(count,)).fetchall())
         if not rows:return None
-        if len(rows)<8:
+        if len(rows)<count:
             # Finish the last partial page with distinct previously completed
-            # classes for a verification pass, retaining exactly eight agents.
+            # classes for a verification pass, retaining the configured number of agents.
             selected={r['original'] for r in rows}
             completed=(eligible if focused is not None and not repairing else
                        db.execute("SELECT * FROM classes WHERE state='done' ORDER BY attempts, original COLLATE BINARY").fetchall())
-            rows+=[r for r in completed if r['state']=='done' and r['original'] not in selected][:8-len(rows)]
-            if len(rows)!=8:raise RuntimeError('Fewer than eight previously worked classes; untouched work remains held' if repairing else 'The target itself contains fewer than eight classes')
+            rows+=[r for r in completed if r['state']=='done' and r['original'] not in selected][:count-len(rows)]
+            if len(rows)!=count:raise RuntimeError(f'Fewer than {count} previously worked classes; untouched work remains held' if repairing else f'The selected scope contains fewer than {count} classes')
         slots=[{'original_class':r['original'],'current_name':r['name'],'model':models[i],
                 'assignment_id':str(uuid.uuid4()),'spawn':'prepared','mission':None,
                 'assignment_kind':'repair' if repairing and r['state']=='needs_review' else ('verification' if r['state']=='done' else 'discovery')} for i,r in enumerate(rows)]
@@ -121,7 +124,7 @@ def claim_session(db,models,focus=None,repairs=None,priority=None,revisit_comple
             if repairing and row['state']=='needs_review':slot['repair_request']=review_debt.repair_request(row,repair)
             elif repair:slot['repair_request']=repair
             if repairing and row['state']=='done':
-                slot['repair_request']={'goal':'Verification of an already completed class to fill the eight-agent repair session. Preserve supported names, recheck all coverage and report any concrete defect. No untouched class is assigned.'}
+                slot['repair_request']={'goal':'Verification of an already completed class to fill this repair session. Preserve supported names, recheck all coverage and report any concrete defect. No untouched class is assigned.'}
         if focused is not None:
             from focus import context
             for slot in slots:
@@ -280,9 +283,10 @@ def run_invocation(api,db,config,artifact,root,invocation,before_session=None):
         reason=boundary_reason(root,db,invocation,time.time())
         if reason:break
         focus=None
-        if config.get('focus_manifest'):
+        recovering=db.execute("SELECT 1 FROM sessions WHERE phase!='complete'").fetchone() is not None
+        if config.get('focus_manifest') and not recovering:
             from focus import load
-            focus=load(config['focus_manifest'],db,APK_SHA)
+            focus=load(config['focus_manifest'],db,APK_SHA,required_slots=len(config['models']))
         if before_session:before_session()
         reason=boundary_reason(root,db,invocation,time.time())
         if reason:break
@@ -319,7 +323,7 @@ def main():
     duration=parser.add_mutually_exclusive_group()
     duration.add_argument('--rounds',type=int)
     duration.add_argument('--hours',type=float,help='Start new sessions for this many hours; finish the active session before pausing')
-    duration.add_argument('--continuous',action='store_true',help='Continue eight-agent sessions until a graceful stop or exhausted provider credit')
+    duration.add_argument('--continuous',action='store_true',help='Continue configured agent sessions until a graceful stop or exhausted provider credit')
     args=parser.parse_args();config=json.loads(Path(args.config).read_text())
     root=Path(config['root']).resolve()
     if root!=ROOT:raise ValueError('Config root must match JEEVES_CAMPAIGN_ROOT')

@@ -13,11 +13,11 @@ class CatalogAPI:
             return {'items':[{'kind':'class','origSig':n,'name':n} for n in names],'truncated':False}
         raise AssertionError(op)
 class SessionAPI:
-    def __init__(self):self.missions=[];self.calls=[];self.lost=False;self.coverage_status='complete'
+    def __init__(self,count=8):self.count=count;self.missions=[];self.calls=[];self.lost=False;self.coverage_status='complete'
     def call(self,op,**p):
         self.calls.append(op)
         if op=='agent.missions':
-            if len(self.missions)==8:
+            if len(self.missions)==self.count:
                 for m in self.missions:m['state']='done'
             return list(self.missions)
         if op=='agent.spawn':

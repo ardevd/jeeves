@@ -1,5 +1,5 @@
 [Unit]
-Description=Jeeves overnight campaign (%i hours, eight agents per session)
+Description=Jeeves overnight campaign (%i hours, configured agents per session)
 Wants=jeeves.service network-online.target
 After=jeeves.service network-online.target
 StartLimitIntervalSec=0

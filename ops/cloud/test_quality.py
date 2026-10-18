@@ -269,19 +269,25 @@ class Tests(unittest.TestCase):
                         self.assertIsNone(quality.context_adjustment(folder,'deepseek'))
 
     def test_eight_reviews_overlap_publish_partial_results_and_resume_without_recharge(self):
-        requests=[];lock=threading.Lock();arrived=threading.Event();release=[threading.Event() for _ in range(8)]
+        self.overlapping_reviews(8)
+
+    def test_sixteen_reviews_overlap_publish_partial_results_and_resume_without_recharge(self):
+        self.overlapping_reviews(16)
+
+    def overlapping_reviews(self,count):
+        requests=[];lock=threading.Lock();arrived=threading.Event();release=[threading.Event() for _ in range(count)]
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 payload=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 evidence=received_evidence(payload['messages'][1]['content']);index=int(evidence['original_class'][2:-1])
                 with lock:
                     requests.append(payload)
-                    if len(requests)==8:arrived.set()
+                    if len(requests)==count:arrived.set()
                 release[index].wait(15)
                 result={'verdict':'acceptable','summary':'Fixture code agrees with the name.','findings':[],
                         'examples':[{'symbol':evidence['original_class'],'old':'a','new':'count','assessment':'supported','evidence':'Returns the fixture count.'}]}
                 body=('data: '+json.dumps({'choices':[{'delta':{'content':json.dumps(result)}}],
-                      'usage':{'prompt_tokens':20,'completion_tokens':10}})+'\n\n'+('' if index==7 else 'data: [DONE]\n\n')).encode()
+                      'usage':{'prompt_tokens':20,'completion_tokens':10}})+'\n\n'+('' if index==count-1 else 'data: [DONE]\n\n')).encode()
                 self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
             def log_message(self,*args):pass
         server=ThreadingHTTPServer(('127.0.0.1',0),Handler);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
@@ -290,11 +296,11 @@ class Tests(unittest.TestCase):
                 root=Path(temporary);folder=root/'round';folder.mkdir();artifact=root/'input.apk'
                 sidecar=Path(str(artifact)+'.workbench');sidecar.mkdir()
                 history=[dict(id='h'+str(i),op='rename',actor='agent:writer'+str(i)+' auto-applied',
-                              originalSymbol='LC'+str(i)+';->a:I',newName='count') for i in range(8)]
+                              originalSymbol='LC'+str(i)+';->a:I',newName='count') for i in range(count)]
                 (sidecar/'history.json').write_text(json.dumps(history));before=(sidecar/'history.json').read_bytes()
                 (folder/'baseline-history.json').write_text('[]')
                 slots=[dict(original_class='LC'+str(i)+';',mission='m'+str(i),
-                            model='deepseek:fixture' if i<4 else 'zai:fixture',result={'status':'complete'}) for i in range(8)]
+                            model='deepseek:fixture' if i<count//2 else 'zai:fixture',result={'status':'complete'}) for i in range(count)]
                 settings={'providers':{provider:{'model':provider+'-fixture','baseUrl':'http://127.0.0.1:'+str(server.server_port),
                           'maxOutputTokens':393216 if provider=='deepseek' else 131072,'extraParams':{'reasoning_effort':'max'}} for provider in ('deepseek','zai')}}
                 (root/'llm.json').write_text(json.dumps(settings));(root/'llm-keys.json').write_text(json.dumps({'deepseek':'synthetic','zai':'synthetic'}))
@@ -311,10 +317,10 @@ class Tests(unittest.TestCase):
                 with patch.object(quality,'saved_proposals',return_value={'proposals':[],'gaps':[]}):
                     future=coordinator.submit(quality.review_session,API(),'t1',slots,folder,artifact,root)
                     try:
-                        self.assertTrue(arrived.wait(10),'all eight requests must arrive before any response is released')
-                        self.assertEqual(len(requests),8)
-                        self.assertEqual(sum(p['model']=='zai-fixture' for p in requests),4)
-                        self.assertEqual(sum(p['model']=='deepseek-fixture' for p in requests),4)
+                        self.assertTrue(arrived.wait(10),'all configured requests must arrive before any response is released')
+                        self.assertEqual(len(requests),count)
+                        self.assertEqual(sum(p['model']=='zai-fixture' for p in requests),count//2)
+                        self.assertEqual(sum(p['model']=='deepseek-fixture' for p in requests),count//2)
                         for payload in requests:
                             evidence=received_evidence(payload['messages'][1]['content'])
                             self.assertEqual(evidence['code']['text'],'complete fixture source '*1000)
@@ -331,14 +337,14 @@ class Tests(unittest.TestCase):
                     result=future.result(timeout=15)
                     self.assertEqual([row['original_class'] for row in result['classes']],[slot['original_class'] for slot in slots])
                     self.assertTrue(result['read_only'] and result['history_unchanged']);self.assertEqual(result['status'],'complete')
-                    self.assertEqual(result['classes'][7]['review']['status'],'needs_manual_review')
-                    self.assertIn('completion marker',result['classes'][7]['review']['error'])
+                    self.assertEqual(result['classes'][count-1]['review']['status'],'needs_manual_review')
+                    self.assertIn('completion marker',result['classes'][count-1]['review']['error'])
                     self.assertEqual((sidecar/'history.json').read_bytes(),before)
                     (folder/'quality/receipt.json').unlink()  # coordinator died before publishing this file
                     resumed=quality.review_session(API(),'t1',slots,folder,artifact,root)
-                    self.assertEqual(len(requests),8);self.assertEqual(len(resumed['classes']),8)
-                    self.assertEqual(resumed['classes'][7]['review']['status'],'needs_manual_review')
-                    self.assertTrue((folder/'quality/class-08/response.sse').exists())
+                    self.assertEqual(len(requests),count);self.assertEqual(len(resumed['classes']),count)
+                    self.assertEqual(resumed['classes'][count-1]['review']['status'],'needs_manual_review')
+                    self.assertTrue((folder/f'quality/class-{count:02d}/response.sse').exists())
         finally:
             for gate in release:gate.set()
             server.shutdown();server.server_close();thread.join()

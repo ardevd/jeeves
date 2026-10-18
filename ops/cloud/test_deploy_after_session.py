@@ -48,10 +48,10 @@ class Tests(unittest.TestCase):
         self.write(self.root/'deployment.json',{'revision':'old'})
         self.receipt={'ok':True,'phase':'complete','target':'t1','db':str(self.db),'database_sha256':sha256(self.db)}
         self.write(self.folder/'barrier/receipt.json',self.receipt);self.write(self.folder/'barrier/expected.json',{'symbols':[]})
-        self.quality={'status':'complete','read_only':True,'history_unchanged':True,'history_sha256':sha256(self.history),'classes':[{}]*8}
+        self.quality={'status':'complete','read_only':True,'history_unchanged':True,'history_sha256':sha256(self.history),'classes':[{'original_class':f'LC{i};'} for i in range(8)]}
         self.write(self.folder/'quality/receipt.json',self.quality)
         with closing(sqlite3.connect(self.root/'catalog.sqlite3')) as db:
-            db.execute('CREATE TABLE sessions(id INTEGER,phase TEXT)');db.execute("INSERT INTO sessions VALUES(1,'complete')")
+            db.execute('CREATE TABLE sessions(id INTEGER,phase TEXT,slots TEXT)');db.execute("INSERT INTO sessions VALUES(1,'complete',?)",(json.dumps(self.quality['classes']),))
             db.commit()
     def tearDown(self):self.tmp.cleanup()
     def write(self,path,value):path.write_text(json.dumps(value))
