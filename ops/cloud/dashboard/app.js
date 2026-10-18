@@ -4,7 +4,13 @@ function text(id,value){$(id).textContent=value}function when(ts){if(!ts)return 
 function timestampMs(value){if(!value)return null;const n=typeof value==='number'?(value<1e11?value*1000:value):Date.parse(value);return Number.isFinite(n)?n:null}
 function elapsed(value){const start=timestampMs(value);if(start===null)return 'unknown';const seconds=Math.max(0,Math.floor((Date.now()-start)/1000));return seconds<60?`${seconds}s`:`${Math.floor(seconds/60)}m ${seconds%60}s`}
 function settledWorker(w){return ['done','blocked','stopped','interrupted'].includes(w.state)&&!w.loopActive&&!w.cancellationUnconfirmed}
-function agentCount(d,sid){const row=(d.sessions||[]).find(s=>s.id===(sid??d.sessions?.at(-1)?.id));return row?.agent_count||(!sid&&(d.workers||[]).length)||d.configured_agents||'?'}
+function agentCount(d,sid){
+ const current=d.sessions?.at(-1)?.id??d.state?.session,id=sid??current;
+ const row=(d.sessions||[]).find(s=>s.id===id);if(row?.agent_count)return row.agent_count;
+ if(sid==null||id===current)return (d.workers||[]).length||d.configured_agents||'?';
+ const history=(d.quality_history||[]).find(r=>r.session===id);
+ return history?.agent_count||(history?.quality?.status==='complete'?history.quality.classes?.length:null)||'?';
+}
 function agentPhase(d){const workers=d.workers||[],finished=workers.filter(settledWorker).length;if(!workers.length)return `Preparing ${agentCount(d)} agents`;if(finished===workers.length)return `All ${workers.length} agents finished · preparing coverage checks`;return `${finished} of ${workers.length} agents finished · ${workers.length-finished} remaining`}
 function waitingFor(d){const pending=(d.workers||[]).filter(w=>!settledWorker(w));if(!pending.length)return 'All agents have finished; coverage checks precede the verified save.';return `Waiting for ${pending.map(w=>`${w.id||'unassigned'} (${w.current_name||w.original_class||'class pending'})`).join(', ')}. Saving and review start after all ${agentCount(d)} finish.`}
 function refreshClock(){if(!data)return;const age=Math.max(0,Math.round(Date.now()/1000-(data.at||0)));if($('connection').textContent!=='Disconnected'){text('connection',age>45?'Snapshot stale':'Cloud connected');$('connection').className='badge '+(age>45?'warn':'ok');text('updated',`Snapshot ${when(data.at)} · ${age}s ago`)}for(const node of document.querySelectorAll('[data-progress-at]'))node.textContent=`Last completed tool turn: ${when(Number(node.dataset.progressAt))} · ${elapsed(Number(node.dataset.progressAt))} ago`;}
