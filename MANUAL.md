@@ -1,5 +1,10 @@
 # Workbench Manual
 
+An experimental **read-only JADX adapter** can now open APK/DEX inputs without JEB.
+See [JADX setup and tests](JADX-HOWTO.md) for `JADX_HOME`, explicit engine selection,
+isolated launch instructions, verification commands, and outstanding Phase 1 gaps.
+This does not yet provide sidecar mutations or low-level evidence parity.
+
 Text search reports partial coverage while its class corpus is incomplete or
 has pending edits. A zero-match result in that state is not proof of absence;
 resolve a known symbol and decompile it to read its current text. On-demand

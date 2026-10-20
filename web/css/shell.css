@@ -156,9 +156,16 @@ body.chrome-off #col-side + .split-v{display:none}   /* no dead splitter hotzone
 }
 .cx{display:flex;white-space:pre;min-width:max-content}
 .cxn{width:22px;flex:none;text-align:right;padding-right:8px;color:var(--ink-faint);user-select:none}
-.mr-code-body .k{color:var(--ink);font-weight:700}
+.mr-code-body .k{color:var(--syn-kw);font-weight:600}
+.mr-code-body .kp{color:var(--syn-prim);font-weight:600}
 .mr-code-body .s{color:var(--blue-ink)}
 .mr-code-body .c{color:var(--ink-faint);font-style:italic}
+.mr-code-body .n{color:var(--syn-num)}
+.mr-code-body .an{color:var(--syn-ann)}
+.mr-code-body .ty,.mr-code-body .nav[data-kind="class"],.mr-code-body .nav[data-kind="interface"],.mr-code-body .nav[data-kind="type"]{color:var(--syn-type)}
+.mr-code-body .fn,.mr-code-body .nav[data-kind="method"]{color:var(--syn-method)}
+.mr-code-body .fl,.mr-code-body .nav[data-kind="field"]{color:var(--syn-field)}
+.mr-code-body .cn,.mr-code-body .nav[data-kind="constant"]{color:var(--syn-const)}
 
 /* ============================ NAV BAR ==================================== */
 .navbar{
@@ -548,9 +555,17 @@ body.dark .panel.floating{box-shadow:var(--bevel),0 8px 30px rgba(0,0,0,.55)}
 }
 .cl.cur .ln{color:var(--blue);font-weight:600;text-shadow:0 0 8px var(--glow)} /* LIVE */
 .lc{color:var(--ink)}
-.lc .k{color:var(--ink);font-weight:700}
+.lc .k{color:var(--syn-kw);font-weight:600}
+.lc .kp{color:var(--syn-prim);font-weight:600}
 .lc .s{color:var(--blue-ink)}
 .lc .c{color:var(--ink-faint);font-style:italic}
+.lc .n{color:var(--syn-num)}
+.lc .an{color:var(--syn-ann)}
+.lc .ty,.lc .nav[data-kind="class"],.lc .nav[data-kind="interface"],.lc .nav[data-kind="type"]{color:var(--syn-type)}
+.lc .fn,.lc .nav[data-kind="method"]{color:var(--syn-method)}
+.lc .fl,.lc .nav[data-kind="field"]{color:var(--syn-field)}
+.lc .cn,.lc .nav[data-kind="constant"]{color:var(--syn-const)}
+.lc .nav[data-kind="local"]{color:var(--ink)}
 /* an agent's comment: its own colour and a left rule, the author as a small tag, wrapped at
    ~96 columns within its numbered row (the row keeps the engine's line number) */
 .cl.llmcm{box-shadow:inset 2px 0 0 var(--agt);background:color-mix(in srgb, var(--agt) 6%, transparent)}

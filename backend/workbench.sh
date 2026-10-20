@@ -52,6 +52,7 @@ find_jdk21() {
   for c in "${JAVA_HOME:-}" \
            "$( [ "$(uname -s)" = Darwin ] && /usr/libexec/java_home -v 21 2>/dev/null || true )" \
            /Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home \
+           "$HOME"/.gradle/jdks/*21* \
            /usr/lib/jvm/temurin-21-jdk-* /usr/lib/jvm/java-21-openjdk* /usr/lib/jvm/java-21* /usr/lib/jvm/zulu21*; do
     [ -n "$c" ] && [ -x "$c/bin/java" ] || continue
     # match the version line itself: JDK_JAVA_OPTIONS / _JAVA_OPTIONS print a NOTE line first
@@ -76,6 +77,30 @@ if [ -n "${JEB_HOME:-}" ]; then
   export JEB_HOME="$ENGINE"   # gradle (build.gradle) compiles against the same install
 else
   ENGINE="$SCRIPT_DIR/engine"
+fi
+
+# The JADX install: an explicit $JADX_HOME wins, else backend/jadx or sibling jadx build.
+JADX_CP=""
+if [ -n "${JADX_HOME:-}" ]; then
+  if [ -d "$JADX_HOME/lib" ] && compgen -G "$JADX_HOME/lib/jadx-core*.jar" >/dev/null; then
+    JADX_DIR="$(cd "$JADX_HOME/lib" && pwd)"
+  elif compgen -G "$JADX_HOME/jadx-core*.jar" >/dev/null; then
+    JADX_DIR="$(cd "$JADX_HOME" && pwd)"
+  else
+    echo "[workbench] ERROR: JADX_HOME=$JADX_HOME has no jadx-core*.jar" >&2
+    exit 1
+  fi
+  JADX_HOME="$(cd "$JADX_HOME" && pwd)"
+  export JADX_HOME
+  JADX_CP=":$JADX_DIR/*"
+else
+  for cand in "$SCRIPT_DIR/jadx/lib" "$SCRIPT_DIR/jadx" "$REPO_ROOT/../jadx/jadx-cli/build/install/jadx/lib" "$REPO_ROOT/../jadx/build/jadx/lib"; do
+    if [ -d "$cand" ] && compgen -G "$cand/jadx-core*.jar" >/dev/null; then
+      JADX_DIR="$(cd "$cand" && pwd)"
+      JADX_CP=":$JADX_DIR/*"
+      break
+    fi
+  done
 fi
 
 # WORKBENCH_RUN_ONLY=1: start what is already built and build nothing — no npm, no gradle. For
@@ -105,7 +130,20 @@ if [ "$RUN_ONLY" != 1 ] && [ -f "$REPO_ROOT/web/package.json" ]; then
 fi
 
 cd "$SCRIPT_DIR"
-[ "$RUN_ONLY" = 1 ] || gradle -q classes
+if [ "$RUN_ONLY" != 1 ]; then
+  if command -v gradle >/dev/null 2>&1; then
+    gradle -q classes
+  elif [ -x "$REPO_ROOT/gradlew" ]; then
+    "$REPO_ROOT/gradlew" -p "$SCRIPT_DIR" -q classes
+  elif [ -x "$REPO_ROOT/../jadx/gradlew" ]; then
+    "$REPO_ROOT/../jadx/gradlew" -p "$SCRIPT_DIR" -q classes
+  elif [ -d "$SCRIPT_DIR/build/classes/java/main/dev/workbench" ]; then
+    echo "[workbench] NOTE: gradle not on PATH — using existing backend/build/classes" >&2
+  else
+    echo "[workbench] ERROR: gradle not found on PATH (and no gradlew found)" >&2
+    exit 1
+  fi
+fi
 
 # Mock fixtures (dev/test demo targets) stay OUT of the interactive server by
 # default; ITs run their own servers without this and keep them.
@@ -133,12 +171,20 @@ if [ -f "$ENGINE/bin/app/jeb.jar" ]; then
     ${JVM_HOME_ARGS[@]+"${JVM_HOME_ARGS[@]}"} \
     --add-opens java.base/java.lang=ALL-UNNAMED \
     -Dworkbench.jebHome="$ENGINE" \
-    -cp "build/classes/java/main:$ENGINE/bin/app/*" \
+    -cp "build/classes/java/main:$ENGINE/bin/app/*${JADX_CP}" \
     dev.workbench.engine.jeb.LocalJebLauncher "$REPO_ROOT/web"
 else
-  echo "[workbench] NOTE: no JEB install (JEB_HOME unset, backend/engine absent) — mock-only mode (set JEB_HOME)" >&2
+  if [ -n "$JADX_CP" ]; then
+    echo "[workbench] JADX install: $JADX_DIR (no JEB install)" >&2
+    XMX="${WORKBENCH_XMX:-8g}"
+    XMS="${WORKBENCH_XMS:-512m}"
+  else
+    echo "[workbench] NOTE: no JEB/JADX install (JEB_HOME/JADX_HOME unset) — mock-only mode" >&2
+    XMX="${WORKBENCH_XMX:-2g}"
+    XMS="${WORKBENCH_XMS:-256m}"
+  fi
   # shellcheck disable=SC2086
-  exec "$JAVA_HOME/bin/java" -Xms"${WORKBENCH_XMS:-256m}" -Xmx"${WORKBENCH_XMX:-2g}" -Djava.awt.headless=true ${WORKBENCH_JAVA_OPTS:-} \
-      -Djava.io.tmpdir="$WORKBENCH_HOME/tmp" ${JVM_HOME_ARGS[@]+"${JVM_HOME_ARGS[@]}"} -cp build/classes/java/main \
+  exec "$JAVA_HOME/bin/java" -Xms"$XMS" -Xmx"$XMX" -Djava.awt.headless=true ${WORKBENCH_JAVA_OPTS:-} \
+      -Djava.io.tmpdir="$WORKBENCH_HOME/tmp" ${JVM_HOME_ARGS[@]+"${JVM_HOME_ARGS[@]}"} -cp "build/classes/java/main${JADX_CP}" \
       dev.workbench.server.WorkbenchServer "$REPO_ROOT/web"
 fi

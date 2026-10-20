@@ -173,11 +173,26 @@ check_python() {
 
 check_engine() {
   local home="${JEB_HOME:-backend/engine}"
+  local jadx=""
+  local c
+  for c in "${JADX_HOME:-}" "backend/jadx/lib" "backend/jadx" "../jadx/jadx-cli/build/install/jadx/lib" "../jadx/build/jadx/lib"; do
+    [ -n "$c" ] || continue
+    if [ -d "$c/lib" ] && compgen -G "$c/lib/jadx-core*.jar" >/dev/null; then jadx="$c/lib"; break; fi
+    if [ -d "$c" ] && compgen -G "$c/jadx-core*.jar" >/dev/null; then jadx="$c"; break; fi
+  done
   if [ -f "$home/bin/app/jeb.jar" ]; then
     local n; n="$(ls "$home"/bin/app/*.jar 2>/dev/null | wc -l | tr -d ' ')"
     row jeb-engine ok yes "JEB install at $home ($n jars)" "an activated JEB install (JEB_HOME)" "" no
+  elif [ -n "$jadx" ]; then
+    row jeb-engine warn no "no JEB install (JADX available at $jadx)" "an activated JEB install (JEB_HOME) or JADX" "optional when JADX is present: export JEB_HOME=/path/to/your/activated/jeb" no
   else
-    row jeb-engine missing yes "no JEB install (JEB_HOME unset, backend/engine absent; the server would run mock-only)" "an activated JEB install (JEB_HOME)" "export JEB_HOME=/path/to/your/activated/jeb   # used in place, nothing is copied" no
+    row jeb-engine missing yes "no JEB install (JEB_HOME unset, backend/engine absent; the server would run mock-only)" "an activated JEB install (JEB_HOME) or JADX" "export JEB_HOME=/path/to/your/activated/jeb   # or set JADX_HOME" no
+  fi
+  if [ -n "$jadx" ]; then
+    local jn; jn="$(ls "$jadx"/*.jar 2>/dev/null | wc -l | tr -d ' ')"
+    row jadx-engine ok no "JADX jars at $jadx ($jn jars)" "JADX runtime jars (JADX_HOME or backend/jadx)" "" no
+  else
+    row jadx-engine warn no "no JADX jars found" "JADX runtime jars (JADX_HOME or backend/jadx)" "build /var/home/eho/src/jadx (:jadx-cli:installDist) or set JADX_HOME" no
   fi
 }
 

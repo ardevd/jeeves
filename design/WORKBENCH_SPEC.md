@@ -106,6 +106,14 @@ when no target is open) with three zones:
 
 ### 3.1 Capability interface
 
+Implementation status: the experimental JADX Phase 1 adapter is read-only and
+reports `persist: "none"`, `rename: false`, `comment: false`, and `smali: false`.
+The sidecar-mutation capability in the adapter roadmap is a later phase, not a
+current promise. APK/DEX inputs are supported; `.jdb2` remains JEB-only. Text
+indexes live separately under `<sidecar>/jadx/search-index/`. Raw reference offsets
+are explicitly labeled `offsetUnit: "dex-code-unit"` (16-bit units), not JEB byte
+offsets or transformed IR positions. See [setup and verification](../JADX-HOWTO.md).
+
 An engine adapter implements a single interface; every method is optional and
 capability flags declare what's real. The UI renders from the flags — a
 missing capability means the affordance is absent, never an error dialog.
