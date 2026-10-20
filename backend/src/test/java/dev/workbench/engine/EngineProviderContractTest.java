@@ -46,6 +46,8 @@ public final class EngineProviderContractTest {
                         && Boolean.FALSE.equals(jadx.capabilities().get("runs")),
                 "jadx provider advertises sidecar writes but not unsupported dynamic runs");
         check(Engines.provider("unknown") == null, "unknown provider returns null");
+        check(Engines.jadxAvailable() == Engines.jadxAdapterAvailable(),
+                "jadxAvailable requires both runtime and compiled adapter");
     }
 
     private static void verifySharedIndexAndStrings() {

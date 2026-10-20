@@ -24,7 +24,7 @@ const PRIM_KEYWORDS = new Set(('void boolean byte char short int long float doub
 /* highlight a source segment [from, to) inside `line`, using the full line for
    context (e.g. a trailing `(` or preceding `.`) and `state.inBlockComment` to
    track multi-line `/* … * /` comments across lines. Returns HTML. */
-function highlightRange(line: string, from: number, to: number, state?: { inBlockComment: boolean }): string {
+function highlightRange(line: string, from: number, to: number, state?: { inBlockComment: boolean; inLineComment?: boolean }): string {
   const out: string[] = [];
   let i = from;
   const isIdentStart = (c: string) => /[A-Za-z_$]/.test(c);
@@ -32,10 +32,14 @@ function highlightRange(line: string, from: number, to: number, state?: { inBloc
   const isDigit = (c: string) => /[0-9]/.test(c);
   const isHexOrNumPart = (c: string) => /[0-9A-Fa-f_xXbBlLfFdDpP.]/.test(c);
 
+  if (state && state.inLineComment && i < to){
+    out.push('<span class="c">' + esc(line.slice(i, to)) + '</span>');
+    return out.join('');
+  }
+
   if (state && state.inBlockComment && i < to){
     const close = line.indexOf('*/', i);
     if (close < 0 || close + 2 > to){
-      if (close >= 0 && close < to) state.inBlockComment = false;
       out.push('<span class="c">' + esc(line.slice(i, to)) + '</span>');
       return out.join('');
     }
@@ -46,6 +50,7 @@ function highlightRange(line: string, from: number, to: number, state?: { inBloc
 
   while (i < to){
     if (line[i] === '/' && line[i + 1] === '/'){
+      if (state) state.inLineComment = true;
       out.push('<span class="c">' + esc(line.slice(i, to)) + '</span>');
       break;
     }
@@ -140,15 +145,17 @@ function tokSym(t: Token): string | undefined { return t.symbol !== undefined ? 
 
 /* one java source line → HTML with navigable token spans (data-sym for follow/rename;
    data-kind survives empty-sym tokens — locals carry no addr (review: local xrefs)) */
-function renderLine(lineText: string, tokens: Token[] | undefined, state?: { inBlockComment: boolean }): string {
+function renderLine(lineText: string, tokens: Token[] | undefined, state?: { inBlockComment: boolean; inLineComment?: boolean }): string {
+  if (state) state.inLineComment = false;
+  const lineState = state || { inBlockComment: false, inLineComment: false };
   const marks = (tokens || []).slice().sort((a, b) => tokCol(a) - tokCol(b));
   let html = '', pos = 0;
   marks.forEach(function(t){
     const col = tokCol(t), len = tokLen(t);
     if (col < pos || len <= 0) return;                    // overlapping token — skip
-    html += highlightRange(lineText, pos, col, state);
-    if (state && state.inBlockComment){
-      html += highlightRange(lineText, col, col + len, state);
+    html += highlightRange(lineText, pos, col, lineState);
+    if (lineState.inBlockComment || lineState.inLineComment){
+      html += highlightRange(lineText, col, col + len, lineState);
     } else {
       html += '<span class="nav" data-sym="' + esc(tokSym(t) || '') + '"' +
               ' data-kind="' + esc(t.kind || '') + '">' +
@@ -156,7 +163,8 @@ function renderLine(lineText: string, tokens: Token[] | undefined, state?: { inB
     }
     pos = col + len;
   });
-  html += highlightRange(lineText, pos, lineText.length, state);
+  html += highlightRange(lineText, pos, lineText.length, lineState);
+  if (state) state.inLineComment = false;
   return html;
 }
 

@@ -94,9 +94,9 @@ public final class Engines {
         }
     }
 
-    /** True when both the JADX runtime and Jeeves' JadxEngine adapter are present (or runtime is present). */
+    /** True when both the JADX runtime and Jeeves' JadxEngine adapter are present on the classpath. */
     public static boolean jadxAvailable() {
-        return jadxRuntimeAvailable();
+        return jadxAdapterAvailable();
     }
 
     /** True when JadxEngine adapter class is compiled and loadable. */

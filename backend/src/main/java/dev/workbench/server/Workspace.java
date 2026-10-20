@@ -982,10 +982,10 @@ public final class Workspace {
            500 on a mid-remove project.close */
         synchronized (this) {
             try { tid = resolveTargetId(idOrKey); } catch (OpException notAnOpenId) { /* a store key */ }
-            if (tid != null) removedEngine = engineOfTid(tid);
             if (tid == null)
                 for (Map.Entry<String, String> e : storeKeyByTid.entrySet())
                     if (e.getValue().equals(idOrKey)) { tid = e.getKey(); break; }
+            if (tid != null) removedEngine = engineOfTid(tid);
             key = tid != null ? storeKeyByTid.get(tid) : idOrKey;
             if (key == null) throw OpException.notFound("no such target: " + idOrKey, "");
             if (tid != null) {
@@ -4160,6 +4160,10 @@ public final class Workspace {
                 if (openable == null && (n.endsWith(".apk") || n.endsWith(".dex") || n.endsWith(".so"))) openable = x;
                 last = Math.max(last, x.lastModified());
             }
+            if (openable != null) {
+                java.io.File jadxCodeData = new java.io.File(sidecarFor(openable), "jadx/code-data.json");
+                if (jadxCodeData.isFile()) last = Math.max(last, jadxCodeData.lastModified());
+            }
             String sp = row.get("storePath") == null ? null : String.valueOf(row.get("storePath"));
             if (sp == null || !new java.io.File(sp).isFile()) {
                 java.io.File jdb2 = null;
@@ -4171,7 +4175,9 @@ public final class Workspace {
             row.put("present", present);
             row.put("lastUsed", last);
             row.put("lastUsedIso", java.time.Instant.ofEpochMilli(last).toString());
-            String tid = tidForStoreKey(String.valueOf(row.get("key")));
+            String rowEng = row.get("engine") == null ? null : String.valueOf(row.get("engine"));
+            String tid = tidForStoreKey(String.valueOf(row.get("key")), rowEng);
+            if (tid == null) tid = tidForStoreKey(String.valueOf(row.get("key")));
             if (tid != null) row.put("open", tid);
             row.putIfAbsent("engine", "JEB");
         }

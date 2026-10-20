@@ -10,8 +10,9 @@ import jadx.api.JadxArgs;
 import jadx.api.JadxDecompiler;
 import jadx.api.data.*;
 import jadx.api.data.impl.*;
-import jadx.api.impl.InMemoryCodeCache;
 import jadx.api.impl.AnnotatedCodeWriter;
+import jadx.api.impl.InMemoryCodeCache;
+import jadx.core.dex.attributes.AType;
 import jadx.core.dex.nodes.*;
 
 /** One independently owned JADX instance. All model access uses this session's monitor. */
@@ -211,14 +212,22 @@ final class JadxSession implements AutoCloseable {
         return m;
     }
 
-    synchronized void upsertRename(IJavaNodeRef nodeRef, IJavaCodeRef codeRef, String newName) {
+    synchronized void setRenameEntry(IJavaNodeRef nodeRef, IJavaCodeRef codeRef, String newName) {
         List<ICodeRename> list = new ArrayList<>(codeData.getRenames());
         list.removeIf(r -> Objects.equals(r.getNodeRef(), nodeRef) && Objects.equals(r.getCodeRef(), codeRef));
         if (newName != null && !newName.isEmpty()) {
             list.add(new JadxCodeRename(nodeRef, codeRef, newName));
         }
         codeData.setRenames(list);
+    }
+
+    synchronized void reloadCodeData() {
         if (decompiler != null) decompiler.reloadCodeData();
+    }
+
+    synchronized void upsertRename(IJavaNodeRef nodeRef, IJavaCodeRef codeRef, String newName) {
+        setRenameEntry(nodeRef, codeRef, newName);
+        reloadCodeData();
     }
 
     synchronized String getRename(IJavaNodeRef nodeRef, IJavaCodeRef codeRef) {
@@ -244,7 +253,7 @@ final class JadxSession implements AutoCloseable {
             list.add(new JadxCodeComment(nodeRef, codeRef, text, CommentStyle.LINE));
         }
         codeData.setComments(list);
-        if (decompiler != null) decompiler.reloadCodeData();
+        reloadCodeData();
         return old;
     }
 
@@ -268,6 +277,35 @@ final class JadxSession implements AutoCloseable {
             return new JadxNodeRef(IJavaNodeRef.RefType.FIELD, f.getParentClass().getClassInfo().getRawName(), f.getFieldInfo().getShortId());
         }
         throw new IllegalArgumentException("Unsupported node: " + node);
+    }
+
+    static void setNodeAlias(Object node, String newName) {
+        if (node instanceof ClassNode c) c.getClassInfo().changeShortName(newName);
+        else if (node instanceof MethodNode m) m.getMethodInfo().setAlias(newName);
+        else if (node instanceof FieldNode f) f.getFieldInfo().setAlias(newName);
+    }
+
+    static void clearNodeAlias(Object node) {
+        if (node instanceof ClassNode c) c.getClassInfo().removeAlias();
+        else if (node instanceof MethodNode m) m.getMethodInfo().removeAlias();
+        else if (node instanceof FieldNode f) f.getFieldInfo().removeAlias();
+    }
+
+    static void evictClass(ClassNode top) {
+        ClassNode t = top.getTopParentClass();
+        t.unloadFromCache();
+        clearCodeCommentsAttr(t);
+        if (t.getState() == ProcessState.PROCESS_COMPLETE || t.getState() == ProcessState.GENERATED_AND_UNLOADED) {
+            t.unload();
+            t.setState(ProcessState.NOT_LOADED);
+        }
+    }
+
+    private static void clearCodeCommentsAttr(ClassNode cls) {
+        cls.remove(AType.CODE_COMMENTS);
+        for (FieldNode f : cls.getFields()) f.remove(AType.CODE_COMMENTS);
+        for (MethodNode m : cls.getMethods()) m.remove(AType.CODE_COMMENTS);
+        for (ClassNode inner : cls.getInnerClasses()) clearCodeCommentsAttr(inner);
     }
 
     private static String digest(File file) throws Exception {

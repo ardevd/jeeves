@@ -2,10 +2,43 @@ package dev.workbench.engine.jadx;
 
 import dev.workbench.registry.OpException;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import jadx.core.dex.nodes.*;
 
 /** Original DEX identities indexed without calling JavaClass.load(). */
 final class JadxSymbols {
+    static final Pattern INSN_SITE_PATTERN = Pattern.compile("^(.*->[^+]+)\\+(0x[0-9A-Fa-f]+|[0-9A-Fa-f]+h?)$");
+
+    record SiteRef(String baseSymbol, String suffix, int offset) {}
+
+    static SiteRef splitSite(String raw) throws OpException {
+        if (raw == null) return null;
+        Matcher matcher = INSN_SITE_PATTERN.matcher(raw.trim());
+        if (!matcher.matches()) return null;
+        String suffix = matcher.group(2);
+        return new SiteRef(matcher.group(1), suffix, parseHexOffset(suffix));
+    }
+
+    static String stripSiteOffset(String raw) {
+        if (raw == null) return "";
+        String trimmed = raw.trim();
+        Matcher matcher = INSN_SITE_PATTERN.matcher(trimmed);
+        return matcher.matches() ? matcher.group(1) : trimmed;
+    }
+
+    static int parseHexOffset(String value) throws OpException {
+        String text = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        try {
+            if (text.startsWith("0x")) return Integer.parseUnsignedInt(text.substring(2), 16);
+            if (text.endsWith("h")) return Integer.parseUnsignedInt(text.substring(0, text.length() - 1), 16);
+            // Instruction suffixes are conventionally hexadecimal even without 0x.
+            return Integer.parseUnsignedInt(text, 16);
+        } catch (NumberFormatException error) {
+            throw OpException.syntax("bad instruction offset: " + value, "jadx");
+        }
+    }
+
     final class Symbol {
         private final String addr, kind, originalName;
         private final ClassNode owner;
@@ -70,21 +103,35 @@ final class JadxSymbols {
                           List<String> differs, boolean contradiction, String asked) {}
 
     final Map<String, Symbol> byAddress = new LinkedHashMap<>();
+    final Map<String, ClassNode> classByRawName = new LinkedHashMap<>();
+    private final Map<ClassNode, List<Symbol>> membersByOwner = new IdentityHashMap<>();
     final List<ClassNode> classes;
 
     JadxSymbols(RootNode root) {
         classes = List.copyOf(root.getClasses(true));
         for (ClassNode c : classes) {
-            put(new Symbol(address(c), "class", c.getName(), c, c));
-            for (MethodNode m : c.getMethods())
-                put(new Symbol(address(c) + "->" + m.getMethodInfo().getShortId(), "method", m.getName(), c, m));
-            for (FieldNode f : c.getFields())
-                put(new Symbol(address(c) + "->" + f.getFieldInfo().getShortId(), "field", f.getName(), c, f));
+            classByRawName.putIfAbsent(c.getClassInfo().getRawName(), c);
+            String clsAddr = address(c);
+            put(new Symbol(clsAddr, "class", c.getName(), c, c));
+            List<Symbol> members = new ArrayList<>(c.getMethods().size() + c.getFields().size());
+            for (MethodNode m : c.getMethods()) {
+                Symbol sym = new Symbol(methodAddress(m), "method", m.getName(), c, m);
+                if (put(sym)) members.add(sym);
+            }
+            for (FieldNode f : c.getFields()) {
+                Symbol sym = new Symbol(fieldAddress(f), "field", f.getName(), c, f);
+                if (put(sym)) members.add(sym);
+            }
+            membersByOwner.put(c, Collections.unmodifiableList(members));
         }
     }
 
-    private void put(Symbol symbol) {
-        byAddress.putIfAbsent(symbol.addr(), symbol);
+    private boolean put(Symbol symbol) {
+        return byAddress.putIfAbsent(symbol.addr(), symbol) == null;
+    }
+
+    List<Symbol> membersOf(ClassNode owner) {
+        return membersByOwner.getOrDefault(owner, List.of());
     }
 
     static String address(ClassNode cls) {
@@ -93,6 +140,14 @@ final class JadxSymbols {
 
     static String currentAddress(ClassNode cls) {
         return "L" + cls.getClassInfo().makeAliasRawFullName().replace('.', '/') + ";";
+    }
+
+    static String methodAddress(MethodNode m) {
+        return address(m.getParentClass()) + "->" + m.getMethodInfo().getShortId();
+    }
+
+    static String fieldAddress(FieldNode f) {
+        return address(f.getParentClass()) + "->" + f.getFieldInfo().getShortId();
     }
 
     String currentTypeSig(jadx.core.dex.instructions.args.ArgType type) {
@@ -109,30 +164,71 @@ final class JadxSymbols {
         return lookupWithMode(query).symbol();
     }
 
+    private List<ClassNode> matchingOwners(String ownerDesc) {
+        List<ClassNode> out = new ArrayList<>(2);
+        Symbol origCls = byAddress.get(ownerDesc);
+        if (origCls != null && "class".equals(origCls.kind())) {
+            out.add(origCls.owner());
+        }
+        for (ClassNode c : classes) {
+            if (c != (origCls != null ? origCls.owner() : null) && ownerDesc.equals(currentAddress(c))) {
+                out.add(c);
+            }
+        }
+        return out;
+    }
+
     ResolvedLookup lookupWithMode(String query) throws OpException {
         if (query == null || query.isBlank()) throw OpException.syntax("empty symbol", "jadx");
-        String q = query.trim();
-        java.util.regex.Matcher offm = java.util.regex.Pattern.compile("^(.*->[^+]+)\\+(0x[0-9a-fA-F]+|[0-9a-fA-F]+h)$").matcher(q);
-        if (offm.matches()) q = offm.group(1);
+        String q = stripSiteOffset(query);
+        if (q.isEmpty()) throw OpException.syntax("empty symbol", "jadx");
 
-        // 1. Exact current address match
-        for (Symbol s : byAddress.values()) {
-            if (s.currentAddr().equals(q)) return new ResolvedLookup(s, true, null, null, List.of(), false, q);
-        }
-        // 2. Exact original DEX signature match
+        // Fast path when query is an unrenamed original DEX descriptor
         Symbol exactOrig = byAddress.get(q);
-        if (exactOrig != null) {
-            return new ResolvedLookup(exactOrig, true, exactOrig.currentAddr().equals(q) ? null : "original signature",
-                    null, List.of(), false, q);
+        if (exactOrig != null && exactOrig.currentAddr().equals(q)) {
+            return new ResolvedLookup(exactOrig, true, null, null, List.of(), false, q);
         }
+
+        // 1. Exact current address match (scoped by owner class when L-prefixed)
+        if (q.startsWith("L")) {
+            int arrow = q.indexOf("->");
+            if (arrow < 0) {
+                for (ClassNode c : classes) {
+                    if (currentAddress(c).equals(q)) {
+                        Symbol s = byAddress.get(address(c));
+                        if (s != null) return new ResolvedLookup(s, true, null, null, List.of(), false, q);
+                    }
+                }
+            } else {
+                String ownerDesc = q.substring(0, arrow);
+                for (ClassNode c : matchingOwners(ownerDesc)) {
+                    for (Symbol s : membersOf(c)) {
+                        if (s.currentAddr().equals(q)) {
+                            return new ResolvedLookup(s, true, null, null, List.of(), false, q);
+                        }
+                    }
+                }
+            }
+        } else {
+            for (Symbol s : byAddress.values()) {
+                if (s.currentAddr().equals(q)) return new ResolvedLookup(s, true, null, null, List.of(), false, q);
+            }
+        }
+
+        // 2. Exact original DEX signature match (when symbol or its types were renamed)
+        if (exactOrig != null) {
+            return new ResolvedLookup(exactOrig, true, "original signature", null, List.of(), false, q);
+        }
+
         // 3. Exact dotted FQCN class match
         if (!q.contains("->") && !q.startsWith("L")) {
             List<Symbol> clsMatches = new ArrayList<>();
-            for (Symbol s : byAddress.values()) {
-                if (s.kind().equals("class") && (q.equals(s.owner().getFullName())
-                        || q.equals(s.owner().getClassInfo().getRawName())
-                        || q.equals(s.owner().getClassInfo().makeAliasRawFullName()))) {
-                    clsMatches.add(s);
+            for (ClassNode c : classes) {
+                if (q.equals(c.getFullName())
+                        || q.equals(c.getClassInfo().getRawName())
+                        || q.equals(c.getClassInfo().makeAliasRawFullName())) {
+                    Symbol s = byAddress.get(address(c));
+                    if (s != null) clsMatches.add(s);
                 }
             }
             if (clsMatches.size() == 1) return new ResolvedLookup(clsMatches.getFirst(), true, null, null, List.of(), false, q);
@@ -143,9 +239,8 @@ final class JadxSymbols {
             int arrow = q.indexOf("->");
             String owner = q.substring(0, arrow), member = q.substring(arrow + 2);
             List<Symbol> inOwner = new ArrayList<>();
-            for (Symbol s : byAddress.values()) {
-                if (s.kind().equals("class")) continue;
-                if (owner.equals(address(s.owner())) || owner.equals(currentAddress(s.owner()))) inOwner.add(s);
+            for (ClassNode c : matchingOwners(owner)) {
+                inOwner.addAll(membersOf(c));
             }
             List<Symbol> exactDesc = new ArrayList<>();
             List<Symbol> prefixMatches = new ArrayList<>();

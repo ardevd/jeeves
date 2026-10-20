@@ -153,6 +153,12 @@ public final class JadxFixtureTest {
             check(at > 0 && "method".equals(engine.hover("Lfixture/Child;", at).get("kind")), "hover uses method annotation");
 
             String baseWork = "Lfixture/Base;->work()V", childWork = "Lfixture/Child;->work()V";
+            try {
+                engine.rename(childWork, "return", "test");
+                throw new AssertionError("expected Java keyword rename refusal");
+            } catch (dev.workbench.registry.OpException expected) {
+                check("E_SYNTAX".equals(expected.code), "Java keyword is rejected by rename()");
+            }
             check(engine.renameTargets(childWork).size() == 2, "virtual renameTargets returns the complete override family");
             engine.rename(childWork, "execute", "test");
             check(engine.resolve(baseWork).get("addr").toString().contains("->execute()V")
@@ -186,7 +192,10 @@ public final class JadxFixtureTest {
             String callSite = run + "+2h";
             engine.comment(callSite, "call-site note", "test");
             check(engine.decompile(run, Map.of()).get("text").toString().contains("call-site note")
-                    && "call-site note".equals(engine.hover(callSite, 0).get("comment")), "instruction +offset comment renders and appears in hover");
+                    && "call-site note".equals(engine.hover(callSite, 0).get("comment"))
+                    && "call-site note".equals(engine.hover(run + "+0x2", 0).get("comment"))
+                    && "call-site note".equals(engine.hover(run + "+2", 0).get("comment"))
+                    && run.equals(engine.resolve(run + "+2").get("addr")), "instruction +offset comment and resolve support +Nh, +0xN, and +N");
             engine.comment(callSite, "", "test");
             check(!engine.decompile(run, Map.of()).get("text").toString().contains("call-site note")
                     && "".equals(engine.hover(callSite, 0).get("comment")), "instruction comment can be cleared without lingering attributes");
@@ -212,6 +221,13 @@ public final class JadxFixtureTest {
                     && reopened.resolveLocal(concat, "retainedBuilder") != null
                     && "retainedValue".equals(((Map<?, ?>) ((List<?>) reopened.methodParameters(sink).get("parameters")).getFirst()).get("name"))
                     && "retained site".equals(reopened.hover(callSite, 0).get("comment")), "renames, locals, parameters, and comments reload from sidecar");
+            Map<?, ?> reopenedBuilder = reopened.locals(concat).stream().map(x -> (Map<?, ?>) x)
+                    .filter(x -> "retainedBuilder".equals(x.get("name"))).findFirst().orElseThrow();
+            check("builder".equals(reopenedBuilder.get("originalName")), "reopened local retains unaliased originalName");
+            reopened.renameLocal(concat, "retainedBuilder", "builder", "test");
+            reopened.save();
+            check(!Files.readString(codeData).contains("retainedBuilder") && !Files.readString(codeData).contains("\"newName\":\"builder\""),
+                    "reverting local to originalName drops rename entry from code-data.json");
         } finally {
             try { engine.close(); } catch (Exception ignored) {}
             if (reopened != null) reopened.close();

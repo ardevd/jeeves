@@ -63,10 +63,11 @@ final class JadxSource {
             if (entry.getKey() < start || entry.getKey() >= end) continue;
             if (!(entry.getValue() instanceof NodeDeclareRef declaration) || !(declaration.getNode() instanceof MethodNode m)) continue;
             int finish = CodeUtils.getMethodEnd(m, code);
-            JadxSymbols.Symbol mSym = symbols.byAddress.get(address(m));
+            String mOrig = JadxSymbols.methodAddress(m);
+            JadxSymbols.Symbol mSym = symbols.byAddress.get(mOrig);
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("addr", mSym != null ? mSym.currentAddr() : address(m));
-            row.put("origSig", address(m));
+            row.put("addr", mSym != null ? mSym.currentAddr() : mOrig);
+            row.put("origSig", mOrig);
             row.put("name", m.getAlias());
             if (mSym != null && mSym.isRenamed()) {
                 row.put("renamed", true);
@@ -91,7 +92,6 @@ final class JadxSource {
         return out;
     }
 
-    private static String address(MethodNode m) { return JadxSymbols.address(m.getParentClass()) + "->" + m.getMethodInfo().getShortId(); }
     private static int line(String text, int start, int pos) {
         int line = 1;
         for (int i = start; i < pos; i++) if (text.charAt(i) == '\n') line++;
@@ -119,11 +119,11 @@ final class JadxSource {
                 if (word.equals("this") || word.equals("super")) continue;
                 boolean isCtorType = m.isConstructor() && pos >= 4 && text.startsWith("new ", pos - 4);
                 kind = isCtorType ? "class" : "method";
-                origSig = isCtorType ? JadxSymbols.address(m.getParentClass()) : address(m);
+                origSig = isCtorType ? JadxSymbols.address(m.getParentClass()) : JadxSymbols.methodAddress(m);
                 JadxSymbols.Symbol s = symbols.byAddress.get(origSig);
                 addr = s != null ? s.currentAddr() : origSig;
             } else if (ann instanceof FieldNode f) {
-                kind = "field"; origSig = JadxSymbols.address(f.getParentClass()) + "->" + f.getFieldInfo().getShortId();
+                kind = "field"; origSig = JadxSymbols.fieldAddress(f);
                 JadxSymbols.Symbol s = symbols.byAddress.get(origSig);
                 addr = s != null ? s.currentAddr() : origSig;
             } else if (ann instanceof VarNode v) {

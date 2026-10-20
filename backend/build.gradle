@@ -96,8 +96,7 @@ tasks.register('jadxSmokeTest', JavaExec) {
     doFirst {
         if (!hasJadx) throw new GradleException('jadxSmokeTest requires JADX_HOME')
         def fixture = System.getenv('WORKBENCH_JADX_FIXTURE')
-        if (!fixture) throw new GradleException('Set WORKBENCH_JADX_FIXTURE to the JADX hello.dex sample')
-        args fixture
+        if (fixture) args fixture
     }
 }
 
@@ -743,6 +742,6 @@ tasks.register('messageLabIT', JavaExec) {
 }
 
 tasks.named('test', Test) {
-    failOnNoDiscoveredTests = false
+    try { failOnNoDiscoveredTests = false } catch (MissingPropertyException ignored) {}
     dependsOn 'persistenceTest', 'historyJournalTest', 'workspacePersistenceTest', 'engineProviderContractTest'
 }

@@ -123,9 +123,12 @@ public final class Doctor {
     private Map<String, Object> jadxEngine() {
         if (!Engines.jadxAvailable()) {
             boolean req = !Engines.jebAvailable();
-            return row("jadx-engine", req ? "missing" : "warn", req, "not on the classpath",
+            boolean runtimeOnly = Engines.jadxRuntimeAvailable() && !Engines.jadxAdapterAvailable();
+            return row("jadx-engine", req ? "missing" : "warn", req,
+                    runtimeOnly ? "JADX jars on classpath, but JadxEngine adapter was not compiled" : "not on the classpath",
                     "JADX release jars on classpath (JADX_HOME or backend/jadx)",
-                    "Set JADX_HOME to an unpacked JADX release (e.g. jadx-1.5.6) or place its lib/ in backend/jadx/lib",
+                    runtimeOnly ? "Rebuild backend classes with JADX_HOME set (gradle -p backend classes)"
+                            : "Set JADX_HOME to an unpacked JADX release (e.g. jadx-1.5.6) or place its lib/ in backend/jadx/lib",
                     false);
         }
         String version = Engines.jadxVersion();

@@ -36,8 +36,10 @@ final class JadxRelations {
                 row.put("owner", fromSym.owner().getFullName());
             } else {
                 int arrow = from.indexOf("->"), paren = from.indexOf('(', arrow);
-                row.put("name", from.substring(arrow + 2, paren));
-                row.put("owner", from.substring(1, arrow - 1).replace('/', '.').replace('$', '.'));
+                if (arrow > 1 && paren > arrow) {
+                    row.put("name", from.substring(arrow + 2, paren));
+                    row.put("owner", from.substring(1, arrow - 1).replace('/', '.').replace('$', '.'));
+                }
             }
             return row;
         }
@@ -103,8 +105,10 @@ final class JadxRelations {
                     case TYPE_REF -> { target = insn.getIndexAsType(); type = "TYPE"; }
                     case STRING_REF -> {
                         String value = insn.getIndexAsString();
-                        strings.computeIfAbsent(value, k -> new ArrayList<>())
-                                .add(new Site(symbol.addr(), "", "STRING", insn.getOffset()));
+                        if (value != null) {
+                            strings.computeIfAbsent(value, k -> new ArrayList<>())
+                                    .add(new Site(symbol.addr(), "", "STRING", insn.getOffset()));
+                        }
                         return;
                     }
                     default -> { return; }

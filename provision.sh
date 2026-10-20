@@ -109,9 +109,17 @@ check_gradle() {
     Darwin) fix="brew install gradle" ;;
     *) fix="curl -s https://get.sdkman.io | bash && sdk install gradle   # distro gradle packages are too old" ;;
   esac
+  local gbin=""
   if have gradle; then
-    local v; v="$(run_to 40 gradle --version 2>/dev/null | awk '/^Gradle /{print $2; exit}')"
-    if [ -n "$v" ] && [ "$(vermajor "$v")" -ge 8 ]; then row gradle ok yes "gradle $v" "gradle 8+" "" no
+    gbin="gradle"
+  elif [ -x "./gradlew" ]; then
+    gbin="./gradlew"
+  elif compgen -G "$HOME_DIR/.gradle/wrapper/dists/gradle-*-bin/*/gradle-*/bin/gradle" >/dev/null; then
+    gbin="$(ls -d "$HOME_DIR"/.gradle/wrapper/dists/gradle-*-bin/*/gradle-*/bin/gradle | sort -V | tail -n 1)"
+  fi
+  if [ -n "$gbin" ]; then
+    local v; v="$(run_to 40 "$gbin" --version 2>/dev/null | awk '/^Gradle /{print $2; exit}')"
+    if [ -n "$v" ] && [ "$(vermajor "$v")" -ge 8 ]; then row gradle ok yes "gradle $v ($gbin)" "gradle 8+" "" no
     else row gradle missing yes "gradle ${v:-?} (need 8+)" "gradle 8+" "$fix" no; fi
   else
     row gradle missing yes "not on PATH" "gradle 8+" "$fix" no

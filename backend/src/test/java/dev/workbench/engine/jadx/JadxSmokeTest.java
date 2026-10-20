@@ -1,14 +1,16 @@
 package dev.workbench.engine.jadx;
 
+import com.android.tools.smali.smali.Smali;
+import com.android.tools.smali.smali.SmaliOptions;
 import java.io.File;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 
-/** Real-runtime smoke test; pass a DEX/APK path. No JEB or server required. */
+/** Real-runtime smoke test; pass a DEX/APK path or synthesize a default HelloWorld DEX. No JEB or server required. */
 public final class JadxSmokeTest {
     public static void main(String[] args) throws Exception {
-        if (args.length != 1) throw new IllegalArgumentException("pass a DEX/APK fixture path");
-        File input = new File(args[0]);
+        File input = args.length >= 1 ? new File(args[0]) : synthesizeHelloDex();
         JadxEngine engine = new JadxEngine("test", input.getName(), input.getAbsolutePath(), input,
                 Files.createTempDirectory("jeeves-jadx-smoke-").toFile());
         try {
@@ -70,6 +72,34 @@ public final class JadxSmokeTest {
         } finally { workspace.closeTarget(target, false); }
         require(!workspace.openTargetIds().contains(target), "workspace detaches closed target");
     }
+    private static File synthesizeHelloDex() throws Exception {
+        Path root = Files.createTempDirectory("jeeves-jadx-hello-");
+        Path src = Files.createDirectories(root.resolve("smali"));
+        Files.writeString(src.resolve("HelloWorld.smali"), """
+                .class public Lhello/HelloWorld;
+                .super Ljava/lang/Object;
+                .method public static say()Ljava/lang/String;
+                    .registers 1
+                    const-string v0, "Hello, World!"
+                    return-object v0
+                .end method
+                .method public static main([Ljava/lang/String;)V
+                    .registers 3
+                    sget-object v0, Ljava/lang/System;->out:Ljava/io/PrintStream;
+                    invoke-static {}, Lhello/HelloWorld;->say()Ljava/lang/String;
+                    move-result-object v1
+                    invoke-virtual {v0, v1}, Ljava/io/PrintStream;->println(Ljava/lang/String;)V
+                    return-void
+                .end method
+                """);
+        Path outDex = root.resolve("hello.dex");
+        SmaliOptions options = new SmaliOptions();
+        options.outputDexFile = outDex.toString();
+        options.jobs = 1;
+        require(Smali.assemble(options, src.toString()), "assemble hello.dex fixture");
+        return outDex.toFile();
+    }
+
     private static void require(boolean ok, String label) {
         if (!ok) throw new AssertionError(label);
         System.out.println("PASS " + label);
