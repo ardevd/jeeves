@@ -124,13 +124,13 @@ public final class Doctor {
         if (!Engines.jadxAvailable()) {
             boolean req = !Engines.jebAvailable();
             return row("jadx-engine", req ? "missing" : "warn", req, "not on the classpath",
-                    "JADX runtime jars on classpath (jadx-core + jadx-dex-input)",
-                    "Set JADX_HOME or place JADX jars in backend/jadx/lib",
+                    "JADX release jars on classpath (JADX_HOME or backend/jadx)",
+                    "Set JADX_HOME to an unpacked JADX release (e.g. jadx-1.5.6) or place its lib/ in backend/jadx/lib",
                     false);
         }
         String version = Engines.jadxVersion();
         return row("jadx-engine", "ok", false, "JADX " + (version == null ? "embedded" : version),
-                "JADX runtime jars on classpath", "", false);
+                "JADX release jars on classpath", "", false);
     }
 
     private Map<String, Object> web() {

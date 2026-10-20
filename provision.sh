@@ -79,6 +79,7 @@ check_jdk() {
   for c in "${JAVA_HOME:-}" \
            "$( [ "$OS" = Darwin ] && /usr/libexec/java_home -v 21 2>/dev/null || true )" \
            /Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home \
+           "$HOME_DIR"/.gradle/jdks/*21* \
            /usr/lib/jvm/temurin-21-jdk-* /usr/lib/jvm/java-21-openjdk* /usr/lib/jvm/java-21* /usr/lib/jvm/zulu21*; do
     [ -n "$c" ] && [ -x "$c/bin/java" ] || continue
     if "$c/bin/java" -version 2>&1 | grep -q 'version "21[."]'; then found="$c"; break; fi   # not head -1: JDK_JAVA_OPTIONS prints a NOTE line first
@@ -175,10 +176,10 @@ check_engine() {
   local home="${JEB_HOME:-backend/engine}"
   local jadx=""
   local c
-  for c in "${JADX_HOME:-}" "backend/jadx/lib" "backend/jadx" "../jadx/jadx-cli/build/install/jadx/lib" "../jadx/build/jadx/lib"; do
+  for c in "${JADX_HOME:-}" "backend/jadx/lib" "backend/jadx"; do
     [ -n "$c" ] || continue
-    if [ -d "$c/lib" ] && compgen -G "$c/lib/jadx-core*.jar" >/dev/null; then jadx="$c/lib"; break; fi
-    if [ -d "$c" ] && compgen -G "$c/jadx-core*.jar" >/dev/null; then jadx="$c"; break; fi
+    if [ -d "$c/lib" ] && { compgen -G "$c/lib/jadx-*-all.jar" >/dev/null || compgen -G "$c/lib/jadx-core*.jar" >/dev/null; }; then jadx="$c/lib"; break; fi
+    if [ -d "$c" ] && { compgen -G "$c/jadx-*-all.jar" >/dev/null || compgen -G "$c/jadx-core*.jar" >/dev/null; }; then jadx="$c"; break; fi
   done
   if [ -f "$home/bin/app/jeb.jar" ]; then
     local n; n="$(ls "$home"/bin/app/*.jar 2>/dev/null | wc -l | tr -d ' ')"
@@ -190,9 +191,9 @@ check_engine() {
   fi
   if [ -n "$jadx" ]; then
     local jn; jn="$(ls "$jadx"/*.jar 2>/dev/null | wc -l | tr -d ' ')"
-    row jadx-engine ok no "JADX jars at $jadx ($jn jars)" "JADX runtime jars (JADX_HOME or backend/jadx)" "" no
+    row jadx-engine ok no "JADX jars at $jadx ($jn jars)" "JADX release (JADX_HOME or backend/jadx)" "" no
   else
-    row jadx-engine warn no "no JADX jars found" "JADX runtime jars (JADX_HOME or backend/jadx)" "build /var/home/eho/src/jadx (:jadx-cli:installDist) or set JADX_HOME" no
+    row jadx-engine warn no "no JADX jars found" "JADX release (JADX_HOME or backend/jadx)" "export JADX_HOME=/path/to/jadx-1.5.6   # unpacked upstream JADX release" no
   fi
 }
 

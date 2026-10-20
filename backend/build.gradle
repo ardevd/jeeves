@@ -47,16 +47,14 @@ if (System.getenv('JEB_HOME') && !hasEngine) {
     throw new GradleException('Explicit JEB_HOME has no bin/app/jeb.jar: ' + engineDir)
 }
 
-def jadxDir = file(System.getenv('JADX_HOME') ?: [
-    "${rootProject.projectDir}/jadx",
-    "${rootProject.projectDir.parentFile.parentFile}/jadx/jadx-cli/build/install/jadx",
-    "${rootProject.projectDir.parentFile.parentFile}/jadx/build/jadx",
-].find { new File(it, 'lib').isDirectory() } ?: "${rootProject.projectDir}/jadx")
+def jadxDir = file(System.getenv('JADX_HOME') ?: "${rootProject.projectDir}/jadx")
 def jadxLibDir = new File(jadxDir, 'lib').isDirectory() ? new File(jadxDir, 'lib') : jadxDir
 def jadxJars = fileTree(dir: jadxLibDir, include: '*.jar')
-def hasJadx = jadxLibDir.isDirectory() && jadxLibDir.listFiles({ d, n -> n.startsWith('jadx-core') && n.endsWith('.jar') } as FilenameFilter)
+def hasJadx = jadxLibDir.isDirectory() && jadxLibDir.listFiles({ d, n ->
+    (n.startsWith('jadx-core') || (n.startsWith('jadx-') && n.endsWith('-all.jar'))) && n.endsWith('.jar')
+} as FilenameFilter)
 if (System.getenv('JADX_HOME') && !hasJadx) {
-    throw new GradleException('Explicit JADX_HOME has no jadx-core*.jar in lib/ or root: ' + jadxDir)
+    throw new GradleException('Explicit JADX_HOME has no jadx-*-all.jar or jadx-core*.jar in lib/ or root: ' + jadxDir)
 }
 
 if (hasEngine) {

@@ -79,23 +79,27 @@ else
   ENGINE="$SCRIPT_DIR/engine"
 fi
 
-# The JADX install: an explicit $JADX_HOME wins, else backend/jadx or sibling jadx build.
+# The JADX install: an explicit $JADX_HOME wins, else backend/jadx.
+# Accepts either a stock release zip (lib/jadx-*-all.jar) or split jars (lib/jadx-core*.jar).
+has_jadx_jars() {
+  [ -d "$1" ] && { compgen -G "$1/jadx-*-all.jar" >/dev/null || compgen -G "$1/jadx-core*.jar" >/dev/null; }
+}
 JADX_CP=""
 if [ -n "${JADX_HOME:-}" ]; then
-  if [ -d "$JADX_HOME/lib" ] && compgen -G "$JADX_HOME/lib/jadx-core*.jar" >/dev/null; then
+  if has_jadx_jars "$JADX_HOME/lib"; then
     JADX_DIR="$(cd "$JADX_HOME/lib" && pwd)"
-  elif compgen -G "$JADX_HOME/jadx-core*.jar" >/dev/null; then
+  elif has_jadx_jars "$JADX_HOME"; then
     JADX_DIR="$(cd "$JADX_HOME" && pwd)"
   else
-    echo "[workbench] ERROR: JADX_HOME=$JADX_HOME has no jadx-core*.jar" >&2
+    echo "[workbench] ERROR: JADX_HOME=$JADX_HOME has no jadx-*-all.jar or jadx-core*.jar (in lib/ or root)" >&2
     exit 1
   fi
   JADX_HOME="$(cd "$JADX_HOME" && pwd)"
   export JADX_HOME
   JADX_CP=":$JADX_DIR/*"
 else
-  for cand in "$SCRIPT_DIR/jadx/lib" "$SCRIPT_DIR/jadx" "$REPO_ROOT/../jadx/jadx-cli/build/install/jadx/lib" "$REPO_ROOT/../jadx/build/jadx/lib"; do
-    if [ -d "$cand" ] && compgen -G "$cand/jadx-core*.jar" >/dev/null; then
+  for cand in "$SCRIPT_DIR/jadx/lib" "$SCRIPT_DIR/jadx"; do
+    if has_jadx_jars "$cand"; then
       JADX_DIR="$(cd "$cand" && pwd)"
       JADX_CP=":$JADX_DIR/*"
       break
@@ -135,8 +139,9 @@ if [ "$RUN_ONLY" != 1 ]; then
     gradle -q classes
   elif [ -x "$REPO_ROOT/gradlew" ]; then
     "$REPO_ROOT/gradlew" -p "$SCRIPT_DIR" -q classes
-  elif [ -x "$REPO_ROOT/../jadx/gradlew" ]; then
-    "$REPO_ROOT/../jadx/gradlew" -p "$SCRIPT_DIR" -q classes
+  elif compgen -G "$HOME/.gradle/wrapper/dists/gradle-*-bin/*/gradle-*/bin/gradle" >/dev/null; then
+    GRADLE_BIN="$(ls -d "$HOME"/.gradle/wrapper/dists/gradle-*-bin/*/gradle-*/bin/gradle | sort -V | tail -n 1)"
+    "$GRADLE_BIN" -p "$SCRIPT_DIR" -q classes
   elif [ -d "$SCRIPT_DIR/build/classes/java/main/dev/workbench" ]; then
     echo "[workbench] NOTE: gradle not on PATH — using existing backend/build/classes" >&2
   else
