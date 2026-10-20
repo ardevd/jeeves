@@ -1,9 +1,11 @@
 # Workbench Manual
 
-An experimental **read-only JADX adapter** can now open APK/DEX inputs without JEB.
-See [JADX setup and tests](JADX-HOWTO.md) for `JADX_HOME`, explicit engine selection,
-isolated launch instructions, verification commands, and outstanding Phase 1 gaps.
-This does not yet provide sidecar mutations or low-level evidence parity.
+The stock **JADX adapter** opens APK/DEX inputs without JEB and supports the
+workbench write path: class/field/method and override-family renames, original-name
+restoration, local and formal-parameter naming, and class/member/instruction comments.
+Those edits persist in `<artifact>.workbench/jadx/code-data.json`; `.jdb2` inputs and
+low-level smali evidence remain JEB-only. Set `JADX_HOME` to a stock JADX 1.5.6 release
+when building or launching with this adapter.
 
 Text search reports partial coverage while its class corpus is incomplete or
 has pending edits. A zero-match result in that state is not proof of absence;
@@ -32,7 +34,8 @@ server), with one combined `frida` row.
 | JDK 21 | everything | Temurin 21 recommended; `backend/workbench.sh` finds it (`JAVA_HOME`, then the OS's JDK list) |
 | Gradle 8+ | build | used only at build time |
 | Node 18+ | frontend build | `web/src` (TypeScript) → `web/js`; tsc is locked in `web/package-lock.json` |
-| JEB (5.42 or later) | real decompilation | your own activated JEB install, named by `JEB_HOME` (see §4.2 and `docs/local-jeb.md`) |
+| JEB (5.42 or later) | JEB engine | your own activated JEB install, named by `JEB_HOME` (see §4.2 and `docs/local-jeb.md`) |
+| JADX 1.5.6 | stock JADX engine | unpack a release and name it with `JADX_HOME`; no fork or patched jar is required |
 | adb + a rooted device/emulator | Runs, Device views | frida-server is provisioned automatically |
 | Python 3.10+ | frida sidecar, MCP server | stdlib only for MCP; frida via `backend/runs/pull-frida.sh` |
 
@@ -70,8 +73,9 @@ The app reserves **7800–7809**: `7800` HTTP API + SSE + web UI,
 `JEB_HOME` names your activated JEB install; the server uses its jars and normal
 `jvmopt.txt` startup options in place and copies nothing (`docs/local-jeb.md`: the two start-up routes and
 the edition they need). A copy of an install under `backend/engine/`
-(gitignored) is used when `JEB_HOME` is unset. Without either the app
-still runs with the mock engine (fixtures only).
+(gitignored) is used when `JEB_HOME` is unset. `JADX_HOME` independently names an
+unpacked stock JADX 1.5.6 release; select `jadx` when opening an APK/DEX to use it.
+Without either engine install the app still runs with the mock engine (fixtures only).
 
 ### 4.3 LLM providers (agents)
 
@@ -760,11 +764,15 @@ verdicts arrive as proposals). `map.export` renders md/json posters.
 ## 10. Persistence
 
 - `<target>.jdb2` — engine database (decompilation, renames, comments).
-- `<artifact>.workbench/` — per-target sidecar: history, tags, bookmarks,
-  flows, and `search-index/` — the persisted search corpus (per-class gz +
-  `header.json` + `pending.json`). The corpus warm-loads on open (no
-  rebuild); classes edited since the build are re-indexed from the history
-  log. Delete it to force a full re-index.
+- `<artifact>.workbench/` — per-target sidecar: history, tags, bookmarks, and
+  flows. For JADX, `jadx/code-data.json` is the checkpointed stock-`ICodeData`
+  store for symbol/local/parameter renames and class/member/instruction comments;
+  `jadx/search-index/` is its persisted search corpus (per-class gz +
+  `header.json` + `pending.json`). The corpus warm-loads on open (no rebuild),
+  and classes edited since the build are re-indexed from history. An interrupted
+  sidecar save retains a checkpoint and `.save-in-progress.json` recovery receipt.
+  Delete only the search-index directory to force a full re-index; deleting
+  `code-data.json` discards the persisted JADX edits.
 - `backend/.workbench/targets/<slug>-<hash8>/` — the **target store**: the home of an
   opened/pulled artifact, keyed by content hash. Holds the artifact copy, its `<base>.jdb2`
   engine database, the `<base>.workbench/` sidecar, and (for a device pull) a carried-forward

@@ -6,13 +6,15 @@ import jadx.api.ICodeInfo;
 import jadx.api.metadata.ICodeAnnotation;
 import jadx.api.metadata.annotations.*;
 import jadx.api.utils.CodeUtils;
+import jadx.core.dex.attributes.AType;
 import jadx.core.dex.nodes.*;
 
 /** Maps JADX metadata to UTF-16, half-open source spans used by the browser. */
 final class JadxSource {
     private JadxSource() {}
 
-    static Map<String, Object> render(JadxSymbols.Symbol symbol, Map<String, Object> options) throws OpException {
+    static Map<String, Object> render(JadxSymbols symbols, JadxSymbols.Symbol symbol, Map<String, Object> options,
+                                      String retainedComment) throws OpException {
         Map<String, Object> opts = options == null ? Map.of() : options;
         String scope = String.valueOf(opts.getOrDefault("scope", symbol.kind().equals("method") ? "method" : "class"));
         if (!scope.equals("method") && !scope.equals("class")) throw OpException.syntax("scope must be class or method", "jadx");
@@ -32,14 +34,27 @@ final class JadxSource {
             if (!declared) throw OpException.unsupported("JADX did not render this method separately (possibly inlined)", symbol.addr());
             end = CodeUtils.getMethodEnd(method, code);
             start = CodeUtils.getLineStartForPos(full, method.getDefPosition());
+            // AttachCommentsVisitor emits a method comment immediately before the
+            // declaration. Include that retained metadata in method scope rather
+            // than slicing it away at the identifier's definition position.
+            List<String> comments = new ArrayList<>();
+            if (retainedComment != null && !retainedComment.isEmpty()) comments.add(retainedComment);
+            for (jadx.core.codegen.utils.CodeComment comment : method.getAll(AType.CODE_COMMENTS)) comments.add(comment.getComment());
+            for (String value : comments) {
+                if (value == null || value.isEmpty()) continue;
+                int at = full.lastIndexOf(value, start);
+                if (at >= 0 && start - at < 4096) start = Math.min(start, CodeUtils.getLineStartForPos(full, at));
+            }
             if (end < start) throw OpException.unsupported("JADX has no method end metadata", symbol.addr());
         }
         String text = full.substring(start, end);
         int total = text.split("\n", -1).length;
-        List<Object> tokens = tokens(code, start, end);
+        List<Object> tokens = tokens(symbols, code, start, end);
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("symbol", scope.equals("method") ? symbol.row() : Map.of("addr", JadxSymbols.address(top),
-                "origSig", JadxSymbols.address(top), "kind", "class", "name", top.getAlias(), "fqcn", top.getFullName()));
+        JadxSymbols.Symbol topSym = symbols.byAddress.get(JadxSymbols.address(top));
+        out.put("symbol", scope.equals("method") ? symbol.row() : topSym != null ? topSym.row()
+                : Map.of("addr", JadxSymbols.currentAddress(top), "origSig", JadxSymbols.address(top),
+                        "kind", "class", "name", top.getAlias(), "fqcn", top.getFullName()));
         out.put("scope", scope); out.put("text", text); out.put("language", "java"); out.put("engine", "jadx");
         out.put("decompiled", !text.isEmpty()); out.put("fresh", fresh); out.put("lineCount", total);
         out.put("ms", (System.nanoTime() - started) / 1_000_000);
@@ -48,8 +63,15 @@ final class JadxSource {
             if (entry.getKey() < start || entry.getKey() >= end) continue;
             if (!(entry.getValue() instanceof NodeDeclareRef declaration) || !(declaration.getNode() instanceof MethodNode m)) continue;
             int finish = CodeUtils.getMethodEnd(m, code);
+            JadxSymbols.Symbol mSym = symbols.byAddress.get(address(m));
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("addr", address(m)); row.put("name", m.getAlias());
+            row.put("addr", mSym != null ? mSym.currentAddr() : address(m));
+            row.put("origSig", address(m));
+            row.put("name", m.getAlias());
+            if (mSym != null && mSym.isRenamed()) {
+                row.put("renamed", true);
+                row.put("origName", mSym.originalName());
+            }
             row.put("line", line(full, start, entry.getKey()));
             if (finish >= start) row.put("endLine", line(full, start, Math.min(end, finish)));
             methods.add(row);
@@ -76,7 +98,7 @@ final class JadxSource {
         return line;
     }
 
-    static List<Object> tokens(ICodeInfo code, int start, int end) {
+    static List<Object> tokens(JadxSymbols symbols, ICodeInfo code, int start, int end) {
         String text = code.getCodeStr();
         List<Object> result = new ArrayList<>();
         for (var entry : new TreeMap<>(code.getCodeMetadata().getAsMap()).entrySet()) {
@@ -85,20 +107,28 @@ final class JadxSource {
             ICodeAnnotation ann = entry.getValue();
             if (ann instanceof VarRef ref) ann = code.getCodeMetadata().getAt(ref.getRefPos());
             if (ann instanceof NodeDeclareRef ref) ann = ref.getNode();
-            String kind, addr = null, type = null;
-            if (ann instanceof ClassNode c) { kind = "class"; addr = JadxSymbols.address(c); }
-            else if (ann instanceof MethodNode m) {
+            String kind, addr = null, origSig = null, type = null;
+            if (ann instanceof ClassNode c) {
+                kind = "class"; origSig = JadxSymbols.address(c);
+                JadxSymbols.Symbol s = symbols.byAddress.get(origSig);
+                addr = s != null ? s.currentAddr() : JadxSymbols.currentAddress(c);
+            } else if (ann instanceof MethodNode m) {
                 int finish = pos;
                 while (finish < end && Character.isJavaIdentifierPart(text.charAt(finish))) finish++;
                 String word = text.substring(pos, finish);
                 if (word.equals("this") || word.equals("super")) continue;
                 boolean isCtorType = m.isConstructor() && pos >= 4 && text.startsWith("new ", pos - 4);
                 kind = isCtorType ? "class" : "method";
-                addr = address(m);
-            }
-            else if (ann instanceof FieldNode f) { kind = "field"; addr = JadxSymbols.address(f.getParentClass()) + "->" + f.getFieldInfo().getShortId(); }
-            else if (ann instanceof VarNode v) { kind = "local"; type = String.valueOf(v.getType()); }
-            else continue;
+                origSig = isCtorType ? JadxSymbols.address(m.getParentClass()) : address(m);
+                JadxSymbols.Symbol s = symbols.byAddress.get(origSig);
+                addr = s != null ? s.currentAddr() : origSig;
+            } else if (ann instanceof FieldNode f) {
+                kind = "field"; origSig = JadxSymbols.address(f.getParentClass()) + "->" + f.getFieldInfo().getShortId();
+                JadxSymbols.Symbol s = symbols.byAddress.get(origSig);
+                addr = s != null ? s.currentAddr() : origSig;
+            } else if (ann instanceof VarNode v) {
+                kind = "local"; type = symbols.currentTypeSig(v.getType());
+            } else continue;
             int finish = pos;
             while (finish < end && Character.isJavaIdentifierPart(text.charAt(finish))) finish++;
             if (finish == pos) continue;
@@ -107,6 +137,7 @@ final class JadxSource {
             token.put("line", line(text, start, pos)); token.put("cs", pos - lineStart); token.put("ce", finish - lineStart);
             token.put("kind", kind);
             if (addr != null) token.put("addr", addr);
+            if (origSig != null) token.put("origSig", origSig);
             if (type != null) token.put("type", type);
             result.add(token);
         }

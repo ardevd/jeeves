@@ -41,6 +41,10 @@ public final class EngineProviderContractTest {
                 "jadx provider supports apk, dex and excludes jdb2");
         check("native".equals(jeb.capabilities().get("persist")) && "sidecar".equals(jadx.capabilities().get("persist")),
                 "provider capability persistence modes match spec (native vs sidecar)");
+        check(Boolean.TRUE.equals(jadx.capabilities().get("rename"))
+                        && Boolean.TRUE.equals(jadx.capabilities().get("comment"))
+                        && Boolean.FALSE.equals(jadx.capabilities().get("runs")),
+                "jadx provider advertises sidecar writes but not unsupported dynamic runs");
         check(Engines.provider("unknown") == null, "unknown provider returns null");
     }
 

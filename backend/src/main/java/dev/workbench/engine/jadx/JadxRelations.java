@@ -7,51 +7,75 @@ import jadx.core.dex.nodes.*;
 /** Raw DEX reference snapshot: offsets are 16-bit code units, never transformed IR offsets. */
 final class JadxRelations {
     record Site(String from, String target, String type, int offset) {
-        Map<String, Object> row() {
+        Map<String, Object> row(JadxSymbols symbols) {
+            JadxSymbols.Symbol fromSym = symbols.byAddress.get(from);
+            String curFrom = fromSym != null ? fromSym.currentAddr() : from;
+            JadxSymbols.Symbol targetSym = symbols.byAddress.get(target);
+            String curTarget = targetSym != null ? targetSym.currentAddr() : target;
             Map<String, Object> row = new LinkedHashMap<>();
             if (offset < 0) {
-                row.put("from", from); row.put("addr", from); row.put("type", type);
+                row.put("from", curFrom); row.put("addr", curFrom); row.put("type", type);
                 row.put("kind", "field");
-                int arrow = from.indexOf("->"), colon = from.indexOf(':', arrow);
-                if (arrow > 1 && colon > arrow) {
-                    row.put("name", from.substring(arrow + 2, colon));
-                    row.put("owner", from.substring(1, arrow - 1).replace('/', '.').replace('$', '.'));
+                if (fromSym != null) {
+                    row.put("name", fromSym.name());
+                    row.put("owner", fromSym.owner().getFullName());
+                } else {
+                    int arrow = from.indexOf("->"), colon = from.indexOf(':', arrow);
+                    if (arrow > 1 && colon > arrow) {
+                        row.put("name", from.substring(arrow + 2, colon));
+                        row.put("owner", from.substring(1, arrow - 1).replace('/', '.').replace('$', '.'));
+                    }
                 }
                 return row;
             }
-            row.put("from", from + "+" + Integer.toHexString(offset) + "h");
-            row.put("method", from); row.put("addr", target); row.put("type", type);
+            row.put("from", curFrom + "+" + Integer.toHexString(offset) + "h");
+            row.put("method", curFrom); row.put("addr", curTarget); row.put("type", type);
             row.put("offset", offset); row.put("offsetUnit", "dex-code-unit");
-            int arrow = from.indexOf("->"), paren = from.indexOf('(', arrow);
-            row.put("name", from.substring(arrow + 2, paren));
-            row.put("owner", from.substring(1, arrow - 1).replace('/', '.').replace('$', '.'));
+            if (fromSym != null) {
+                row.put("name", fromSym.name());
+                row.put("owner", fromSym.owner().getFullName());
+            } else {
+                int arrow = from.indexOf("->"), paren = from.indexOf('(', arrow);
+                row.put("name", from.substring(arrow + 2, paren));
+                row.put("owner", from.substring(1, arrow - 1).replace('/', '.').replace('$', '.'));
+            }
             return row;
         }
-        Map<String, Object> outgoingRow() {
+        Map<String, Object> outgoingRow(JadxSymbols symbols) {
+            JadxSymbols.Symbol fromSym = symbols.byAddress.get(from);
+            String curFrom = fromSym != null ? fromSym.currentAddr() : from;
+            JadxSymbols.Symbol targetSym = symbols.byAddress.get(target);
+            String curTarget = targetSym != null ? targetSym.currentAddr() : target;
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("from", offset < 0 ? from : from + "+" + Integer.toHexString(offset) + "h");
-            row.put("addr", target); row.put("type", type);
+            row.put("from", offset < 0 ? curFrom : curFrom + "+" + Integer.toHexString(offset) + "h");
+            row.put("addr", curTarget); row.put("origSig", target); row.put("type", type);
             row.put("kind", "INVOKE".equals(type) ? "call" : type.toLowerCase(Locale.ROOT));
             if (offset >= 0) {
                 row.put("offset", offset); row.put("offsetUnit", "dex-code-unit");
             }
-            int arrow = target.indexOf("->");
-            if (arrow > 1) {
-                int split = target.indexOf('(', arrow);
-                if (split < 0) split = target.indexOf(':', arrow);
-                row.put("name", split > arrow ? target.substring(arrow + 2, split) : target.substring(arrow + 2));
-                row.put("owner", target.substring(1, arrow - 1).replace('/', '.').replace('$', '.'));
-            } else if (target.startsWith("L") && target.endsWith(";")) {
-                String dotted = target.substring(1, target.length() - 1).replace('/', '.').replace('$', '.');
-                int dot = dotted.lastIndexOf('.');
-                row.put("name", dot >= 0 ? dotted.substring(dot + 1) : dotted);
-                row.put("owner", dotted);
+            if (targetSym != null) {
+                row.put("name", targetSym.name());
+                row.put("owner", targetSym.owner().getFullName());
             } else {
-                row.put("name", target);
+                int arrow = target.indexOf("->");
+                if (arrow > 1) {
+                    int split = target.indexOf('(', arrow);
+                    if (split < 0) split = target.indexOf(':', arrow);
+                    row.put("name", split > arrow ? target.substring(arrow + 2, split) : target.substring(arrow + 2));
+                    row.put("owner", target.substring(1, arrow - 1).replace('/', '.').replace('$', '.'));
+                } else if (target.startsWith("L") && target.endsWith(";")) {
+                    String dotted = target.substring(1, target.length() - 1).replace('/', '.').replace('$', '.');
+                    int dot = dotted.lastIndexOf('.');
+                    row.put("name", dot >= 0 ? dotted.substring(dot + 1) : dotted);
+                    row.put("owner", dotted);
+                } else {
+                    row.put("name", target);
+                }
             }
             return row;
         }
     }
+    private final JadxSymbols symbols;
     private final Map<String, List<Site>> incoming = new LinkedHashMap<>();
     private final Map<String, List<Site>> outgoing = new LinkedHashMap<>();
     private final Map<String, List<Site>> strings = new TreeMap<>();
@@ -59,6 +83,7 @@ final class JadxRelations {
     private final Map<String, List<String[]>> usage = new LinkedHashMap<>();
 
     JadxRelations(JadxSymbols symbols) {
+        this.symbols = symbols;
         for (JadxSymbols.Symbol symbol : symbols.byAddress.values()) {
             if (symbol.node() instanceof FieldNode field) {
                 var constant = field.get(jadx.api.plugins.input.data.attributes.JadxAttrType.CONSTANT_VALUE);
@@ -98,9 +123,18 @@ final class JadxRelations {
 
     boolean references(String address) { return incoming.containsKey(address); }
 
+    Set<ClassNode> referrerTopClasses(String origAddr) {
+        Set<ClassNode> out = new LinkedHashSet<>();
+        for (Site site : incoming.getOrDefault(origAddr, List.of())) {
+            JadxSymbols.Symbol fromSym = symbols.byAddress.get(site.from());
+            if (fromSym != null) out.add(fromSym.owner().getTopParentClass());
+        }
+        return out;
+    }
+
     List<Object> to(String address) {
         return new ArrayList<>(incoming.getOrDefault(address, List.of()).stream().map(site -> {
-            Map<String, Object> row = site.row();
+            Map<String, Object> row = site.row(symbols);
             row.remove("addr"); // incoming xrefs navigate to the referencing method/field (`method`/`from`), not the target itself
             return (Object) row;
         }).toList());
@@ -109,7 +143,7 @@ final class JadxRelations {
         List<Object> result = new ArrayList<>();
         outgoing.forEach((method, sites) -> {
             if (!method.equals(address) && !method.startsWith(address + "->")) return;
-            for (Site site : sites) if (!callsOnly || site.type().equals("INVOKE")) result.add(site.outgoingRow());
+            for (Site site : sites) if (!callsOnly || site.type().equals("INVOKE")) result.add(site.outgoingRow(symbols));
         });
         return result;
     }
@@ -117,12 +151,14 @@ final class JadxRelations {
         Map<String, Map<String, Object>> callers = new LinkedHashMap<>();
         for (Site site : incoming.getOrDefault(address, List.of())) {
             if (!site.type().equals("INVOKE")) continue;
-            Map<String, Object> row = callers.computeIfAbsent(site.from(), key -> {
-                Map<String, Object> r = site.row(); r.put("addr", key); r.put("kind", "call");
-                r.put("sites", new ArrayList<String>()); return r;
+            JadxSymbols.Symbol fromSym = symbols.byAddress.get(site.from());
+            String curFrom = fromSym != null ? fromSym.currentAddr() : site.from();
+            Map<String, Object> row = callers.computeIfAbsent(curFrom, key -> {
+                Map<String, Object> r = site.row(symbols); r.put("addr", key); r.put("origSig", site.from());
+                r.put("kind", "call"); r.put("sites", new ArrayList<String>()); return r;
             });
             @SuppressWarnings("unchecked") List<String> sites = (List<String>) row.get("sites");
-            sites.add(site.from() + "+" + Integer.toHexString(site.offset()) + "h");
+            sites.add(curFrom + "+" + Integer.toHexString(site.offset()) + "h");
         }
         return new ArrayList<>(callers.values());
     }
@@ -137,7 +173,7 @@ final class JadxRelations {
             row.put("xrefCount", refs.size());
             String first = "(no referrer)";
             if (!refs.isEmpty()) {
-                Map<String, Object> f0 = refs.getFirst().row();
+                Map<String, Object> f0 = refs.getFirst().row(symbols);
                 first = f0.get("owner") != null && f0.get("name") != null
                         ? f0.get("owner") + "." + f0.get("name")
                         : String.valueOf(f0.get("from"));
@@ -152,7 +188,7 @@ final class JadxRelations {
         if (value == null) throw dev.workbench.registry.OpException.notFound("unknown string id: " + id, "jadx");
         List<Object> result = new ArrayList<>();
         for (Site site : strings.get(value)) {
-            Map<String, Object> row = site.row();
+            Map<String, Object> row = site.row(symbols);
             row.remove("addr"); // string xrefs resolve to the referencing method/field, not ""
             row.put("stringId", id); row.put("value", value); result.add(row);
         }

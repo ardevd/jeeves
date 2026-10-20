@@ -54,7 +54,7 @@ public final class Engines {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("decompile", true); m.put("smali", false); m.put("xrefs", true);
             m.put("rename", true); m.put("comment", true); m.put("callgraph", true);
-            m.put("strings", true); m.put("runs", true); m.put("persist", "sidecar");
+            m.put("strings", true); m.put("runs", false); m.put("persist", "sidecar");
             return m;
         }
         @Override public Engine open(EngineOpenRequest req) throws OpException {

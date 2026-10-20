@@ -741,3 +741,8 @@ tasks.register('messageLabIT', JavaExec) {
         dependsOn 'compileTestJava'
     }
 }
+
+tasks.named('test', Test) {
+    failOnNoDiscoveredTests = false
+    dependsOn 'persistenceTest', 'historyJournalTest', 'workspacePersistenceTest', 'engineProviderContractTest'
+}
