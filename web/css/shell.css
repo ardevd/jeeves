@@ -1963,7 +1963,7 @@ body.dark .wbmodal{background:rgba(16,19,23,.6)}
 .wbm-card{width:460px;background:var(--paper,#f4f2ec);border:1px solid var(--line,#d8d4c8);box-shadow:0 8px 32px rgba(28,36,48,.25);padding:12px}
 .wbm-title{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--ink,#1c2430);margin-bottom:6px}
 .wbm-sym{font-size:10px;color:var(--ink-faint);margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wbm-card input{width:100%;box-sizing:border-box;font:inherit;font-size:12px;padding:5px 7px;background:var(--paper2,#eceadf);color:var(--ink,#1c2430);border:1px solid var(--line,#d8d4c8);outline:none}
+.wbm-card input{width:100%;box-sizing:border-box;font:inherit;font-size:12px;padding:5px 7px;background:var(--panel2,#efede6);color:var(--ink,#1c2430);border:1px solid var(--line,#d8d4c8);outline:none}
 .wbm-card input:focus{border-color:var(--blue,#0072B2)}
 .wbm-err{min-height:14px;font-size:10px;color:var(--verm,#D55E00);margin-top:5px}
 .wbm-prog{min-height:14px;font-size:10px;color:var(--ink-dim);margin-top:5px;font-variant-numeric:tabular-nums}
@@ -2015,7 +2015,7 @@ body.dark .wbmodal{background:rgba(16,19,23,.6)}
 .mp-note:empty{display:none}
 
 /* launcher BROWSE pane (server-side fs.list — a pick is a path, not an upload) */
-.wbm-fs{margin-top:8px;border:1px solid var(--line,#d8d4c8);background:var(--paper2,#eceadf)}
+.wbm-fs{margin-top:8px;border:1px solid var(--line,#d8d4c8);background:var(--panel2,#efede6)}
 .wbm-fsbar{display:flex;align-items:center;gap:6px;padding:4px 6px;border-bottom:1px solid var(--line,#d8d4c8)}
 .wbm-fsbar .btn{font-size:9px;padding:2px 6px}
 .wbm-fsdir{flex:1;min-width:0;font:10px var(--mono);color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
