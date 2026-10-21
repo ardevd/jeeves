@@ -52,7 +52,7 @@ public final class Engines {
         @Override public Set<String> supportedTypes() { return Set.of("apk", "dex"); }
         @Override public Map<String, Object> capabilities() {
             Map<String, Object> m = new LinkedHashMap<>();
-            m.put("decompile", true); m.put("smali", false); m.put("xrefs", true);
+            m.put("decompile", true); m.put("smali", true); m.put("xrefs", true);
             m.put("rename", true); m.put("comment", true); m.put("callgraph", true);
             m.put("strings", true); m.put("runs", false); m.put("persist", "sidecar");
             return m;

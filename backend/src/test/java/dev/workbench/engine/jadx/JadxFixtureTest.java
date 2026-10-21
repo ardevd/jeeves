@@ -83,8 +83,9 @@ public final class JadxFixtureTest {
         try {
             engine.openAsync(); waitReady(engine);
             check("ready".equals(engine.info().get("state")), "fixture ready");
-            check(Boolean.TRUE.equals(engine.caps().get("rename")) && Boolean.TRUE.equals(engine.caps().get("comment"))
-                    && "sidecar".equals(engine.caps().get("persist")), "JADX advertises write and sidecar capabilities");
+            check(Boolean.TRUE.equals(engine.caps().get("smali"))
+                    && Boolean.TRUE.equals(engine.caps().get("rename")) && Boolean.TRUE.equals(engine.caps().get("comment"))
+                    && "sidecar".equals(engine.caps().get("persist")), "JADX advertises smali, write, and sidecar capabilities");
             String run = "Lfixture/Child;->run()V";
             String sink = "Lfixture/Child;->sink(Ljava/lang/String;)V";
             String pair = "Lfixture/Child;->pair(II)I";
@@ -269,6 +270,75 @@ public final class JadxFixtureTest {
         }
 
         verifyDiscardAndReplay(root, options.outputDexFile);
+        verifySmaliBranchesAndPayloads(root);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void verifySmaliBranchesAndPayloads(Path root) throws Exception {
+        java.io.File paramsDex = new java.io.File("src/test/fixtures/params/params-fixture.dex");
+        if (!paramsDex.isFile()) paramsDex = new java.io.File("backend/src/test/fixtures/params/params-fixture.dex");
+        check(paramsDex.isFile(), "params-fixture.dex available for smali verification");
+        var engine = new JadxEngine("branches", "branches", paramsDex.getAbsolutePath(), paramsDex, root.resolve("branches-sidecar").toFile());
+        try {
+            engine.openAsync(); waitReady(engine);
+            String cls = "Lfixture/Branches;";
+            Map<String, Object> clsSmali = engine.smali(cls);
+            List<Map<String, Object>> clsRows = (List<Map<String, Object>>) clsSmali.get("rows");
+            check("jadx".equals(clsSmali.get("engine")) && !clsRows.isEmpty()
+                    && String.valueOf(clsRows.getFirst().get("text")).startsWith(".class public Lfixture/Branches;"),
+                    "class smali renders header and method blocks");
+
+            for (String m : List.of(
+                    cls + "->loop(I)I",
+                    cls + "->widths(I)I",
+                    cls + "->backwards(I)I",
+                    cls + "->switches(I)I",
+                    cls + "->arrays()[I",
+                    cls + "->guarded(Ljava/lang/Object;)I",
+                    cls + "->threeToOne(III)V")) {
+                Map<String, Object> mSmali = engine.smali(m);
+                List<Map<String, Object>> rows = (List<Map<String, Object>>) mSmali.get("rows");
+                check(!rows.isEmpty() && mSmali.get("methodParameters") instanceof Map<?, ?>,
+                        "method smali includes rows and methodParameters for " + m);
+                int lastOff = -1;
+                for (Map<String, Object> r : rows) {
+                    if (!"insn".equals(r.get("kind"))) continue;
+                    int off = Integer.parseInt(String.valueOf(r.get("offset")), 16);
+                    check(off > lastOff, "instruction offsets strictly increase in " + m);
+                    check(!String.valueOf(r.get("bytes")).isBlank(), "instruction row carries raw opcode bytes in " + m);
+                    lastOff = off;
+                }
+            }
+
+            List<Map<String, Object>> sw = (List<Map<String, Object>>) engine.smali(cls + "->switches(I)I").get("rows");
+            List<String> swCases = sw.stream().filter(r -> "case".equals(r.get("kind"))).map(r -> String.valueOf(r.get("text")).trim()).toList();
+            check(swCases.equals(List.of(":l_8", ":l_a", "0x100 -> :l_c", "0x200 -> :l_a"))
+                    && sw.stream().anyMatch(r -> String.valueOf(r.get("text")).contains(".packed-switch 0x1"))
+                    && sw.stream().anyMatch(r -> String.valueOf(r.get("text")).contains(".sparse-switch")),
+                    "packed and sparse switch payloads decode targets in code-unit offsets: " + swCases);
+
+            List<Map<String, Object>> arr = (List<Map<String, Object>>) engine.smali(cls + "->arrays()[I").get("rows");
+            List<String> arrEls = arr.stream().filter(r -> "case".equals(r.get("kind"))).map(r -> String.valueOf(r.get("text")).trim()).toList();
+            check(arr.stream().anyMatch(r -> String.valueOf(r.get("text")).trim().equals(".array-data 4"))
+                    && arrEls.equals(List.of("0x1", "0x2", "0x3")),
+                    "fill-array-data payload renders width and elements: " + arrEls);
+
+            List<Map<String, Object>> gd = (List<Map<String, Object>>) engine.smali(cls + "->guarded(Ljava/lang/Object;)I").get("rows");
+            check(gd.stream().anyMatch(r -> String.valueOf(r.get("text")).trim().equals(".catch Ljava/lang/RuntimeException; {:try_start_0 .. :try_end_4} :catch_5"))
+                    && gd.stream().anyMatch(r -> "label".equals(r.get("kind")) && ":catch_5".equals(String.valueOf(r.get("text")).trim())),
+                    "try/catch table emits :try_start, :try_end, :catch labels and .catch directive");
+
+            List<Map<String, Object>> pairRows = (List<Map<String, Object>>) engine.smali("Lfixture/Params;->annotOnly(ILjava/lang/String;)I").get("rows");
+            check(pairRows.stream().anyMatch(r -> "annotation".equals(r.get("kind")) && String.valueOf(r.get("text")).contains("MethodParameters")),
+                    "smali includes retained MethodParameters annotation rows");
+
+            engine.rename(cls, "RenamedBranches", "test");
+            List<Map<String, Object>> renamedRows = (List<Map<String, Object>>) engine.smali(cls).get("rows");
+            check(String.valueOf(renamedRows.getFirst().get("text")).contains("Lfixture/RenamedBranches;"),
+                    "smali reflects live analyst renames via original symbol identity");
+        } finally {
+            engine.close();
+        }
     }
 
     private static void verifyDiscardAndReplay(Path root, String dexPath) throws Exception {

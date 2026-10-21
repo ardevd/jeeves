@@ -162,8 +162,8 @@ public final class JadxEngine implements Engine, SearchIndex.Host {
 
     @Override public Map<String, Object> caps() {
         Map<String, Object> caps = new LinkedHashMap<>();
-        for (String key : List.of("decompile", "xrefs", "callgraph", "strings", "rename", "comment")) caps.put(key, true);
-        for (String key : List.of("smali", "runs")) caps.put(key, false);
+        for (String key : List.of("decompile", "smali", "xrefs", "callgraph", "strings", "rename", "comment")) caps.put(key, true);
+        caps.put("runs", false);
         caps.put("persist", "sidecar");
         return caps;
     }
@@ -253,6 +253,13 @@ public final class JadxEngine implements Engine, SearchIndex.Host {
                 catch (Throwable t) { out.put("methodParameters", Map.of("status", "unsupported", "why", String.valueOf(t))); }
             }
             return out;
+        }
+    }
+
+    @Override public Map<String, Object> smali(String symbol) throws OpException {
+        synchronized (session) {
+            JadxSymbols.Symbol resolved = session.symbols().lookup(symbol);
+            return JadxSmali.render(session.symbols(), locals, resolved);
         }
     }
 

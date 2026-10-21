@@ -378,7 +378,21 @@ final class JadxLocals {
                     .filter(ILocalVar::isMarkedAsParameter)
                     .sorted(Comparator.comparingInt(ILocalVar::getRegNum))
                     .toList();
-            for (ILocalVar param : params) debugNames.add(param.getName());
+            if (!params.isEmpty()) {
+                int totalRegs = method.getCodeReader() != null ? method.getCodeReader().getRegistersCount() : 0;
+                int argWords = method.getArgTypes().stream().mapToInt(t -> t.getRegCount()).sum()
+                        + (method.getAccessFlags().isStatic() ? 0 : 1);
+                int firstArgReg = Math.max(0, totalRegs - argWords) + (method.getAccessFlags().isStatic() ? 0 : 1);
+                Map<Integer, String> byReg = new HashMap<>();
+                for (ILocalVar param : params) {
+                    if (param.getName() != null) byReg.put(param.getRegNum(), param.getName());
+                }
+                int reg = firstArgReg;
+                for (int i = 0; i < types.size(); i++) {
+                    debugNames.add(byReg.get(reg));
+                    reg += method.getArgTypes().get(i).getRegCount();
+                }
+            }
         }
         Map<String, Object> debugInfo = new LinkedHashMap<>();
         debugInfo.put("source", "dex_debug_info_parameter_names");

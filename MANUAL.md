@@ -1,10 +1,12 @@
 # Workbench Manual
 
-The stock **JADX adapter** opens APK/DEX inputs without JEB and supports the
+The stock **JADX adapter** opens APK/DEX inputs without JEB, renders side-by-side Java
+and Smali disassembly (with raw opcode bytes, offsets, branch/switch/array payloads,
+try/catch tables, and retained parameter annotations), and supports the
 workbench write path: class/field/method and override-family renames, original-name
 restoration, local and formal-parameter naming, and class/member/instruction comments.
 Those edits persist in `<artifact>.workbench/jadx/code-data.json`; `.jdb2` inputs and
-low-level smali evidence remain JEB-only. Set `JADX_HOME` to a stock JADX 1.5.6 release
+CFG evidence packets remain JEB-only. Set `JADX_HOME` to a stock JADX 1.5.6 release
 when building or launching with this adapter.
 
 Text search reports partial coverage while its class corpus is incomplete or

@@ -43,8 +43,9 @@ public final class EngineProviderContractTest {
                 "provider capability persistence modes match spec (native vs sidecar)");
         check(Boolean.TRUE.equals(jadx.capabilities().get("rename"))
                         && Boolean.TRUE.equals(jadx.capabilities().get("comment"))
+                        && Boolean.TRUE.equals(jadx.capabilities().get("smali"))
                         && Boolean.FALSE.equals(jadx.capabilities().get("runs")),
-                "jadx provider advertises sidecar writes but not unsupported dynamic runs");
+                "jadx provider advertises smali and sidecar writes but not unsupported dynamic runs");
         check(Engines.provider("unknown") == null, "unknown provider returns null");
         check(Engines.jadxAvailable() == Engines.jadxAdapterAvailable(),
                 "jadxAvailable requires both runtime and compiled adapter");
