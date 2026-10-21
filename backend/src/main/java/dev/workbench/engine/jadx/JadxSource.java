@@ -5,6 +5,8 @@ import java.util.*;
 import jadx.api.ICodeInfo;
 import jadx.api.metadata.ICodeAnnotation;
 import jadx.api.metadata.annotations.*;
+import jadx.api.plugins.input.data.attributes.JadxAttrType;
+import jadx.api.plugins.input.data.attributes.types.MethodParametersAttr;
 import jadx.api.utils.CodeUtils;
 import jadx.core.dex.attributes.AType;
 import jadx.core.dex.nodes.*;
@@ -59,14 +61,16 @@ final class JadxSource {
         out.put("decompiled", !text.isEmpty()); out.put("fresh", fresh); out.put("lineCount", total);
         out.put("ms", (System.nanoTime() - started) / 1_000_000);
         List<Object> methods = new ArrayList<>();
+        List<Object> mpIndex = new ArrayList<>();
         for (var entry : new TreeMap<>(code.getCodeMetadata().getAsMap()).entrySet()) {
             if (entry.getKey() < start || entry.getKey() >= end) continue;
             if (!(entry.getValue() instanceof NodeDeclareRef declaration) || !(declaration.getNode() instanceof MethodNode m)) continue;
             int finish = CodeUtils.getMethodEnd(m, code);
             String mOrig = JadxSymbols.methodAddress(m);
             JadxSymbols.Symbol mSym = symbols.byAddress.get(mOrig);
+            String mAddr = mSym != null ? mSym.currentAddr() : mOrig;
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("addr", mSym != null ? mSym.currentAddr() : mOrig);
+            row.put("addr", mAddr);
             row.put("origSig", mOrig);
             row.put("name", m.getAlias());
             if (mSym != null && mSym.isRenamed()) {
@@ -76,8 +80,23 @@ final class JadxSource {
             row.put("line", line(full, start, entry.getKey()));
             if (finish >= start) row.put("endLine", line(full, start, Math.min(end, finish)));
             methods.add(row);
+            if ("class".equals(scope)) {
+                MethodParametersAttr mp = m.get(JadxAttrType.METHOD_PARAMETERS);
+                if (mp != null && mp.getList() != null) {
+                    List<String> names = mp.getList().stream().map(MethodParametersAttr.Info::getName).toList();
+                    boolean match = names.size() == m.getArgTypes().size();
+                    Map<String, Object> ix = new LinkedHashMap<>();
+                    ix.put("addr", mAddr);
+                    ix.put("original_method", mOrig);
+                    ix.put("names", names);
+                    ix.put("countMatchesPrototype", match);
+                    ix.put("status", match ? "present" : "malformed");
+                    mpIndex.add(ix);
+                }
+            }
         }
         out.put("methods", methods);
+        if (!mpIndex.isEmpty()) out.put("methodParametersIndex", mpIndex);
         if (Boolean.TRUE.equals(opts.get("tokens"))) out.put("tokens", tokens);
         if (opts.get("window") != null) {
             String[] parts = String.valueOf(opts.get("window")).split(",", -1);

@@ -17,12 +17,18 @@ public final class JadxFixtureTest {
                 .field public static final LABEL:Ljava/lang/String; = "constant-only"
                 .method public abstract work()V
                 .end method
+                .method public abstract abstractArg(Ljava/lang/String;)V
+                .end method
                 """);
         Files.writeString(src.resolve("Child.smali"), """
                 .class public Lfixture/Child;
                 .super Lfixture/Base;
                 .method public work()V
                     .registers 1
+                    return-void
+                .end method
+                .method public abstractArg(Ljava/lang/String;)V
+                    .registers 2
                     return-void
                 .end method
                 .method public static run()V
@@ -43,6 +49,16 @@ public final class JadxFixtureTest {
                     .registers 2
                     .param p0, "left"    # I
                     .param p1, "right"   # I
+                    .annotation system Ldalvik/annotation/MethodParameters;
+                        accessFlags = {
+                            0x0,
+                            0x0
+                        }
+                        names = {
+                            "left",
+                            "right"
+                        }
+                    .end annotation
                     add-int/2addr p0, p1
                     return p0
                 .end method
@@ -86,11 +102,19 @@ public final class JadxFixtureTest {
                 engine.renameLocal(concat, "assembled", "input", "test");
                 throw new AssertionError("expected local collision refusal");
             } catch (dev.workbench.registry.OpException expected) {
-                check("E_SYNTAX".equals(expected.code) && engine.resolveLocal(concat, "assembled") != null, "local collision is atomic");
+                check("E_BUSY".equals(expected.code) && expected.extra.get("conflicts") instanceof List<?>
+                        && engine.resolveLocal(concat, "assembled") != null, "local collision is refused with E_BUSY and structured conflicts");
             }
             Map<String, Object> auto = engine.autoNameLocals(concat, true, "test");
             check(((List<?>) auto.get("renames")).stream().map(x -> (Map<?, ?>) x).anyMatch(x -> "stringBuilder".equals(x.get("name")))
                     && engine.resolveLocal(concat, "stringBuilder") != null, "autoNameLocals names an object local from its type");
+
+            try {
+                engine.renameParameters("Lfixture/Base;->abstractArg(Ljava/lang/String;)V", List.of(Map.of("index", 0, "name", "unnamed")), "test");
+                throw new AssertionError("expected abstract method parameter rename refusal");
+            } catch (dev.workbench.registry.OpException expected) {
+                check("E_UNSUPPORTED".equals(expected.code), "abstract method parameter rename is refused with E_UNSUPPORTED");
+            }
 
             check(Boolean.TRUE.equals(engine.renameParameters(sink, List.of(Map.of("index", 0, "name", "payload")), "test").get("applied"))
                     && "payload".equals(((Map<?, ?>) ((List<?>) engine.methodParameters(sink).get("parameters")).getFirst()).get("name")), "formal parameter rename updates current name");
@@ -142,6 +166,14 @@ public final class JadxFixtureTest {
             check(callees.stream().anyMatch(c -> "sink".equals(((Map<?, ?>) c).get("name")) && "fixture.Child".equals(((Map<?, ?>) c).get("owner"))),
                     "callees row carries target name and owner");
             Map<String, Object> rendered = engine.decompile("Lfixture/Child;", Map.of("tokens", true));
+            check(rendered.get("methodParametersIndex") instanceof List<?> mpIdx && !mpIdx.isEmpty()
+                    && Boolean.TRUE.equals(((Map<?, ?>) mpIdx.getFirst()).get("countMatchesPrototype"))
+                    && "present".equals(((Map<?, ?>) mpIdx.getFirst()).get("status")),
+                    "class decompile includes methodParametersIndex with prototype match status");
+            Map<String, Object> methodRendered = engine.decompile(sink, Map.of("scope", "method"));
+            check(methodRendered.get("methodParameters") instanceof Map<?, ?> mpMap
+                    && "method-parameters-v1".equals(mpMap.get("schema")),
+                    "method decompile includes methodParameters metadata");
             String text = rendered.get("text").toString();
             for (Object obj : (List<?>) rendered.get("tokens")) {
                 Map<?, ?> token = (Map<?, ?>) obj;
@@ -195,7 +227,10 @@ public final class JadxFixtureTest {
                     && "call-site note".equals(engine.hover(callSite, 0).get("comment"))
                     && "call-site note".equals(engine.hover(run + "+0x2", 0).get("comment"))
                     && "call-site note".equals(engine.hover(run + "+2", 0).get("comment"))
-                    && run.equals(engine.resolve(run + "+2").get("addr")), "instruction +offset comment and resolve support +Nh, +0xN, and +N");
+                    && callSite.equals(engine.resolve(run + "+2").get("addr"))
+                    && callSite.equals(engine.resolve(run + "+0x2").get("origSig"))
+                    && Boolean.TRUE.equals(engine.resolve(run + "+2").get("site")),
+                    "instruction +offset comment and resolve preserve canonical +Nh site identity");
             engine.comment(callSite, "", "test");
             check(!engine.decompile(run, Map.of()).get("text").toString().contains("call-site note")
                     && "".equals(engine.hover(callSite, 0).get("comment")), "instruction comment can be cleared without lingering attributes");
@@ -282,6 +317,16 @@ public final class JadxFixtureTest {
         } finally {
             Files.deleteIfExists(marker);
         }
+
+        // Corrupt codeRef in code-data.json is parked aside and transitions open to error instead of silently turning into a method rename
+        Path corruptSidecar = root.resolve("corrupt-sidecar");
+        Path corruptFile = Files.createDirectories(corruptSidecar.resolve("jadx")).resolve("code-data.json");
+        Files.writeString(corruptFile, "{\"format\":1,\"renames\":[{\"nodeRef\":{\"refType\":\"METHOD\",\"declClass\":\"fixture.Child\",\"shortId\":\"sink(Ljava/lang/String;)V\"},\"codeRef\":{\"attachType\":\"BOGUS\",\"index\":0},\"newName\":\"bad\"}],\"comments\":[]}");
+        JadxEngine corruptOpen = new JadxEngine("corrupt-check", "fixture", dexPath, new java.io.File(dexPath), corruptSidecar.toFile());
+        corruptOpen.openAsync(); waitReady(corruptOpen);
+        check("error".equals(corruptOpen.info().get("state")) && !Files.exists(corruptFile),
+                "corrupt codeRef in code-data.json parks sidecar and fails open instead of silently mutating method");
+        corruptOpen.close();
     }
 
     private static void waitReady(JadxEngine engine) throws Exception {

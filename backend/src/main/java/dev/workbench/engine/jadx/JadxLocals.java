@@ -201,18 +201,52 @@ final class JadxLocals {
             return out;
         }
         List<LocalInfo> vars = localInfos(method);
-        if (vars.stream().anyMatch(v -> v != selected && newName.equals(v.name()))) {
-            throw OpException.syntax("local rename refused: '" + newName + "' is already used in this method", "symbol=" + methodSymbol);
+        List<Map<String, Object>> localConflicts = new ArrayList<>();
+        for (LocalInfo v : vars) {
+            if (v == selected || !newName.equals(v.name())) continue;
+            String otherStable = localStableId(method, v);
+            String otherOrig = originalLocalNames.computeIfAbsent(otherStable, ignored -> v.name());
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("kind", "local");
+            row.put("originalSymbol", otherStable);
+            row.put("originalMethod", origMethodAddr);
+            row.put("addr", addr);
+            row.put("currentName", v.name());
+            row.put("originalName", otherOrig);
+            row.put("line", v.line());
+            row.put("match", "same_method_identifier");
+            localConflicts.add(row);
         }
         String stable = localStableId(method, selected);
+        if (!localConflicts.isEmpty()) {
+            throw JadxHierarchy.renameRefused(selected.name(), newName, stable, addr, localConflicts);
+        }
         String origName = originalLocalNames.computeIfAbsent(stable, ignored -> selected.name());
         JadxNodeRef ref = JadxSession.nodeRefFor(method);
-        if (newName.equals(origName) && selected.parameterIndex() == null) {
-            session.upsertRename(ref, selected.codeRef(), null);
-        } else {
-            session.upsertRename(ref, selected.codeRef(), newName);
+        List<ICodeRename> previousRenames = new ArrayList<>(session.codeData().getRenames());
+        ClassNode top = method.getTopParentClass();
+        try {
+            if (newName.equals(origName) && selected.parameterIndex() == null) {
+                session.upsertRename(ref, selected.codeRef(), null);
+            } else {
+                session.upsertRename(ref, selected.codeRef(), newName);
+            }
+            JadxSession.evictClass(top);
+            boolean updated = localInfos(method).stream()
+                    .anyMatch(v -> v.node().getReg() == selected.node().getReg()
+                            && v.node().getSsa() == selected.node().getSsa()
+                            && newName.equals(v.name()));
+            if (!updated) {
+                throw OpException.busy("JADX did not apply local rename '" + selected.name() + "' → '" + newName + "'",
+                        "symbol=" + addr + " local=" + local);
+            }
+        } catch (OpException | RuntimeException failure) {
+            session.codeData().setRenames(previousRenames);
+            try { session.reloadCodeData(); } catch (RuntimeException ignored) {}
+            JadxSession.evictClass(top);
+            throw failure;
         }
-        onClassMutated.accept(method.getTopParentClass());
+        onClassMutated.accept(top);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("symbol", Map.of("addr", addr, "kind", "method", "name", method.getAlias()));
         out.put("addr", addr);
@@ -242,7 +276,7 @@ final class JadxLocals {
         for (String old : candidates) {
             LocalInfo v;
             try { v = selectedLocal(method, old); } catch (OpException missing) { continue; }
-            if (!all && !v.name().matches("(?:v|r|var|tmp)\\d+(?:_\\d+)?")) continue;
+            if (!all && !v.name().matches("(v|arg|p|var|local)\\d+(_\\d+)?")) continue;
             String base = TypeNames.nameForType(v.type());
             if (base == null) {
                 skipped.add(Map.of("local", old, "why", v.type() == null ? "no type" : "primitive " + v.type()));
@@ -422,6 +456,9 @@ final class JadxLocals {
     Map<String, Object> renameParameters(String methodSymbol, List<Map<String, Object>> changes, String actor,
                                          Consumer<ClassNode> onClassMutated) throws OpException {
         MethodNode method = methodNode(methodSymbol);
+        if (method.isNoCode() || method.getCodeReader() == null) {
+            throw OpException.unsupported("JADX cannot persist parameter renames for a method without code", "symbol=" + methodSymbol);
+        }
         ensureOriginalLocalNames(method);
         int count = method.getArgTypes().size();
         List<String> current = parameterNames(method);
@@ -482,7 +519,8 @@ final class JadxLocals {
         }
 
         JadxNodeRef ref = JadxSession.nodeRefFor(method);
-        List<ICodeRename> updated = new ArrayList<>(session.codeData().getRenames());
+        List<ICodeRename> previousRenames = new ArrayList<>(session.codeData().getRenames());
+        List<ICodeRename> updated = new ArrayList<>(previousRenames);
         Set<Integer> touched = new TreeSet<>();
         touched.addAll(names.keySet());
         touched.addAll(clears);
@@ -504,9 +542,26 @@ final class JadxLocals {
             else row.put("newName", names.get(index));
             applied.add(row);
         }
-        session.codeData().setRenames(updated);
-        session.reloadCodeData();
-        onClassMutated.accept(method.getTopParentClass());
+        ClassNode top = method.getTopParentClass();
+        try {
+            session.codeData().setRenames(updated);
+            session.reloadCodeData();
+            JadxSession.evictClass(top);
+            List<String> after = parameterNames(method);
+            for (Map.Entry<Integer, String> change : names.entrySet()) {
+                int idx = change.getKey();
+                if (idx >= after.size() || !change.getValue().equals(after.get(idx))) {
+                    throw OpException.busy("JADX did not apply parameter rename at index " + idx + " to '" + change.getValue() + "'",
+                            "symbol=" + methodSymbol);
+                }
+            }
+        } catch (OpException | RuntimeException failure) {
+            session.codeData().setRenames(previousRenames);
+            try { session.reloadCodeData(); } catch (RuntimeException ignored) {}
+            JadxSession.evictClass(top);
+            throw failure;
+        }
+        onClassMutated.accept(top);
         String addr = session.symbols().byAddress.get(localOriginalMethod(method)).currentAddr();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("addr", addr);

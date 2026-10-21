@@ -2,6 +2,7 @@ package dev.workbench.engine.jadx;
 
 import dev.workbench.registry.Json;
 import dev.workbench.registry.OpException;
+import dev.workbench.registry.SidecarIO;
 import java.io.*;
 import java.nio.file.Files;
 import java.security.MessageDigest;
@@ -30,11 +31,13 @@ final class JadxSession implements AutoCloseable {
     private volatile int classCount;
     private volatile boolean closing;
 
+    private static final int CODE_DATA_FORMAT = 1;
+
     static {
         try {
-            org.slf4j.Logger root = org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-            if (root instanceof ch.qos.logback.classic.Logger logbackRoot) {
-                logbackRoot.setLevel(ch.qos.logback.classic.Level.OFF);
+            org.slf4j.Logger jadxLogger = org.slf4j.LoggerFactory.getLogger("jadx");
+            if (jadxLogger instanceof ch.qos.logback.classic.Logger logbackLogger) {
+                logbackLogger.setLevel(ch.qos.logback.classic.Level.OFF);
             }
         } catch (Throwable ignored) {}
     }
@@ -84,7 +87,7 @@ final class JadxSession implements AutoCloseable {
                 JadxArgs args = new JadxArgs();
                 args.setInputFiles(List.of(artifact));
                 args.setThreadsCount(Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors())));
-                args.setRenameFlags(Set.of());
+                args.setRenameFlags(EnumSet.noneOf(JadxArgs.RenameEnum.class));
                 args.setCodeData(codeData);
                 args.setCodeCache(new InMemoryCodeCache());
                 args.setCodeWriterProvider(AnnotatedCodeWriter::new);
@@ -123,36 +126,77 @@ final class JadxSession implements AutoCloseable {
     }
 
     static void loadCodeDataFromDisk(File file, JadxCodeData target) throws IOException {
-        String raw = Files.readString(file.toPath());
+        String raw;
+        try {
+            raw = Files.readString(file.toPath());
+        } catch (IOException error) {
+            SidecarIO.readFailedOrPark(file, "jadx-code-data", error);
+            throw error;
+        }
         if (raw == null || raw.isBlank()) return;
-        Map<String, Object> root = Json.parseObject(raw);
-        List<ICodeRename> renames = new ArrayList<>();
-        if (root.get("renames") instanceof List<?> rl) {
-            for (Object item : rl) {
-                if (!(item instanceof Map<?, ?> rm)) continue;
-                JadxNodeRef nodeRef = parseNodeRef(rm.get("nodeRef"));
-                if (nodeRef == null || rm.get("newName") == null) continue;
-                JadxCodeRef codeRef = parseCodeRef(rm.get("codeRef"));
-                renames.add(new JadxCodeRename(nodeRef, codeRef, String.valueOf(rm.get("newName"))));
+        try {
+            Map<String, Object> root = Json.parseObject(raw);
+            Object format = root.get("format");
+            if (format != null && (!(format instanceof Number n) || n.intValue() != CODE_DATA_FORMAT)) {
+                throw new IllegalArgumentException("unsupported jadx code-data format: " + format);
             }
-        }
-        List<ICodeComment> comments = new ArrayList<>();
-        if (root.get("comments") instanceof List<?> cl) {
-            for (Object item : cl) {
-                if (!(item instanceof Map<?, ?> cm)) continue;
-                JadxNodeRef nodeRef = parseNodeRef(cm.get("nodeRef"));
-                if (nodeRef == null || cm.get("comment") == null) continue;
-                JadxCodeRef codeRef = parseCodeRef(cm.get("codeRef"));
-                CommentStyle style = CommentStyle.LINE;
-                if (cm.get("style") != null) {
-                    try { style = CommentStyle.valueOf(String.valueOf(cm.get("style"))); }
-                    catch (IllegalArgumentException ignored) {}
+            List<ICodeRename> renames = new ArrayList<>();
+            if (root.containsKey("renames")) {
+                if (!(root.get("renames") instanceof List<?> rl)) {
+                    throw new IllegalArgumentException("renames must be a JSON array");
                 }
-                comments.add(new JadxCodeComment(nodeRef, codeRef, String.valueOf(cm.get("comment")), style));
+                for (Object item : rl) {
+                    if (!(item instanceof Map<?, ?> rm)) {
+                        throw new IllegalArgumentException("rename entry must be an object");
+                    }
+                    JadxNodeRef nodeRef = parseNodeRef(rm.get("nodeRef"));
+                    if (nodeRef == null || rm.get("newName") == null || String.valueOf(rm.get("newName")).isBlank()) {
+                        throw new IllegalArgumentException("rename entry missing nodeRef or newName");
+                    }
+                    JadxCodeRef codeRef = null;
+                    if (rm.containsKey("codeRef") && rm.get("codeRef") != null) {
+                        codeRef = parseCodeRef(rm.get("codeRef"));
+                        if (codeRef == null) {
+                            throw new IllegalArgumentException("invalid codeRef in rename entry");
+                        }
+                    }
+                    renames.add(new JadxCodeRename(nodeRef, codeRef, String.valueOf(rm.get("newName"))));
+                }
             }
+            List<ICodeComment> comments = new ArrayList<>();
+            if (root.containsKey("comments")) {
+                if (!(root.get("comments") instanceof List<?> cl)) {
+                    throw new IllegalArgumentException("comments must be a JSON array");
+                }
+                for (Object item : cl) {
+                    if (!(item instanceof Map<?, ?> cm)) {
+                        throw new IllegalArgumentException("comment entry must be an object");
+                    }
+                    JadxNodeRef nodeRef = parseNodeRef(cm.get("nodeRef"));
+                    if (nodeRef == null || cm.get("comment") == null) {
+                        throw new IllegalArgumentException("comment entry missing nodeRef or comment");
+                    }
+                    JadxCodeRef codeRef = null;
+                    if (cm.containsKey("codeRef") && cm.get("codeRef") != null) {
+                        codeRef = parseCodeRef(cm.get("codeRef"));
+                        if (codeRef == null) {
+                            throw new IllegalArgumentException("invalid codeRef in comment entry");
+                        }
+                    }
+                    CommentStyle style = CommentStyle.LINE;
+                    if (cm.get("style") != null) {
+                        style = CommentStyle.valueOf(String.valueOf(cm.get("style")));
+                    }
+                    comments.add(new JadxCodeComment(nodeRef, codeRef, String.valueOf(cm.get("comment")), style));
+                }
+            }
+            target.setRenames(renames);
+            target.setComments(comments);
+        } catch (RuntimeException error) {
+            SidecarIO.loadFailures.incrementAndGet();
+            SidecarIO.parkCorrupt(file, "jadx-code-data", error);
+            throw new IOException("corrupt jadx code-data sidecar (parked aside): " + file, error);
         }
-        target.setRenames(renames);
-        target.setComments(comments);
     }
 
     private static JadxNodeRef parseNodeRef(Object obj) {
@@ -160,8 +204,10 @@ final class JadxSession implements AutoCloseable {
         try {
             IJavaNodeRef.RefType type = IJavaNodeRef.RefType.valueOf(String.valueOf(m.get("refType")));
             String decl = String.valueOf(m.get("declClass"));
+            if (decl.isBlank()) return null;
             String shortId = m.get("shortId") == null ? null : String.valueOf(m.get("shortId"));
-            return new JadxNodeRef(type, decl, shortId);
+            if (type != IJavaNodeRef.RefType.CLASS && (shortId == null || shortId.isBlank())) return null;
+            return new JadxNodeRef(type, decl, type == IJavaNodeRef.RefType.CLASS ? null : shortId);
         } catch (IllegalArgumentException e) { return null; }
     }
 
@@ -174,16 +220,22 @@ final class JadxSession implements AutoCloseable {
     }
 
     synchronized String serializeCodeData() {
-        List<Object> renames = new ArrayList<>();
-        for (ICodeRename r : codeData.getRenames()) {
+        List<ICodeRename> sortedRenames = new ArrayList<>(codeData.getRenames());
+        sortedRenames.sort(Comparator.naturalOrder());
+        List<Object> renames = new ArrayList<>(sortedRenames.size());
+        for (ICodeRename r : sortedRenames) {
+            if (r == null || r.getNodeRef() == null || r.getNewName() == null || r.getNewName().isBlank()) continue;
             Map<String, Object> rm = new LinkedHashMap<>();
             rm.put("nodeRef", serializeNodeRef(r.getNodeRef()));
             if (r.getCodeRef() != null) rm.put("codeRef", serializeCodeRef(r.getCodeRef()));
             rm.put("newName", r.getNewName());
             renames.add(rm);
         }
-        List<Object> comments = new ArrayList<>();
-        for (ICodeComment c : codeData.getComments()) {
+        List<ICodeComment> sortedComments = new ArrayList<>(codeData.getComments());
+        sortedComments.sort(Comparator.naturalOrder());
+        List<Object> comments = new ArrayList<>(sortedComments.size());
+        for (ICodeComment c : sortedComments) {
+            if (c == null || c.getNodeRef() == null || c.getComment() == null || c.getComment().isEmpty()) continue;
             Map<String, Object> cm = new LinkedHashMap<>();
             cm.put("nodeRef", serializeNodeRef(c.getNodeRef()));
             if (c.getCodeRef() != null) cm.put("codeRef", serializeCodeRef(c.getCodeRef()));
@@ -192,6 +244,7 @@ final class JadxSession implements AutoCloseable {
             comments.add(cm);
         }
         Map<String, Object> root = new LinkedHashMap<>();
+        root.put("format", CODE_DATA_FORMAT);
         root.put("renames", renames);
         root.put("comments", comments);
         return Json.write(root);

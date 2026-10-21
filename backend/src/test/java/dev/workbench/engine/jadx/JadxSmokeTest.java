@@ -69,6 +69,22 @@ public final class JadxSmokeTest {
             require("ready".equals(engine.info().get("state")), "workspace APK ready: " + engine.info());
             require(target.equals(workspace.openTarget(apk.toString(), "jadx").get("id")), "workspace duplicate open reuses target");
             require(!engine.symbolSearch("hello").isEmpty(), "workspace engine dispatch");
+            String site = "Lhello/HelloWorld;->main([Ljava/lang/String;)V+2h";
+            Map<String, Object> commentRes = engine.comment(site, "site history note", "human");
+            Map<String, Object> h = new LinkedHashMap<>();
+            h.put("op", "comment");
+            h.put("actor", "human");
+            h.put("addr", commentRes.get("addr"));
+            h.put("newAddr", commentRes.get("addr"));
+            h.put("oldText", commentRes.get("oldText"));
+            h.put("newText", "site history note");
+            h.put("owner", "Lhello/HelloWorld;");
+            workspace.recordHistory(target, h);
+            require(site.equals(h.get("originalSymbol")), "Workspace.recordHistory preserves instruction +offset in originalSymbol");
+            workspace.historyUndo(target, String.valueOf(h.get("id")));
+            require("".equals(engine.hover(site, 0).get("comment")), "Workspace.historyUndo clears instruction-site comment");
+            workspace.historyRedo(target, String.valueOf(h.get("id")));
+            require("site history note".equals(engine.hover(site, 0).get("comment")), "Workspace.historyRedo restores instruction-site comment");
         } finally { workspace.closeTarget(target, false); }
         require(!workspace.openTargetIds().contains(target), "workspace detaches closed target");
     }

@@ -10,7 +10,9 @@ import jadx.core.dex.nodes.*;
 final class JadxSymbols {
     static final Pattern INSN_SITE_PATTERN = Pattern.compile("^(.*->[^+]+)\\+(0x[0-9A-Fa-f]+|[0-9A-Fa-f]+h?)$");
 
-    record SiteRef(String baseSymbol, String suffix, int offset) {}
+    record SiteRef(String baseSymbol, String suffix, int offset) {
+        String canonicalSuffix() { return "+" + Integer.toHexString(offset) + "h"; }
+    }
 
     static SiteRef splitSite(String raw) throws OpException {
         if (raw == null) return null;
@@ -338,9 +340,20 @@ final class JadxSymbols {
     }
 
     Map<String, Object> resolve(String query) throws OpException {
+        SiteRef site = splitSite(query);
         ResolvedLookup rl = lookupWithMode(query);
         Symbol s = rl.symbol();
+        if (site != null && !"method".equals(s.kind())) {
+            throw OpException.syntax("instruction offset requires a METHOD symbol: " + query, "symbol=" + query);
+        }
         Map<String, Object> row = s.row();
+        if (site != null) {
+            String suffix = site.canonicalSuffix();
+            row.put("addr", s.currentAddr() + suffix);
+            row.put("origSig", s.addr() + suffix);
+            row.put("sig", s.currentAddr() + suffix);
+            row.put("site", true);
+        }
         row.put("exact", rl.exact());
         if (rl.by() != null) row.put("by", rl.by());
         if (!rl.exact()) {

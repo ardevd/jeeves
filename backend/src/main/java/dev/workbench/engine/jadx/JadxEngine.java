@@ -205,17 +205,23 @@ public final class JadxEngine implements Engine, SearchIndex.Host {
             try {
                 r = session.symbols().resolve(symbol);
             } catch (OpException missing) {
+                JadxSymbols.SiteRef site = JadxSymbols.splitSite(symbol);
                 String clean = JadxSymbols.stripSiteOffset(symbol);
                 if (!"E_NOTFOUND".equals(missing.code) || clean.isEmpty() || !relations().references(clean)) {
                     throw missing;
                 }
                 int arrow = clean.indexOf("->");
                 String kind = arrow < 0 ? "class" : clean.indexOf('(', arrow) >= 0 ? "method" : "field";
+                if (site != null && !"method".equals(kind)) {
+                    throw OpException.syntax("instruction offset requires a METHOD symbol: " + symbol, "symbol=" + symbol);
+                }
+                String resolvedAddr = site == null ? clean : clean + site.canonicalSuffix();
                 r = new LinkedHashMap<>();
-                r.put("addr", clean);
-                r.put("origSig", clean);
-                r.put("sig", clean);
+                r.put("addr", resolvedAddr);
+                r.put("origSig", resolvedAddr);
+                r.put("sig", resolvedAddr);
                 r.put("kind", kind);
+                if (site != null) r.put("site", true);
                 r.put("external", true);
                 r.put("exact", true);
                 r.put("name", arrow < 0 ? clean : clean.substring(arrow + 2).split("[(:]", 2)[0]);
@@ -241,7 +247,12 @@ public final class JadxEngine implements Engine, SearchIndex.Host {
         synchronized (session) {
             JadxSymbols.Symbol resolved = session.symbols().lookup(symbol);
             String comment = session.getComment(JadxSession.nodeRefFor(resolved.node()), null);
-            return JadxSource.render(session.symbols(), resolved, opts, comment);
+            Map<String, Object> out = JadxSource.render(session.symbols(), resolved, opts, comment);
+            if ("method".equals(out.get("scope"))) {
+                try { out.put("methodParameters", locals.methodParameters(resolved.addr(), false)); }
+                catch (Throwable t) { out.put("methodParameters", Map.of("status", "unsupported", "why", String.valueOf(t))); }
+            }
+            return out;
         }
     }
 
@@ -323,7 +334,7 @@ public final class JadxEngine implements Engine, SearchIndex.Host {
     }
 
     @Override public List<Object> xrefsTo(String symbol) throws OpException {
-        synchronized (session) { return relations().to(String.valueOf(resolve(symbol).get("origSig"))); }
+        synchronized (session) { return relations().to(JadxSymbols.stripSiteOffset(String.valueOf(resolve(symbol).get("origSig")))); }
     }
 
     @Override public List<Object> xrefsFrom(String symbol) throws OpException {
@@ -335,7 +346,7 @@ public final class JadxEngine implements Engine, SearchIndex.Host {
     }
 
     @Override public List<Object> callers(String symbol) throws OpException {
-        synchronized (session) { return relations().callers(String.valueOf(resolve(symbol).get("origSig"))); }
+        synchronized (session) { return relations().callers(JadxSymbols.stripSiteOffset(String.valueOf(resolve(symbol).get("origSig")))); }
     }
 
     @Override public List<Object> implementations(String symbol) throws OpException {
@@ -623,20 +634,45 @@ public final class JadxEngine implements Engine, SearchIndex.Host {
         Set<ClassNode> affectedTops = JadxHierarchy.affectedTopClasses(symbols, relations(), changedSymbols);
         Map<ClassNode, String> oldTopAddrs = new LinkedHashMap<>();
         for (ClassNode top : affectedTops) oldTopAddrs.put(top, JadxSymbols.currentAddress(top));
-
+        List<jadx.api.data.ICodeRename> previousRenames = new ArrayList<>(session.codeData().getRenames());
+        Map<JadxSymbols.Symbol, String> previousAliases = new LinkedHashMap<>();
         for (JadxSymbols.Symbol cs : changedSymbols) {
-            JadxNodeRef ref = JadxSession.nodeRefFor(cs.node());
-            if (newName == null || newName.equals(cs.originalName())) {
-                session.setRenameEntry(ref, null, null);
-                JadxSession.clearNodeAlias(cs.node());
-            } else {
-                session.setRenameEntry(ref, null, newName);
-                JadxSession.setNodeAlias(cs.node(), newName);
-            }
+            previousAliases.put(cs, cs.isRenamed() ? cs.name() : null);
         }
-        session.reloadCodeData();
+
+        try {
+            for (JadxSymbols.Symbol cs : changedSymbols) {
+                JadxNodeRef ref = JadxSession.nodeRefFor(cs.node());
+                if (newName == null || newName.equals(cs.originalName())) {
+                    session.setRenameEntry(ref, null, null);
+                    JadxSession.clearNodeAlias(cs.node());
+                } else {
+                    session.setRenameEntry(ref, null, newName);
+                    JadxSession.setNodeAlias(cs.node(), newName);
+                }
+            }
+            session.reloadCodeData();
+            for (var entry : oldTopAddrs.entrySet()) {
+                JadxSession.evictClass(entry.getKey());
+            }
+            for (JadxSymbols.Symbol cs : changedSymbols) {
+                String expected = newName == null ? cs.originalName() : newName;
+                if (!expected.equals(cs.name())) {
+                    throw OpException.busy("JADX did not apply rename for " + cs.addr() + " to '" + expected + "'", "symbol=" + cs.addr());
+                }
+            }
+        } catch (OpException | RuntimeException failure) {
+            session.codeData().setRenames(previousRenames);
+            for (var entry : previousAliases.entrySet()) {
+                Object node = entry.getKey().node();
+                if (entry.getValue() == null) JadxSession.clearNodeAlias(node);
+                else JadxSession.setNodeAlias(node, entry.getValue());
+            }
+            try { session.reloadCodeData(); } catch (RuntimeException ignored) {}
+            for (ClassNode top : oldTopAddrs.keySet()) JadxSession.evictClass(top);
+            throw failure;
+        }
         for (var entry : oldTopAddrs.entrySet()) {
-            JadxSession.evictClass(entry.getKey());
             index.invalidate(entry.getValue(), JadxSymbols.currentAddress(entry.getKey()));
         }
         markDirty();
@@ -856,12 +892,22 @@ public final class JadxEngine implements Engine, SearchIndex.Host {
             String old = session.getComment(nodeRef, codeRef);
             boolean changed = !Objects.equals(old, value);
             if (changed) {
-                session.upsertComment(nodeRef, codeRef, value);
-                invalidateTopClass(resolved.owner());
+                List<jadx.api.data.ICodeComment> previousComments = new ArrayList<>(session.codeData().getComments());
+                try {
+                    session.upsertComment(nodeRef, codeRef, value);
+                    invalidateTopClass(resolved.owner());
+                } catch (RuntimeException failure) {
+                    session.codeData().setComments(previousComments);
+                    try { session.reloadCodeData(); } catch (RuntimeException ignored) {}
+                    JadxSession.evictClass(resolved.owner());
+                    throw failure;
+                }
             }
+            String canonicalAddr = site == null ? resolved.currentAddr() : resolved.currentAddr() + site.canonicalSuffix();
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("symbol", Map.of("addr", resolved.currentAddr(), "kind", resolved.kind(), "name", resolved.name()));
-            out.put("addr", site == null ? resolved.currentAddr() : resolved.currentAddr() + "+" + site.suffix());
+            out.put("addr", canonicalAddr);
+            out.put("origSig", site == null ? resolved.addr() : resolved.addr() + site.canonicalSuffix());
             if (site != null) out.put("site", true);
             out.put("text", value);
             out.put("oldText", old);
