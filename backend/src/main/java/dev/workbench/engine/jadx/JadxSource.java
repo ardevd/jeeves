@@ -146,7 +146,13 @@ final class JadxSource {
                 JadxSymbols.Symbol s = symbols.byAddress.get(origSig);
                 addr = s != null ? s.currentAddr() : origSig;
             } else if (ann instanceof VarNode v) {
-                kind = "local"; type = symbols.currentTypeSig(v.getType());
+                kind = "local";
+                /* JADX can attach a partially inferred ArgType to a variable in otherwise valid
+                   generated source (notably after failed type merging in large/obfuscated apps).
+                   TypeGen.signature then dereferences a null PrimitiveType. Token metadata is
+                   optional, so do not fail the whole class decompile for one unusable local type. */
+                try { type = symbols.currentTypeSig(v.getType()); }
+                catch (RuntimeException malformedType) { type = null; }
             } else continue;
             int finish = pos;
             while (finish < end && Character.isJavaIdentifierPart(text.charAt(finish))) finish++;
