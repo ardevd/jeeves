@@ -4,7 +4,7 @@
 // edge delete behind the projmenu's two-step confirm — P0.2), cross-target
 // jumps, ＋NODE/＋EDGE/EXPORT dialogs, the canvas's own empty state (P0.1).
 import { $all, S, pushEscape, popEscape, ESC, errMsg, escHtml as esc, isHexColor } from '../ui/hub.js';
-import { tryOp } from '../api.js';
+import { tryOp, onEvent } from '../api.js';
 import { updateCenter, jumpToCode, showCenter, mapSurfaceOn, renderMapChip, notice, activeTargetName } from '../ui/chrome.js';
 import { loadSymbol, highlight } from './code.js';
 import type { MapData, MapEdge, MapNode, MapSymbol, TypeKey, TypeRegistry } from '../types.js';
@@ -201,6 +201,9 @@ async function loadMap(id: string | null | undefined){
     renderMapChip(id);
     return;
   }
+  const sameMap = mapId === id;
+  const prevSel = sameMap ? S.mapSel : null;
+  const wasEmpty = !NODES.length;
   mapId = id;
   S.mapId = id;                       // breadcrumb follows the open map (QA m9)
   MAP = g.data;
@@ -212,8 +215,9 @@ async function loadMap(id: string | null | undefined){
   layout(MAP);
   NODES = MAP.nodes || [];
   EDGES = MAP.edges || [];
-  S.mapSel = null;                          // D9: a different map — drop the old selection/rail
-  blankMapRel();
+  const keepSel = prevSel && NODES.some(n => n.id === prevSel) ? prevSel : null;
+  S.mapSel = keepSel;                       // D9: a different map — drop the old selection/rail; same map — preserve live selection
+  if (!keepSel) blankMapRel();
   ['mapm-addnode', 'mapm-addedge', 'mapm-export'].forEach(function(b){
     const el = document.getElementById(b) as HTMLButtonElement | null;
     if (el) el.disabled = false;
@@ -221,6 +225,14 @@ async function loadMap(id: string | null | undefined){
   renderAll();
   renderOverview();
   renderMapChip(MAP.id);          // the chip follows the ACTIVE map, from state
+  if (keepSel){
+    selectNode(keepSel);
+    updateCenter();
+  } else if (prevSel){
+    updateCenter();
+  }
+  /* when an empty map receives its first nodes while visible, fit the viewport once */
+  if (sameMap && wasEmpty && NODES.length && mapSurfaceOn() && fitMap()) fittedFor = mapId;
 }
 
 function renderAll(){
@@ -1534,6 +1546,34 @@ export function initMap(): void {
     if (!armed || !mapSurfaceOn()) return false;
     disarmConfirm();
   }, ESC.view);
+
+  /* Live SSE updates: when an agent (or another client) mutates the open map,
+     its types, or the active map selection, reload the map canvas in place. */
+  let mapReloadTimer = 0;
+  function scheduleMapReload(targetId: string | null){
+    if (mapReloadTimer) window.clearTimeout(mapReloadTimer);
+    mapReloadTimer = window.setTimeout(function(){
+      mapReloadTimer = 0;
+      void loadMap(targetId);
+    }, 80);
+  }
+  onEvent(function(channel, data){
+    if (channel === 'hello'){
+      if (mapId) scheduleMapReload(mapId);
+      return;
+    }
+    if (channel !== 'map' || !data || typeof data !== 'object') return;
+    const ev = data as { action?: string; id?: string };
+    if (ev.action === 'open' && ev.id){
+      scheduleMapReload(ev.id);
+    } else if (ev.action === 'close' || (ev.action === 'delete' && (!ev.id || ev.id === mapId))){
+      scheduleMapReload(null);
+    } else if (ev.action === 'types' && mapId){
+      scheduleMapReload(mapId);
+    } else if (ev.action === 'update' && ev.id && ev.id === mapId){
+      scheduleMapReload(mapId);
+    }
+  });
 
   loadMap(null);
 }

@@ -3556,7 +3556,22 @@ public final class Workspace {
     /** Tags/bookmarks/flows store (VIEWS_SPEC §4). */
     public Annotations annotations() { return annotations; }
 
+    private EventBus bus;
     private RunsManager runs;
+
+    /** Event bus wiring (MCP_SPEC §5) — set by the server at boot. */
+    public void setBus(EventBus b) { this.bus = b; }
+
+    public EventBus bus() { return bus; }
+
+    /** Publish a live map event for the active project when the store is published. */
+    public void publishMapEvent(MapStore source, Map<String, Object> ev) {
+        if (bus == null || source != maps) return;
+        Map<String, Object> out = new LinkedHashMap<>(ev);
+        String proj = activeProjectName();
+        if (proj != null) out.put("project", proj);
+        bus.publish("map", out);
+    }
 
     /** Runs wiring (VIEWS_SPEC §2) — set by the server at boot. */
     public void setRuns(RunsManager r) { this.runs = r; }
@@ -4219,6 +4234,8 @@ public final class Workspace {
         /* OUTSIDE the monitor: session.json is pure filesystem and every op
            queues behind this lock (same discipline as the state() read) */
         if (pname != null) persistSession(pname, id);
+        if (pname != null && bus != null)
+            bus.publish("map", new LinkedHashMap<>(Map.of("action", "open", "id", id, "project", pname)));
         return state();
     }
 
@@ -4242,6 +4259,13 @@ public final class Workspace {
         /* persist the CLOSE too, off-monitor — otherwise the next boot restores
            the map the user just closed (map-lifecycle §2) */
         if (pname != null) persistSession(pname, null);
+        if (pname != null && bus != null) {
+            Map<String, Object> ev = new LinkedHashMap<>();
+            ev.put("action", "close");
+            if (id != null && !id.isBlank()) ev.put("id", id);
+            ev.put("project", pname);
+            bus.publish("map", ev);
+        }
         return state();
     }
 
@@ -4268,6 +4292,13 @@ public final class Workspace {
             }
         }
         if (pname != null) persistSession(pname, null);      // off-monitor, as ever
+        if (bus != null) {
+            Map<String, Object> ev = new LinkedHashMap<>();
+            ev.put("action", "delete");
+            ev.put("id", id);
+            if (pname != null) ev.put("project", pname);
+            bus.publish("map", ev);
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", id);
         out.put("parked", parked);

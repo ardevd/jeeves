@@ -49,6 +49,7 @@ public final class WorkbenchServer {
     public WorkbenchServer(Path webRoot) {
         this.workspace = new Workspace();
         this.bus = new EventBus();
+        this.workspace.setBus(this.bus);
         this.workspace.setRuns(new RunsManager(workspace, bus, runsDir().toFile()));
         /* maps are PER-PROJECT (GRAPHS_SPEC §3: project sidecar) — the workspace
            owns store creation/swap on project switch, incl. the one-time

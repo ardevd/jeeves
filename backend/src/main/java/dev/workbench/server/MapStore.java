@@ -154,6 +154,7 @@ public final class MapStore {
             typesDegraded = false;
         }
         dev.workbench.registry.SidecarIO.writeAtomic(typesFile, Json.write(types), "maptypes");
+        ws.publishMapEvent(this, Map.of("action", "types"));
     }
 
     public synchronized Map<String, Object> typeList() {
@@ -287,6 +288,7 @@ public final class MapStore {
             degradedMapFiles.remove(f.getName());
         }
         dev.workbench.registry.SidecarIO.writeAtomic(f, Json.write(map), "map");
+        ws.publishMapEvent(this, Map.of("action", "update", "id", String.valueOf(map.get("id"))));
     }
 
     private Map<String, Object> require(String id) throws OpException {

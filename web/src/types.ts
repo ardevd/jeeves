@@ -1194,7 +1194,7 @@ export type OpResult<K extends string> = K extends OpName ? OpMap[K] : unknown;
 ================================================================== */
 /** `closed` is the server's last word on a stream it ends ({reason});
  *  `connection` is synthetic, from api.ts: {state: open | retrying | reconnecting, inMs?} */
-export type SseChannel = 'hello' | 'heartbeat' | 'progress' | 'presence' | 'activity' | 'proposals' | 'runs' | 'closed' | 'connection' | 'message' | string;
+export type SseChannel = 'hello' | 'heartbeat' | 'progress' | 'presence' | 'activity' | 'proposals' | 'runs' | 'map' | 'closed' | 'connection' | 'message' | string;
 /** event payloads are heterogeneous per channel and read defensively — a
  *  loose record by design (JSON.parse's output, or the raw string when it
  *  was not JSON) */

@@ -103,7 +103,7 @@ function ensureEvents(): void {
     try { data = JSON.parse(m.data) as SseData; } catch { data = m.data as string; }
     fanout(type, data);
   };
-  ['hello', 'heartbeat', 'progress', 'presence', 'activity', 'proposals', 'runs', 'closed']
+  ['hello', 'heartbeat', 'progress', 'presence', 'activity', 'proposals', 'runs', 'map', 'closed']
     .forEach(ch => s.addEventListener(ch, m => dispatch(ch, m)));
   s.onmessage = (m) => dispatch(m.type || 'message', m);
   s.onopen = () => { backoffMs = 2000; fanout('connection', { state: 'open' }); };
