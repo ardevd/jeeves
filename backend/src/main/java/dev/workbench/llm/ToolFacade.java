@@ -326,24 +326,27 @@ public final class ToolFacade {
                 "Edit attack-surface maps. action create {title, build?}; delete {id, confirm:true}; add_node {id, fields};"
                         + " update_node {id, node, fields}; remove_node {id, node}; add_edge / remove_edge {id, from, to, kind?, label?,"
                         + " gate?, confidence?}; set_chain {id, node, steps[]}; attach_evidence {id, node, field?, run?, note?};"
-                        + " type_list; type_add / type_set {kind, name, color?, visible?}.",
-                "{\"action\": \"add_edge\", \"id\": \"fcm-attack-surface\", \"from\": \"frontdoor\", \"to\": \"exec\", \"kind\": \"calls\"}",
+                        + " type_list; type_add / type_set {kind, name, color?, visible?}."
+                        + " Node fields: {id, kind, label, layer, sublabel?, symbol?, target?, tags?, proven?}. Always set layer (0, 1, 2,"
+                        + " 3 …) so the canvas arranges nodes into left-to-right columns (0 = entry/source, 1 = frontdoor, 2 = dispatcher/"
+                        + "allowlist, 3+ = handlers/sinks); omitting layer stacks every node in column 0.",
+                "{\"action\": \"add_node\", \"id\": \"fcm-attack-surface\", \"fields\": {\"id\": \"frontdoor\", \"kind\": \"frontdoor\", \"label\": \"FCM front door\", \"layer\": 1, \"symbol\": \"Lm76/ak;->a()V\"}}",
                 props("action", pick("create | delete | add_node | update_node | remove_node | add_edge | remove_edge | set_chain | attach_evidence | type_list | type_add | type_set",
                                 "create", "delete", "add_node", "update_node", "remove_node", "add_edge", "remove_edge", "set_chain",
                                 "attach_evidence", "type_list", "type_add", "type_set"),
                         "id", str("map id", "\"fcm-attack-surface\""),
                         "title", str("map title (create)", "\"FCM attack surface\""),
-                        "build", bool("build the map from the target's components after creating it (create; optional)", "true"),
+                        "build", str("build identifier for diffing (create; optional)", "\"gms-26.25.32\""),
                         "confirm", bool("required true to delete", "true"),
                         "node", str("node id", "\"frontdoor\""),
-                        "fields", obj("node fields to set (add_node: the whole node incl. id, kind, label; update_node: the patch)", "{\"id\": \"frontdoor\", \"kind\": \"receiver\", \"label\": \"FCM front door\"}"),
+                        "fields", obj("node fields to set (add_node: the whole node incl. id, kind, label, layer; update_node: the patch). layer (0, 1, 2, 3 …) sets the left-to-right column (0 = entry/source, 1 = frontdoor, 2 = dispatcher/allowlist, 3+ = handlers/sinks); also sublabel, symbol (addr string or {addr, entry}), target, tags[], proven", "{\"id\": \"frontdoor\", \"kind\": \"frontdoor\", \"label\": \"FCM front door\", \"sublabel\": \"demux by intent extras\", \"layer\": 1, \"symbol\": \"Lm76/ak;->a()V\", \"tags\": [\"push\"]}"),
                         "from", str("edge source node", "\"frontdoor\""),
                         "to", str("edge target node", "\"exec\""),
-                        "kind", str("edge kind (edges) or type kind (types)", "\"calls\""),
+                        "kind", str("edge kind (default: transport|dispatch|call|dataflow|gate) or type section (nodeKinds|edgeKinds|verdicts|tags)", "\"call\""),
                         "label", str("edge label (optional)", "\"onMessage → dispatch\""),
-                        "gate", str("edge gate (optional)", "\"signature check\""),
-                        "confidence", num("edge confidence 0–1 (optional)", "0.7"),
-                        "steps", arr("chain steps (set_chain)", "[{\"symbol\": \"Lm76/ak;->a()V\", \"note\": \"parses the payload\"}]", obj("one step", "{\"symbol\": \"…\"}")),
+                        "gate", str("edge gate id (optional)", "\"allowlist\""),
+                        "confidence", str("edge confidence: static | dyn | low (optional)", "\"static\""),
+                        "steps", arr("chain steps (set_chain)", "[{\"label\": \"parse\", \"symbol\": \"Lm76/ak;->a()V\"}]", obj("one step", "{\"label\": \"…\", \"symbol\": \"…\"}")),
                         "field", str("node field (attach_evidence; optional)", "\"payload\""),
                         "run", str("run id as evidence (attach_evidence; optional)", "\"ex28\""),
                         "note", str("free-text evidence (attach_evidence; optional)", "\"hit 12 times in run ex28\""),

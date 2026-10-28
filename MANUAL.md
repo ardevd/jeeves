@@ -760,8 +760,8 @@ MAPS. Nodes anchor to real symbols; double-click jumps to code (across
 targets). Types (node kinds, edge kinds, verdicts, tags) are configured
 per project in the TYPES menu — nothing is hardcoded. Build maps by hand
 (＋NODE/＋EDGE — the kind field offers the registry's kinds), from a symbol's right-click in the code, the tree or
-the RELATION ⚡ menu (Add to map… — the node carries the symbol and the viewed target), from flows (PROMOTE), or by agents (`map.*` ops;
-verdicts arrive as proposals). `map.export` renders md/json posters.
+the RELATION ⚡ menu (Add to map… — the node carries the symbol and the viewed target), from flows (PROMOTE), or by agents (`map.*` ops / MCP `map_edit`;
+verdicts arrive as proposals via `map_verdict`). Nodes use `layer` (`0, 1, 2, 3 …`) to place cards into left-to-right columns on the canvas (`0` = entry/source, `1` = frontdoor, `2` = dispatcher/allowlist, `3+` = handlers/sinks; omitting `layer` defaults to column `0`). `map.export` renders md/json posters.
 
 ## 10. Persistence
 

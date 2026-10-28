@@ -187,7 +187,7 @@ Designed so an agent can orient in 1–3 calls before touching anything:
 | Op | Purpose |
 |---|---|
 | `map.create <title>` | New map in the project. Idempotent on the slugged id — a title that slugs to an existing map returns that map's summary with `existing: true` (a fresh one carries `existing: false`), so no caller can mistake an adoption for a creation |
-| `map.addnode` / `map.updatenode` / `map.rmnode` | Node CRUD (symbol refs validated via `symbol.resolve`) |
+| `map.addnode` / `map.updatenode` / `map.rmnode` | Node CRUD (`fields: {id, kind, label, layer, sublabel?, symbol?, target?, tags?, proven?}`; `layer` `0, 1, 2, 3 …` sets the left-to-right column and defaults to `0`; symbol refs validated via `symbol.resolve`) |
 | `map.addedge` / `map.rmedge` | Edge CRUD (typed; gate/confidence attributes) |
 | `map.setverdict` | Node/field verdict + rationale. Agent-issued verdicts land as **pending proposals** (human accepts/rejects in the RELATION pane or via `agent.review`) |
 | `map.setchain` | Replace a node's trace chain |
