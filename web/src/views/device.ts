@@ -978,8 +978,23 @@ async function selectEntry(i: number){
     b.textContent = 'ATTACH';
     b.setAttribute('data-tip', 'frida attach (Runs view)');
     b.addEventListener('click', async function(){
-      const r = await tryOpT('runs.attach', { device: SERIAL, pkg: e.name });   // the VIEWED target's session (fix-review r4 #5)
-      b.textContent = r.error ? 'failed: ' + r.error.message : 'ATTACHED pid ' + r.data.pid;
+      b.disabled = true;
+      b.textContent = 'ATTACHING…';
+      const r = await tryOpT('runs.attach', {
+        device: SERIAL,
+        pkg: e.name,
+        serverPath: '/data/local/tmp/frida-server',
+        ownershipConfirmed: true,
+      });   // the VIEWED target's session (fix-review r4 #5)
+      b.disabled = false;
+      if (r.error){
+        b.textContent = 'ATTACH FAILED';
+        b.setAttribute('data-tip', r.error.message);
+        notice('Attach failed: ' + r.error.message, { err: true });
+      } else {
+        b.textContent = 'ATTACHED pid ' + r.data.pid;
+        notice('Attached ' + e.name + ' (pid ' + r.data.pid + ')');
+      }
     });
     pl.appendChild(b);
   }

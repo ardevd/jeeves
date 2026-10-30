@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 spec = importlib.util.spec_from_file_location('lifecycle', Path(__file__).with_name('lifecycle.py'))
+assert spec is not None and spec.loader is not None
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
@@ -143,9 +144,12 @@ class LifecycleTests(unittest.TestCase):
 
     def test_start_identity_executable_and_boot_reuse_are_refused(self):
         row=self.start(); phone=self.phones['fixture-A']
+        assert phone.process is not None
         original=copy.deepcopy(phone.process)
-        for key,value in (('pid',222),('start_ticks','456'),('executable','/foreign/tool')):
-            phone.process=copy.deepcopy(original); phone.process[key]=value
+        for key, value in (('pid', 222), ('start_ticks', '456'), ('executable', '/foreign/tool')):
+            mutated = copy.deepcopy(original)
+            mutated[key] = value
+            phone.process = mutated
             with self.subTest(key=key),self.assertRaises(RuntimeError): self.owner.verify(row)
             self.assertEqual(self.owner.cleanup(row)['cleanup'],'unknown')
             row['state']='ready'
@@ -191,12 +195,12 @@ class TransportTests(unittest.TestCase):
         answers={'cat /proc/123/stat; readlink /proc/123/exe':'123 (name with spaces) '+' '.join(fields)+'\n/fixture/frida-server',
                  'cat /proc/sys/kernel/random/boot_id':'boot-fixture',
                  'cat /proc/net/tcp /proc/net/tcp6':'0: 0100007F:6A2F 00000000:0000 0A 0 0 0 0 0 900\n',
-                 'for f in /proc/123/fd/*; do readlink "$f"; done':'socket:[900]\n/dev/null'}
+                 'for f in /proc/123/fd/*; do readlink "$f" 2>/dev/null || true; done':'socket:[900]\n/dev/null'}
         phone.shell=lambda command:answers[command]
         identity=phone.identity(123)
         self.assertEqual(identity['start_ticks'],'12345')
         self.assertTrue(phone.owns_listener(identity,27183))
-        answers['for f in /proc/123/fd/*; do readlink "$f"; done']='socket:[901]'
+        answers['for f in /proc/123/fd/*; do readlink "$f" 2>/dev/null || true; done']='socket:[901]'
         self.assertFalse(phone.owns_listener(identity,27183))
     def test_foreground_and_freeze_are_observed_without_writes(self):
         phone=module.Phone('unused','fixture-A');phone.root='';calls=[]
@@ -204,10 +208,13 @@ class TransportTests(unittest.TestCase):
                  'cat /proc/123/status':'State: S (sleeping)','cat /proc/123/wchan':'ep_poll'}
         def shell(command):calls.append(command);return answers[command]
         phone.shell=shell
-        self.assertFalse(phone.foreground('fixture.app',123)['whole_session_guarantee'])
-        answers['cat /proc/123/wchan']='do_freezer_trap'
-        with self.assertRaises(RuntimeError):phone.foreground('fixture.app',123)
+        obs=phone.foreground('fixture.app',123)
+        self.assertTrue(obs['foreground'])
+        self.assertFalse(obs['whole_session_guarantee'])
         answers['dumpsys activity activities']='mResumedActivity: ActivityRecord unrelated.app/.Main'
+        bg=phone.foreground('fixture.app',123)
+        self.assertFalse(bg['foreground'])
+        answers['cat /proc/123/wchan']='do_freezer_trap'
         with self.assertRaises(RuntimeError):phone.foreground('fixture.app',123)
         self.assertTrue(all(c.startswith(('cat ','dumpsys ')) for c in calls))
     def test_foreign_forward_never_removed(self):
@@ -216,6 +223,66 @@ class TransportTests(unittest.TestCase):
         phone.command=command
         with self.assertRaises(RuntimeError):phone.remove_forward(40001,27183)
         self.assertEqual(calls,[('forward','--list')])
+    def test_foreign_servers_ignores_magisk_audit_log_args(self):
+        phone = module.Phone('unused', 'fixture-A')
+        phone.root = ''
+        ps_out = (
+            'PID NAME ARGS\n'
+            '8775 10 10 /system/bin com.android.commands.content.Content call --uri content://com.topjohnwu.magisk.provider --extra command:s:/data/local/tmp/frida-server --version\n'
+            '8776 sh sh -c /data/local/tmp/frida-server --version\n'
+        )
+        phone.shell = lambda cmd: ps_out
+        self.assertEqual(phone.foreign_servers(), [])
+        ps_with_real = ps_out + '9001 frida-server /data/local/tmp/frida-server -l 127.0.0.1:27183\n'
+        phone.shell = lambda cmd: ps_with_real
+        self.assertEqual(phone.foreign_servers(), ['9001'])
+    def test_abi_mapping_and_ensure_server(self):
+        import hashlib
+        self.assertEqual(module.abi_to_frida_arch('arm64-v8a'), 'arm64')
+        self.assertEqual(module.abi_to_frida_arch('x86_64'), 'x86_64')
+        self.assertEqual(module.abi_to_frida_arch('armeabi-v7a'), 'arm')
+        self.assertEqual(module.abi_to_frida_arch('x86'), 'x86')
+        self.assertIsNone(module.abi_to_frida_arch('mips'))
+        srv_dir = Path(__file__).resolve().parent / 'server'
+        srv_dir.mkdir(exist_ok=True)
+        fake_ver = '0.0.0-test'
+        fake_bin = srv_dir / f'frida-server-{fake_ver}-android-x86_64'
+        fake_bytes = b'fake-frida-server-x86_64-binary'
+        fake_sha = hashlib.sha256(fake_bytes).hexdigest()
+        fake_bin.write_bytes(fake_bin.read_bytes() if fake_bin.exists() else fake_bytes)
+        try:
+            phone = module.Phone('unused', 'fixture-A')
+            phone.root = ''
+            cmds = []
+            installed = {'present': False}
+            def command(*args, **kwargs):
+                cmds.append(args)
+                if args == ('shell', 'getprop', 'ro.product.cpu.abi'):
+                    return 'x86_64'
+                if args[0] == 'push':
+                    installed['present'] = True
+                    return ''
+                if args[0] == 'shell':
+                    c = args[1]
+                    if c.startswith('readlink -f '):
+                        return '/data/local/tmp/frida-server' if installed['present'] else ''
+                    if c.startswith('sha256sum '):
+                        if not installed['present']:
+                            raise RuntimeError('missing')
+                        return f'{fake_sha}  /data/local/tmp/frida-server'
+                    if c.endswith(' --version'):
+                        return fake_ver
+                    return ''
+                raise AssertionError(args)
+            phone.command = command
+            r1 = phone.ensure_server('/data/local/tmp/frida-server', fake_ver)
+            self.assertTrue(r1['pushed'])
+            self.assertEqual(r1['arch'], 'x86_64')
+            self.assertEqual(r1['sha256'], fake_sha)
+            r2 = phone.ensure_server('/data/local/tmp/frida-server', fake_ver)
+            self.assertFalse(r2['pushed'])
+        finally:
+            fake_bin.unlink(missing_ok=True)
 
 
 if __name__=='__main__': unittest.main(verbosity=2)

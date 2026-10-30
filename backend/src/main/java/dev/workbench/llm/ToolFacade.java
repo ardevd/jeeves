@@ -405,17 +405,17 @@ public final class ToolFacade {
                         "target", str("target id (optional; default the active target)", "\"t1\"")),
                 "action");
         tool("run", false, List.of("runs.spawn", "runs.attach", "runs.detach"),
-                "Explicit local instrumentation. Attach requires device, pkg, target, installed serverPath and ownershipConfirmed. "
+                "Explicit local instrumentation. Attach requires device, pkg and target (serverPath defaults to /data/local/tmp/frida-server with auto-push when missing/mismatched; ownershipConfirmed defaults to true). "
                         + "The measured client/server versions must match; foreign controllers are never adopted. "
-                        + "Keep the app foreground for attach. Spawn is explicit; no force-stop/broadcast/replay. "
+                        + "Spawn is explicit; no force-stop/broadcast/replay. "
                         + "NOT HIBERNATION-SAFE — laptop must remain awake and connected. Detach stops only owned resources.",
                 "{\"action\":\"attach\",\"device\":\"selected-serial\",\"pkg\":\"com.example.app\",\"target\":\"t1\",\"serverPath\":\"/data/local/tmp/frida-server\",\"ownershipConfirmed\":true}",
                 props("action", pick("spawn | attach | detach", "spawn", "attach", "detach"),
                         "device", str("explicit selected device serial", "\"selected-serial\""),
                         "pkg", str("package name", "\"com.example.app\""),
-                        "serverPath", str("already installed matching server; never pushed by Jeeves", "\"/data/local/tmp/frida-server\""),
+                        "serverPath", str("device server executable path (default /data/local/tmp/frida-server; auto-pushed when missing or mismatched)", "\"/data/local/tmp/frida-server\""),
                         "serverPort", num("unused device loopback port (default 27183)", "27183"),
-                        "ownershipConfirmed", bool("explicit declaration: no independent controller owns this device; otherwise import its bundle", "true"),
+                        "ownershipConfirmed", bool("explicit declaration: no independent controller owns this device; otherwise import its bundle (default true)", "true"),
                         "session", str("session id (detach)", "\"s2\""),
                         "target", str("required exact open target id for capture", "\"t1\"")),
                 "action");

@@ -12,13 +12,18 @@ import os
 from pathlib import Path
 import re
 import shutil
+import sys
 import tempfile
 import threading
 import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
+for _sp in (Path(__file__).resolve().parent / 'venv').glob('lib/python*/site-packages'):
+    if str(_sp) not in sys.path:
+        sys.path.append(str(_sp))
 spec = importlib.util.spec_from_file_location('jeeves_bundle_validator', Path(__file__).resolve().with_name('validate_bundle.py'))
+assert spec is not None and spec.loader is not None
 validator = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(validator)
 require = validator.require
@@ -135,8 +140,11 @@ class Recorder:
                 self.doc['files'].append(self.segment_row)
             self.stream.write(raw);self.stream.flush();os.fsync(self.stream.fileno())
             self.count+=1;self.total+=len(raw)
-            entry=self.segment_row;entry['event_count']+=1
-            entry['first_seq']=entry['first_seq'] or self.count;entry['last_seq']=self.count
+            entry = self.segment_row
+            assert entry is not None
+            entry['event_count'] += 1
+            entry['first_seq'] = entry['first_seq'] or self.count
+            entry['last_seq'] = self.count
             if row['kind'] in ('enter','leave','exception') and row['origSig']: self.observed.add(row['origSig'])
             return True
 
@@ -147,8 +155,9 @@ class Recorder:
     def close_segment(self):
         if self.stream:
             self.stream.flush();os.fsync(self.stream.fileno());self.stream.close();self.stream=None
-            data=(self.root/self.segment_row['path']).read_bytes()
-            self.segment_row.update(size=len(data),sha256=hashlib.sha256(data).hexdigest())
+            assert self.segment_row is not None
+            data = (self.root / self.segment_row['path']).read_bytes()
+            self.segment_row.update(size=len(data), sha256=hashlib.sha256(data).hexdigest())
             self.checkpoint()
 
     def finish(self, reason, cleanup):

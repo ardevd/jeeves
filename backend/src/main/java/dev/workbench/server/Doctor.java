@@ -176,12 +176,29 @@ public final class Doctor {
         Map<String, Object> ping;
         try { ping = ws.runs().ping(); }
         catch (Throwable t) { ping = new LinkedHashMap<>(); ping.put("error", t.getMessage()); }
-        String want = "an explicit runner Python and a matching operator-installed device server";
-        String fix = "Set WORKBENCH_RUNS_PYTHON to an absolute Python path with backend/runs/requirements-runner.txt installed; select the device and installed server in Runs";
+        String want = "frida Python sidecar and matching device frida-server";
+        String fix = "Click SETUP FRIDA in the Runs view (⌃4) or run ./backend/runs/pull-frida.sh";
+        List<String> cachedArchs = new ArrayList<>();
+        File srvDir = locate("backend/runs/server");
+        if (srvDir != null && srvDir.isDirectory()) {
+            File[] files = srvDir.listFiles();
+            if (files != null) {
+                for (File f : files) {
+                    String name = f.getName();
+                    int idx = name.indexOf("android-");
+                    if (f.isFile() && f.length() > 0 && name.startsWith("frida-server-") && idx >= 0 && !name.contains(".tmp.")) {
+                        cachedArchs.add(name.substring(idx));
+                    }
+                }
+                java.util.Collections.sort(cachedArchs);
+            }
+        }
+        String cacheNote = cachedArchs.isEmpty() ? "no cached frida-server binaries" : "cached server: " + String.join(", ", cachedArchs);
         if (ping.get("error") != null)
-            return row("frida", "missing", false, "optional recorder sidecar unavailable: " + ping.get("error"), want, fix, true);
-        return row("frida", "ok", false, "client " + ping.get("frida")
-                + " · device server version and ownership are checked only after explicit selection", want, "", true);
+            return row("frida", "missing", false, "sidecar unavailable (" + ping.get("error") + ") · " + cacheNote, want, fix, true);
+        if (cachedArchs.isEmpty())
+            return row("frida", "warn", false, "client " + ping.get("frida") + " · " + cacheNote, want, fix, true);
+        return row("frida", "ok", false, "client " + ping.get("frida") + " · " + cacheNote, want, "", true);
     }
 
     private Map<String, Object> adb() {

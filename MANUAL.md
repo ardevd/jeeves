@@ -859,7 +859,7 @@ verdicts arrive as proposals via `map_verdict`). Nodes use `layer` (`0, 1, 2, 3 
 | A target shows `warning: … loaded over this target …` and `target.save` answers "no longer the one JEB has under its key" | a database with a wrong or missing key record displaced it; that open was undone. Close and reopen the target: renames and comments replay from history, new decompilations are redone on demand |
 | JEB licensing error | re-apply the license setup in your JEB install, re-vendor |
 | frida "server down" | `adb root`; the sidecar re-provisions on attach retry |
-| Attach fails, device rows wrong | `./provision.sh --check` names the gap (adb, root capability, ABI — arm64-v8a only, frida-server running or down) |
+| Attach fails, device rows wrong | `./provision.sh --check` names the gap (adb, root capability, ABI `frida-server` binary, frida-server running or down) |
 | Device bar says "root unknown" | the 10 s poll never runs the su probe (a Magisk grant prompt must not come from a timer): REFRESH, an attach or `system.doctor` probes it |
 | A queue full of stale proposals | `agent.purge` (MCP `review {action: purge}`) settles pending rows before a date / of a mission / without a rationale / whose target is gone as "purged" — nothing is applied |
 | Search results stale | Renames/comments auto-invalidate per class in the background; REBUILD in the Search view for bulk staleness |

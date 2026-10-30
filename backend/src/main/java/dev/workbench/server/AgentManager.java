@@ -927,7 +927,7 @@ public final class AgentManager {
            agent.activity stay readable. A human driving the MCP bridge
            identifies with WORKBENCH_ACTOR=human:<name>. */
         /* deleting recorded runs is evidence disposal — humans only, like agent.* */
-        if (opName.equals("runs.attach") || opName.equals("runs.spawn"))
+        if (opName.equals("runs.attach") || opName.equals("runs.spawn") || opName.equals("runs.setup"))
             throw OpException.scope("Device controller ownership must be confirmed by the operator; agents may analyze imported runs", "actor=" + actor);
         if (opName.equals("runs.rm"))
             throw OpException.scope("runs.rm deletes recorded evidence — a human actor only", "actor=" + actor);

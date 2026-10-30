@@ -2491,4 +2491,14 @@ body.dark .oscard{box-shadow:var(--bevel),0 8px 24px rgba(0,0,0,.5)}
 #rund-body .xrow{white-space:normal;overflow-wrap:anywhere}
 #rund-body .xrow>span{white-space:normal;overflow:visible;text-overflow:clip}
 
-#runswrap .preflight .pf{white-space:normal;overflow-wrap:anywhere;overflow:visible;text-overflow:clip}
+#runswrap .preflight[hidden]{display:none}
+#runswrap .run-preflight-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:5px 10px}
+#runswrap .preflight .pf{display:inline-flex;align-items:center;gap:6px;max-width:none;white-space:normal;overflow-wrap:anywhere;overflow:visible;text-overflow:clip}
+#runswrap .run-drawer{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:5px 10px}
+#runswrap .run-drawer label{display:inline-flex;align-items:center;gap:5px;color:var(--ink)}
+#runswrap .run-drawer input[type="text"],#runswrap .run-drawer input:not([type]){
+  background:var(--paper);border:1px solid var(--line-strong);border-radius:2px;
+  color:var(--ink);font:11px var(--mono);padding:2px 6px;outline:none;
+}
+#runswrap .run-drawer input[type="checkbox"]{accent-color:var(--blue);cursor:pointer;margin:0}
+.devbar .mbtn.on{color:var(--blue);border-color:var(--blue-line);background:var(--blue-soft)}

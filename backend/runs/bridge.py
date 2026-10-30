@@ -24,9 +24,9 @@ import sys
 import threading
 import time
 
-import frida
+import frida  # type: ignore[import-not-found,import-untyped]
 
-from lifecycle import Lifecycle
+from lifecycle import DEFAULT_SERVER_PATH, Lifecycle
 
 from dalvik import parse_method_signature
 
@@ -153,14 +153,35 @@ def _owned(serial):
     return row
 
 
+def _call_with_timeout(fn, timeout=3.0):
+    err = []
+
+    def run():
+        try:
+            fn()
+        except Exception as e:
+            err.append(e)
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    t.join(timeout=timeout)
+    if t.is_alive():
+        raise TimeoutError("frida operation timed out")
+    if err:
+        raise err[0]
+
+
 def _reset_remote(serial):
     _remote_devs.pop(serial, None)
     row = _lifecycle.owned.get(serial)
     if row and row.get("forward"):
         try:
-            frida.get_device_manager().remove_remote_device("127.0.0.1:%d" % row["forward"])
-        except Exception:
-            pass
+            _call_with_timeout(
+                lambda: frida.get_device_manager().remove_remote_device(f"127.0.0.1:{row['forward']}"),
+                timeout=2.0,
+            )
+        except Exception as err:
+            log("remove_remote_device ignored:", err)
 
 
 def _frida_device(serial):
@@ -221,10 +242,66 @@ def frida_server_status(serial):
 
 # ── ops ──────────────────────────────────────────────────────────────────────────────────────────
 def op_ping(_):
-    return {"pong": True, "frida": FRIDA_VER, "serverProvisioning": "explicit-installed-path-only"}
+    return {"pong": True, "frida": FRIDA_VER, "serverProvisioning": "auto-or-explicit-path"}
+
+
+def op_push_server(params):
+    serial = params["device"]
+    server_path = params.get("serverPath") or DEFAULT_SERVER_PATH
+    phone = _lifecycle.factory(ADB, serial)
+    return phone.ensure_server(server_path, FRIDA_VER)
+
+
+def _cleanup_pending_receipts(serial):
+    if not _lifecycle.directory.exists():
+        return None
+    last = None
+    for path in sorted(_lifecycle.directory.glob("*.json")):
+        try:
+            saved = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        if saved.get("device") == serial and saved.get("cleanup") != "complete":
+            try:
+                last = _lifecycle.cleanup(saved)
+            except Exception as err:
+                log("pending receipt cleanup failed:", path, err)
+    return last
+
+
+def _reap_dead_sessions(serial=None, check_proc=False):
+    for sid, s in list(_sessions.items()):
+        if serial is not None and s.get("device") != serial:
+            continue
+        reason = None
+        sess_obj = s.get("session")
+        if sess_obj is not None and getattr(sess_obj, "is_detached", False):
+            reason = "session-detached"
+        elif check_proc and s.get("processIdentity") and s.get("pid"):
+            try:
+                phone = _lifecycle.factory(ADB, s["device"])
+                row = _lifecycle.owned.get(s["device"])
+                obs_root = (row or {}).get("observations", {}).get("root")
+                if obs_root is not None:
+                    phone.root = "" if obs_root == "adbd-already-root" else obs_root
+                else:
+                    phone.discover()
+                if phone.identity(s["pid"]) != s["processIdentity"]:
+                    reason = "process-replaced"
+            except Exception:
+                reason = "process-terminated"
+        if reason is not None and _sessions.pop(sid, None) is not None:
+            try:
+                if sess_obj is not None and not getattr(sess_obj, "is_detached", False):
+                    _call_with_timeout(sess_obj.detach, timeout=2.0)
+            except Exception as err:
+                log("reap detach ignored:", err)
+            emit("session", session=sid, device=s["device"], package=s["package"],
+                 state="dead", reason=reason, completion="partial", cleanup="unknown")
 
 
 def op_enumerate_devices(_):
+    _reap_dead_sessions(check_proc=False)
     devices = []
     for serial in adb_serials():
         try:
@@ -249,6 +326,8 @@ def op_list_apps(params):
 
 def op_provision(params):
     serial = params["device"]
+    if serial not in _lifecycle.owned:
+        _cleanup_pending_receipts(serial)
     try:
         row = _lifecycle.provision(serial, params.get("serverPath"), params.get("ownershipConfirmed"),
                                    params.get("serverPort", SERVER_PORT))
@@ -278,7 +357,10 @@ def op_cleanup(params):
             detached.append(op_detach({"session": sid}))
     _reset_remote(serial)
     row = _lifecycle.owned.get(serial)
-    result = _lifecycle.cleanup(row) if row else _lifecycle.last_cleanup.get(serial,{"cleanup": "not-applicable"})
+    if row is not None:
+        result = _lifecycle.cleanup(row)
+    else:
+        result = _cleanup_pending_receipts(serial) or _lifecycle.last_cleanup.get(serial, {"cleanup": "not-applicable"})
     if any(item.get("cleanup") != "complete" for item in detached):
         result = dict(result)
         result["cleanup"] = "unknown"
@@ -345,6 +427,7 @@ def op_attach(params):
     hooks = params.get("hooks", [])         # [{hookId, signature}]
     if params.get("coldBroadcast"):
         raise RuntimeError("Automatic force-stop/broadcast was retired; perform the actions explicitly and mark them")
+    _reap_dead_sessions(serial, check_proc=True)
     if any(s["device"] == serial for s in _sessions.values()):
         raise RuntimeError("This device already has an owned controller session; stop it before attaching again")
     row = _owned(serial)
@@ -436,12 +519,12 @@ def op_attach(params):
             # was never registered) and fail the op loudly.
             try:
                 script.unload()
-            except Exception:
-                pass
+            except Exception as unload_err:
+                log("unload after failed resume ignored:", unload_err)
             try:
                 session.detach()
-            except Exception:
-                pass
+            except Exception as detach_err:
+                log("detach after failed resume ignored:", detach_err)
             raise RuntimeError("resume(pid=%d) failed — app left suspended; attach aborted: %s" % (pid, e))
 
     _sessions[session_id] = sess
@@ -490,19 +573,26 @@ def op_detach(params):
     if not s:
         return {"detached": False}
     failures = []
-    for resource in (s.get("native_script"), s.get("script"), s.get("session")):
-        if resource is None:
-            continue
-        try:
-            resource.detach() if resource is s.get("session") else resource.unload()
-        except Exception as error:
-            failures.append(type(error).__name__)
+    sess_obj = s.get("session")
+    already_detached = sess_obj is not None and getattr(sess_obj, "is_detached", False)
+    if not already_detached:
+        for resource in (s.get("native_script"), s.get("script"), sess_obj):
+            if resource is None:
+                continue
+            try:
+                _call_with_timeout(
+                    resource.detach if resource is sess_obj else resource.unload,
+                    timeout=3.0,
+                )
+            except Exception as error:
+                failures.append(type(error).__name__)
     cleanup = "unknown" if failures else "complete"
     emit("session", session=sid, device=s["device"], package=s["package"], state="dead", cleanup=cleanup)
     return {"detached": not failures, "cleanup": cleanup, "errors": failures}
 
 
 def op_sessions(_):
+    _reap_dead_sessions(check_proc=False)
     return {"sessions": [{"session": sid, "device": s["device"], "package": s["package"],
                           "pid": s["pid"], "hooks": list(s["hooks"].keys())}
                          for sid, s in _sessions.items()]}
@@ -526,6 +616,7 @@ OPS = {
     "enumerate_devices": op_enumerate_devices,
     "list_apps": op_list_apps,
     "appversion": op_appversion,
+    "push_server": op_push_server,
     "provision": op_provision,
     "cleanup": op_cleanup,
     "attach": op_attach,
@@ -544,7 +635,7 @@ def handle(msg):
         respond(req_id, False, error="unknown op: %s" % op)
         return
     try:
-        if op in ("provision", "attach", "detach", "cleanup"):
+        if op in ("push_server", "provision", "attach", "detach", "cleanup"):
             with _lifecycle_lock:
                 result = fn(msg) or {}
         else:

@@ -384,31 +384,156 @@ public final class RunsManager implements FridaBridge.HitListener {
     public Map<String, Object> devices() throws OpException { return devices(true); }
 
     public Map<String, Object> devices(boolean probe) throws OpException {
+        Map<String, Object> r;
         try {
-            Map<String, Object> r = bridge.devices();
-            // Preserve the sidecar's measured version and verified ownership. A process
-            // basename or client version cannot establish that a foreign server is ours.
-            // live session state per serial, for the device bar
-            for (Map.Entry<String, Session> e : sessionCtx.entrySet()) {
-                Session ctx = e.getValue();
-                Object ds = r.get("devices");
-                if (ds instanceof List<?> l)
-                    for (Object o : l)
-                        if (o instanceof Map<?, ?> m && ctx.device().equals(m.get("serial"))) {
-                            @SuppressWarnings("unchecked")
-                            Map<String, Object> d = (Map<String, Object>) m;
-                            d.put("session", e.getKey());
-                            d.put("package", ctx.pkg());
-                            d.put("target", ctx.tid());
-                            d.put("project", ctx.project());
-                            d.put("live", true);
+            r = new LinkedHashMap<>(bridge.devices());
+            r.put("sidecarAvailable", true);
+            Object ds = r.get("devices");
+            if (ds instanceof List<?> l) {
+                for (Object o : l) {
+                    if (o instanceof Map<?, ?> m && m.get("serial") != null) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> d = (Map<String, Object>) m;
+                        String serial = String.valueOf(d.get("serial"));
+                        if (d.get("root") == null) {
+                            try {
+                                d.put("root", ws.devices().rootOf(serial, probe));
+                            } catch (Exception ignored) {
+                                d.put("root", Boolean.TRUE.equals(d.get("adbdRoot")) ? "adbd-root" : "none");
+                            }
                         }
+                    }
+                }
             }
-            return r;
         } catch (RuntimeException e) {
-            throw OpException.unsupported("frida sidecar unavailable: " + e.getMessage(),
-                    "run backend/runs/pull-frida.sh");
+            r = new LinkedHashMap<>();
+            try {
+                Map<String, Object> fallback = ws.devices().list(probe);
+                r.put("devices", fallback.getOrDefault("devices", List.of()));
+            } catch (Exception ignored) {
+                r.put("devices", List.of());
+            }
+            r.put("sidecarAvailable", false);
+            r.put("sidecarError", e.getMessage());
         }
+        if (!sessionCtx.isEmpty()) reconcileSessions(null);
+        // live session state per serial, for the device bar
+        for (Map.Entry<String, Session> e : sessionCtx.entrySet()) {
+            Session ctx = e.getValue();
+            Object ds = r.get("devices");
+            if (ds instanceof List<?> l)
+                for (Object o : l)
+                    if (o instanceof Map<?, ?> m && ctx.device().equals(m.get("serial"))) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> d = (Map<String, Object>) m;
+                        d.put("session", e.getKey());
+                        d.put("package", ctx.pkg());
+                        d.put("target", ctx.tid());
+                        d.put("project", ctx.project());
+                        d.put("live", true);
+                    }
+        }
+        return r;
+    }
+
+    private static String abiToFridaArch(String abi) {
+        if (abi == null) return null;
+        return switch (abi.trim()) {
+            case "arm64-v8a", "arm64", "android-arm64" -> "arm64";
+            case "x86_64", "android-x86_64" -> "x86_64";
+            case "armeabi-v7a", "armeabi", "arm", "android-arm" -> "arm";
+            case "x86", "android-x86" -> "x86";
+            default -> null;
+        };
+    }
+
+    /**
+     * runs.setup: build backend/runs/venv, download matching frida-server binary into
+     * backend/runs/server/, verify sidecar ping, and optionally push /data/local/tmp/frida-server
+     * to the selected or connected Android device.
+     */
+    public Map<String, Object> setup(String deviceParam, boolean pushServer) throws OpException {
+        File script = FridaBridge.locate("runs/pull-frida.sh");
+        if (script == null || !script.isFile())
+            throw OpException.notFound("pull-frida.sh not found", "expected backend/runs/pull-frida.sh");
+        String serial = (deviceParam != null && !deviceParam.isBlank()) ? deviceParam.trim() : null;
+        if (serial == null) {
+            try {
+                for (Map<String, Object> d : ws.devices().listFast()) {
+                    if ("device".equals(d.get("state")) && d.get("serial") != null) {
+                        serial = String.valueOf(d.get("serial"));
+                        break;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        String arch = null;
+        if (serial != null) {
+            try {
+                Map<String, Object> cap = ws.devices().rootCapability(serial);
+                arch = abiToFridaArch(String.valueOf(cap.getOrDefault("abi", "")));
+            } catch (Exception ignored) {}
+        }
+        List<String> cmd = new ArrayList<>();
+        cmd.add("bash");
+        cmd.add(script.getAbsolutePath());
+        if (arch != null) cmd.add(arch);
+        java.nio.file.Path tmp = null;
+        try {
+            tmp = java.nio.file.Files.createTempFile("wb-frida-setup-", ".out");
+            Process p = new ProcessBuilder(cmd).redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.to(tmp.toFile())).start();
+            p.getOutputStream().close();
+            if (!p.waitFor(180, java.util.concurrent.TimeUnit.SECONDS)) {
+                p.destroyForcibly();
+                throw OpException.busy("pull-frida.sh timed out after 180s", "");
+            }
+            String out = java.nio.file.Files.readString(tmp).trim();
+            if (p.exitValue() != 0)
+                throw OpException.unsupported("pull-frida.sh failed (exit " + p.exitValue() + "): " + out, "");
+        } catch (OpException e) {
+            throw e;
+        } catch (Exception e) {
+            throw OpException.unsupported("Failed to run pull-frida.sh: " + e.getMessage(), "");
+        } finally {
+            if (tmp != null) try { java.nio.file.Files.deleteIfExists(tmp); } catch (Exception ignored) {}
+        }
+        Map<String, Object> ping;
+        try {
+            ping = bridge.ping();
+        } catch (RuntimeException e) {
+            throw OpException.unsupported("Frida sidecar ping failed after setup: " + e.getMessage(), "");
+        }
+        String ver = String.valueOf(ping.getOrDefault("frida", "17.18.0"));
+        String effectiveArch = arch != null ? arch : "arm64";
+        File srvDir = new File(script.getParentFile(), "server");
+        File serverBin = new File(srvDir, "frida-server-" + ver + "-android-" + effectiveArch);
+        if (!serverBin.isFile()) {
+            File[] files = srvDir.listFiles((dir, name) -> name.startsWith("frida-server-" + ver + "-android-") && !name.contains(".tmp."));
+            if (files != null && files.length > 0) serverBin = files[0];
+        }
+        String deviceServerPath = "/data/local/tmp/frida-server";
+        Boolean pushed = null;
+        if (pushServer && serial != null) {
+            try {
+                Map<String, Object> pushRes = bridge.pushServer(serial, deviceServerPath);
+                if (pushRes.get("serverBin") != null) serverBin = new File(String.valueOf(pushRes.get("serverBin")));
+                if (pushRes.get("arch") != null) effectiveArch = String.valueOf(pushRes.get("arch"));
+                pushed = Boolean.TRUE.equals(pushRes.get("pushed"));
+            } catch (RuntimeException e) {
+                throw OpException.unsupported("Host venv is ready, but pushing frida-server to " + serial + " failed: " + e.getMessage(), "");
+            }
+        }
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("ok", true);
+        res.put("frida", ver);
+        res.put("venvReady", true);
+        res.put("arch", effectiveArch);
+        res.put("serverBin", serverBin.getAbsolutePath());
+        res.put("deviceServerPath", deviceServerPath);
+        if (serial != null) res.put("device", serial);
+        if (pushed != null) res.put("pushed", pushed);
+        return res;
     }
 
     /**
@@ -432,6 +557,28 @@ public final class RunsManager implements FridaBridge.HitListener {
 
     private final java.util.concurrent.ConcurrentHashMap<String,Object> deviceLocks=new java.util.concurrent.ConcurrentHashMap<>();
 
+    private void reconcileSessions(String deviceFilter) {
+        if (sessionCtx.isEmpty()) return;
+        java.util.Set<String> active = new java.util.HashSet<>();
+        try {
+            Map<String, Object> res = bridge.sessions();
+            if (res.get("sessions") instanceof List<?> l) {
+                for (Object o : l) {
+                    if (o instanceof Map<?, ?> m && m.get("session") != null)
+                        active.add(String.valueOf(m.get("session")));
+                }
+            }
+        } catch (RuntimeException e) {
+            return;
+        }
+        for (Map.Entry<String, Session> e : new ArrayList<>(sessionCtx.entrySet())) {
+            if (deviceFilter != null && !deviceFilter.equals(e.getValue().device())) continue;
+            if (!active.contains(e.getKey())) {
+                onSessionDead(Map.of("session", e.getKey(), "reason", "process-terminated"));
+            }
+        }
+    }
+
     private Map<String, Object> attachOwned(String device, String pkg, String targetParam,
             boolean spawn, String coldAction, String coldComponent, String serverPath,
             boolean ownershipConfirmed, int serverPort) throws OpException {
@@ -448,6 +595,7 @@ public final class RunsManager implements FridaBridge.HitListener {
         store.rebindTarget(tid, ws.targetStoreKey(tid));   // rows from an earlier boot install too (r3 H1)
         List<Map<String, Object>> hooks = store.hooksFor(tid);
         String project=ws.projectNameOfTarget(tid);
+        reconcileSessions(device);
         boolean alreadyOwned=sessionCtx.values().stream().anyMatch(s -> device.equals(s.device()));
         if (alreadyOwned) throw OpException.busy("Device already has an owned session", "stop it explicitly before a new capture");
         boolean acquired=false;

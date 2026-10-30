@@ -732,12 +732,18 @@ public final class Ops {
                 req -> ws.runs().exportBundle(req.str("target"), req.require("run"), req.require("destination"))));
         r.register(new Op("runs.devices", "", false, Cost.scan,
                 req -> ws.runs().devices(req.bool("probe", true))));
+        r.register(new Op("runs.setup", "", true, Cost.heavy,
+                req -> ws.runs().setup(req.str("device"), req.bool("pushServer", true))));
         r.register(new Op("runs.attach", "", true, Cost.heavy, req ->
                 ws.runs().attach(req.require("device"), req.require("pkg"), req.str("target"),
-                        false, req.str("coldAction"), req.str("coldComponent"), req.require("serverPath"), req.bool("ownershipConfirmed", false), req.num("serverPort", 27183))));
+                        false, req.str("coldAction"), req.str("coldComponent"),
+                        req.str("serverPath", "/data/local/tmp/frida-server"),
+                        req.bool("ownershipConfirmed", true), req.num("serverPort", 27183))));
         r.register(new Op("runs.spawn", "", true, Cost.heavy, req ->
                 ws.runs().attach(req.require("device"), req.require("pkg"), req.str("target"),
-                        true, req.str("coldAction"), req.str("coldComponent"), req.require("serverPath"), req.bool("ownershipConfirmed", false), req.num("serverPort", 27183))));
+                        true, req.str("coldAction"), req.str("coldComponent"),
+                        req.str("serverPath", "/data/local/tmp/frida-server"),
+                        req.bool("ownershipConfirmed", true), req.num("serverPort", 27183))));
         r.register(new Op("runs.rm", "", true, Cost.cheap, req ->
                 ws.runs().removeRuns(req.str("target"), req.require("run"))));   // <run> or "all" (ended runs); human-only
         r.register(new Op("runs.detach", "", true, Cost.cheap,

@@ -30,7 +30,7 @@ public final class MessageLabIT {
             String catalogue = Json.write(call("ops.tools", Map.of()));
             if (catalogue.contains("message_lab") || catalogue.contains("runs.lab.")) throw new AssertionError("retired tool advertised");
             checks++;
-            Map<?, ?> unsafe = call("runs.attach", Map.of("device","fixture-no-phone","pkg","fixture.synthetic","target","t1"));
+            Map<?, ?> unsafe = call("runs.attach", Map.of("device","fixture-no-phone","pkg","fixture.synthetic","target","t1","ownershipConfirmed",false));
             if (!Boolean.FALSE.equals(unsafe.get("ok"))) throw new AssertionError("implicit provision accepted");
             checks++;
             for (String action : List.of("runs.attach","runs.spawn")) {

@@ -205,14 +205,73 @@ check_engine() {
   fi
 }
 
-FRIDA_VER="$(sed -n 's/^VER="\(.*\)"/\1/p' backend/runs/pull-frida.sh 2>/dev/null | head -1)"
+FRIDA_VER="$(sed -n 's/^VER="\([^"]*\)".*/\1/p' backend/runs/pull-frida.sh 2>/dev/null | head -1)"
+abi_to_frida_arch() {
+  case "$1" in
+    arm64-v8a|arm64)         printf 'arm64' ;;
+    x86_64)                  printf 'x86_64' ;;
+    armeabi-v7a|armeabi|arm) printf 'arm' ;;
+    x86)                     printf 'x86' ;;
+    *)                       printf '' ;;
+  esac
+}
+resolve_adb() {
+  [ -n "$ADB" ] && return 0
+  local c
+  for c in "${WORKBENCH_ADB:-}" "$HOME_DIR/Library/Android/sdk/platform-tools/adb" "$HOME_DIR/Android/Sdk/platform-tools/adb" \
+           "${ANDROID_HOME:-}/platform-tools/adb" "${ANDROID_SDK_ROOT:-}/platform-tools/adb" "$(command -v adb 2>/dev/null || true)"; do
+    [ -n "$c" ] && [ -x "$c" ] && { ADB="$c"; return 0; }
+  done
+  return 1
+}
 check_frida() {
-  local bin="backend/runs/server/frida-server-${FRIDA_VER}-android-arm64"
   local pyok; pyok="$(status_of python3)"
-  if [ -f "$bin" ]; then row frida-server ok yes "$(basename "$bin")" "frida-server $FRIDA_VER (android-arm64)" "" yes
+  resolve_adb || true
+  local need_archs=()
+  if [ -n "$ADB" ]; then
+    local ser abi mapped existing
+    while IFS= read -r ser; do
+      [ -n "$ser" ] || continue
+      abi="$(run_to 8 "$ADB" -s "$ser" shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r\n ' || true)"
+      mapped="$(abi_to_frida_arch "$abi")"
+      if [ -n "$mapped" ]; then
+        local seen=0
+        for existing in "${need_archs[@]+"${need_archs[@]}"}"; do
+          [ "$existing" = "$mapped" ] && seen=1
+        done
+        [ "$seen" = 0 ] && need_archs+=("$mapped")
+      fi
+    done < <(run_to 10 "$ADB" devices 2>/dev/null | awk 'NR>1 && $2=="device" {print $1}')
+  fi
+  local found_bins=() missing_archs=() need_tags=() f a
+  for a in arm64 x86_64 arm x86; do
+    f="backend/runs/server/frida-server-${FRIDA_VER}-android-${a}"
+    [ -s "$f" ] && found_bins+=("$(basename "$f")")
+  done
+  for a in "${need_archs[@]+"${need_archs[@]}"}"; do
+    need_tags+=("android-${a}")
+    f="backend/runs/server/frida-server-${FRIDA_VER}-android-${a}"
+    [ -s "$f" ] || missing_archs+=("android-${a}")
+  done
+  local want_desc="frida-server $FRIDA_VER"
+  if [ "${#need_tags[@]}" -gt 0 ]; then
+    local tags_str; tags_str="$(printf '%s, ' "${need_tags[@]}")"
+    want_desc="frida-server $FRIDA_VER (${tags_str%, })"
+  fi
+  local found_str="" missing_str=""
+  [ "${#found_bins[@]}" -gt 0 ] && { found_str="$(printf '%s, ' "${found_bins[@]}")"; found_str="${found_str%, }"; }
+  [ "${#missing_archs[@]}" -gt 0 ] && { missing_str="$(printf '%s, ' "${missing_archs[@]}")"; missing_str="${missing_str%, }"; }
+  if [ "${#found_bins[@]}" -gt 0 ] && [ "${#missing_archs[@]}" -eq 0 ]; then
+    row frida-server ok yes "$found_str" "$want_desc" "" yes
   else
     local need_xz=""; have xz || need_xz=" — needs xz: $( [ "$OS" = Darwin ] && echo 'brew install xz' || echo "$PKG xz-utils" )"
-    row frida-server missing yes "not vendored$need_xz" "frida-server $FRIDA_VER (android-arm64)" "backend/runs/pull-frida.sh" "$( [ "$pyok" = ok ] && [ -z "$need_xz" ] && echo yes || echo no )"
+    local msg="not vendored"
+    if [ "${#found_bins[@]}" -gt 0 ] && [ "${#missing_archs[@]}" -gt 0 ]; then
+      msg="have ${found_str}; missing ${missing_str}"
+    elif [ "${#missing_archs[@]}" -gt 0 ]; then
+      msg="missing ${missing_str}"
+    fi
+    row frida-server missing yes "${msg}${need_xz}" "$want_desc" "backend/runs/pull-frida.sh" "$( [ "$pyok" = ok ] && [ -z "$need_xz" ] && echo yes || echo no )"
   fi
   if [ -x backend/runs/venv/bin/python ]; then
     local v; v="$(backend/runs/venv/bin/python -c 'import frida; print(frida.__version__)' 2>/dev/null)"
@@ -225,11 +284,7 @@ check_frida() {
 
 ADB=""
 check_adb() {
-  local c
-  for c in "${WORKBENCH_ADB:-}" "$HOME_DIR/Library/Android/sdk/platform-tools/adb" "$HOME_DIR/Android/Sdk/platform-tools/adb" \
-           "${ANDROID_HOME:-}/platform-tools/adb" "${ANDROID_SDK_ROOT:-}/platform-tools/adb" "$(command -v adb 2>/dev/null || true)"; do
-    [ -n "$c" ] && [ -x "$c" ] && { ADB="$c"; break; }
-  done
+  resolve_adb || true
   local fix
   case "$OS" in
     Darwin) fix="brew install --cask android-platform-tools" ;;
@@ -281,8 +336,16 @@ check_devices() {
     local fs; fs="$(run_to 8 "$ADB" -s "$serial" shell ps -A -o NAME 2>/dev/null | tr -d '\r' | grep -c '^frida-server' || true)"
     local props; props="$(run_to 8 "$ADB" -s "$serial" shell 'getprop ro.product.model; getprop ro.product.cpu.abi' 2>/dev/null | tr -d '\r')"
     local model abi; model="$(printf '%s\n' "$props" | sed -n '1p')"; abi="$(printf '%s\n' "$props" | sed -n '2p')"
-    local abinote=""; if [ -n "$abi" ] && [ "$abi" != arm64-v8a ]; then abinote=" ABI=$abi (the vendored frida-server is android-arm64 only)"; fi
-    summary="$summary$serial ($model): root=$root selinux=${se:-?} frida-server=$( [ "${fs:-0}" -gt 0 ] && echo running || echo down )$abinote; "
+    local mapped_arch; mapped_arch="$(abi_to_frida_arch "$abi")"
+    local abinote=""
+    if [ -n "$abi" ]; then
+      if [ -z "$mapped_arch" ]; then
+        abinote=" ABI=$abi (unsupported architecture)"
+      elif [ ! -s "backend/runs/server/frida-server-${FRIDA_VER}-android-${mapped_arch}" ]; then
+        abinote=" ABI=$abi (frida-server-${FRIDA_VER}-android-${mapped_arch} not downloaded — run backend/runs/pull-frida.sh $mapped_arch)"
+      fi
+    fi
+    summary="$summary$serial ($model${abi:+, $abi}): root=$root selinux=${se:-?} frida-server=$( [ "${fs:-0}" -gt 0 ] && echo running || echo down )$abinote; "
     if [ "$root" = none ] || [ -n "$abinote" ]; then bad=$((bad+1)); else good=$((good+1)); fi
   done 3<<< "$lines"
   if [ "$good" -gt 0 ] && [ "$bad" -eq 0 ]; then row devices ok no "$summary" "root via adbd or su; SELinux permissive is set at attach" "" no
@@ -440,7 +503,7 @@ apply_fixes() {
       # the venv needs no xz: build it regardless (the same steps pull-frida.sh takes); a broken
       # one is removed only here, on the path that rebuilds it (review r2 L4, r4 L2)
       echo "[provision] frida venv (frida==$FRIDA_VER)"; rm -rf backend/runs/venv
-      python3 -m venv backend/runs/venv && backend/runs/venv/bin/pip install -q "frida==$FRIDA_VER"; did=1
+      python3 -m venv backend/runs/venv && backend/runs/venv/bin/pip install -q -r backend/runs/requirements-runner.txt; did=1
     fi
     if [ "$(status_of frida-server)" != ok ]; then
       if ! have xz; then

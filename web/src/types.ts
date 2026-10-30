@@ -785,6 +785,7 @@ export interface Device {
   serial: string;
   model?: string;
   android?: string;
+  abi?: string;
   adbdRoot?: boolean;
   root?: string;          // adbd-root | su | none — the capability probe (audit decision 14)
   package?: string;
@@ -1121,7 +1122,8 @@ export interface OpMap {
   'flow.promote': { map?: string };
   'runs.import': RunInfo;
   'runs.export': { valid: boolean; manifest_sha256: string; files: number; bytes: number; destination: string; selected_only: boolean };
-  'runs.devices': { devices?: Device[] };
+  'runs.devices': { devices?: Device[]; sidecarAvailable?: boolean; sidecarError?: string };
+  'runs.setup': { ok: boolean; frida?: string; venvReady?: boolean; arch?: string; serverBin?: string; deviceServerPath?: string; device?: string; pushed?: boolean };
   'runs.attach': { pid?: number };
   'runs.spawn': { pid?: number };
   'runs.detach': unknown;

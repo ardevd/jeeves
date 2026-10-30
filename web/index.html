@@ -325,36 +325,35 @@
 
       <!-- RUNS view (⌃4) -->
       <div id="runswrap" class="viewwrap" hidden tabindex="0">
-        <div class="preflight"><b>Import / export local evidence</b> <span id="run-import-target"></span></div>
-        <div class="preflight">
-          <label>Bundle directory <input id="run-import-path" style="width:360px" placeholder="/absolute/path/to/run-bundle" aria-label="Canonical bundle directory"></label>
-          <button class="mbtn" id="run-import" data-tip="Validate and import the manifest-listed files; executes no hooks">IMPORT BUNDLE</button>
-          <label>New directory <input id="run-export-path" style="width:240px" placeholder="/absolute/path/to/new-export" aria-label="New export directory"></label>
-          <button class="mbtn" id="run-export" disabled data-tip="Export the inspected imported bundle's manifest and listed files; no upload">EXPORT INSPECTED RUN</button>
-          <span id="run-export-reason">Inspect an imported bundle to export</span><span id="run-bundle-result" role="status"></span>
-        </div>
-        <details class="preflight"><summary>Bundle format and recording prerequisites</summary>
-          <p>Choose the directory containing a Jeeves v1 manifest.json, events/ and its listed evidence/ files. Examples in the repository: fixtures/local-run/v1 (complete) and fixtures/local-run/external-partial (partial). The recorder is backend/runs/local_run.py; external controllers use schemas/jeeves-run-bundle-v1.schema.json and backend/runs/validate_bundle.py. Import needs no connected device and executes no scripts. Export copies the manifest and every file it lists to a new local directory, with no upload.</p>
-          <p>Application qualification candidate. Capture completion describes evidence collection, not successful message delivery. Independent controllers keep ownership of their devices.</p>
-        </details>
-        <details id="run-local-controls"><summary class="preflight">Optional local recording — qualification candidate</summary>
-        <div class="preflight">
-          <label>Installed server path on device <input id="run-server-path" placeholder="/data/local/tmp/frida-server" aria-label="Installed device server path" spellcheck="false"></label>
-          <label><input id="run-owner-confirmed" type="checkbox"> I control recording on this device; no other tool is recording or attached</label>
-          <span>Before starting: NOT HIBERNATION-SAFE — laptop must remain awake and connected during setup, recording and cleanup. DETACH stops this session; inspect its cleanup result before sleep.</span>
-        </div>
         <div class="vtoolbar devbar">
-          <span class="led" id="dev-led"></span><b id="dev-name">— no device —</b><span id="dev-meta"></span><span id="dev-state" style="color:var(--org)"></span>
-          <select id="run-device" aria-label="Selected capture device"><option value="">Select a device…</option></select>
-          <input id="run-pkg" type="text" placeholder="package (e.g. com.example.app)" spellcheck="false" style="width:280px">
-          <span style="flex:1"></span>
-          <button class="mbtn" id="run-spawn" data-tip="Select a device, installed server path and ownership confirmation first" disabled>SPAWN</button>
-          <button class="mbtn" id="run-attach" data-tip="Select a device, installed server path and ownership confirmation first; bring the app to foreground" disabled>ATTACH</button>
+          <span class="led" id="dev-led"></span><b id="dev-name">— no device —</b>
+          <select id="run-device" class="dvsel" aria-label="Selected capture device" hidden><option value="">Select a device…</option></select>
+          <span id="dev-meta"></span>
+          <input id="run-pkg" type="text" placeholder="package (e.g. com.example.app)" spellcheck="false" style="width:240px">
+          <button class="mbtn" id="run-spawn" data-tip="Spawn package suspended, arm breakpoints, and resume" disabled>SPAWN</button>
+          <button class="mbtn" id="run-attach" data-tip="Attach to running package and arm breakpoints" disabled>ATTACH</button>
           <button class="mbtn" id="run-detach" data-tip="Detach every live session of this project (two-step)" disabled>DETACH</button>
+          <span id="dev-state" style="color:var(--org)"></span>
+          <span style="flex:1"></span>
+          <button class="mbtn" id="run-toggle-options" data-tip="Configure device frida-server path and controller ownership">⚙ OPTIONS</button>
+          <button class="mbtn" id="run-toggle-bundles" data-tip="Import or export offline canonical run bundles">⇄ BUNDLES</button>
         </div>
-        <!-- preflight (audit decision 13): adb · devices (root capability) · frida sidecar · engine, from system.doctor -->
-        <div class="preflight" id="run-preflight" hidden></div>
-        </details>
+        <!-- preflight: actionable setup banner (hidden when adb, devices, and frida are ok) -->
+        <div class="preflight run-preflight-bar" id="run-preflight" hidden></div>
+        <div class="preflight run-drawer" id="run-options-drawer" hidden>
+          <label>Device server path <input id="run-server-path" value="/data/local/tmp/frida-server" placeholder="/data/local/tmp/frida-server" aria-label="Installed device server path" spellcheck="false" style="width:240px"></label>
+          <label class="run-check"><input id="run-owner-confirmed" type="checkbox" checked> Exclusive controller ownership on this device</label>
+          <span class="dim">NOT HIBERNATION-SAFE — keep laptop awake while recording; DETACH cleans up the device session.</span>
+        </div>
+        <div class="preflight run-drawer" id="run-bundles-drawer" hidden>
+          <span id="run-import-target" class="dim"></span>
+          <label>Import bundle <input id="run-import-path" style="width:280px" placeholder="/absolute/path/to/run-bundle" aria-label="Canonical bundle directory"></label>
+          <button class="mbtn" id="run-import" data-tip="Validate and import the manifest-listed files; executes no hooks">IMPORT BUNDLE</button>
+          <label>Export to <input id="run-export-path" style="width:220px" placeholder="/absolute/path/to/new-export" aria-label="New export directory"></label>
+          <button class="mbtn" id="run-export" disabled data-tip="Export the inspected imported bundle's manifest and listed files; no upload">EXPORT INSPECTED RUN</button>
+          <span id="run-export-reason" class="dim">Inspect an imported bundle to export</span>
+          <span id="run-bundle-result" role="status"></span>
+        </div>
         <div class="runs-main">
           <div class="runs-bpcol">
             <div class="mini-title">BREAKPOINTS<span class="meta" id="bp-count"></span></div>

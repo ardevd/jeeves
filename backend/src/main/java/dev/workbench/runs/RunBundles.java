@@ -16,9 +16,13 @@ public final class RunBundles {
     public static Map<String,Object> copy(Path source, Path destination) throws Exception {
         File runner = FridaBridge.locate("runs/local_run.py");
         if (runner == null) throw new IllegalStateException("Local run adapter is not installed");
-        String python = System.getenv("WORKBENCH_RUNS_PYTHON");
-        if (python == null || !new File(python).isAbsolute() || !new File(python).canExecute())
-            throw new IllegalStateException("Set WORKBENCH_RUNS_PYTHON to an absolute Python 3.10+ with the pinned jsonschema dependency");
+        String configured = System.getenv("WORKBENCH_RUNS_PYTHON");
+        if (configured != null && (!new File(configured).isAbsolute() || !new File(configured).canExecute()))
+            throw new IllegalStateException("WORKBENCH_RUNS_PYTHON must be an absolute executable path");
+        File py = configured == null || configured.isBlank() ? FridaBridge.locate("runs/venv/bin/python") : new File(configured);
+        if (py == null || !py.canExecute())
+            throw new IllegalStateException("Frida sidecar venv unavailable — run backend/runs/pull-frida.sh or set WORKBENCH_RUNS_PYTHON");
+        String python = py.getAbsolutePath();
         List<String> command = new ArrayList<>(List.of(python,"-I",runner.getAbsolutePath(),"import",
             "--source",source.toAbsolutePath().toString(),"--destination",destination.toAbsolutePath().toString()));
         Path log = Files.createTempFile(destination.getParent(), ".bundle-result-", ".json");

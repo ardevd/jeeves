@@ -23,7 +23,11 @@ let inspectedRun: string | null = null; // run-card click = inspect: feed, rail 
 let detachArmed = 0;          // DETACH is two-step: first click arms and names the sessions
 let rmArmed: string | null = null; let rmTimer = 0;   // a card's ✕ (or the header's "delete ended") is two-step too
 let rmArmedProject: string | null = null;   // the arm is void after a project switch (b2-r5 L1)
-function activeProjectKey(): string | null { return (S.state as { activeProject?: string } | null)?.activeProject || null; }
+function activeProjectKey(): string | null {
+  const active = ((S.state && S.state.projects) || []).find(p => p.active);
+  if (active && active.name) return active.name;
+  return (S.state as { activeProject?: string } | null)?.activeProject || null;
+}
 /* truncate at a word boundary, never mid-token (persona LOW: "on disk: [frida-server-17.11.0-andro…")
    — cut back to the last space when one sits reasonably close to the limit, else hard-cut */
 function clip(s: string, n: number): string {
@@ -71,50 +75,71 @@ function fmtRunTs(ts: string | number | undefined){
 /* ==================================================================
    DEVICE BAR
 ================================================================== */
+let lastDevs: import('../types.js').Device[] = [];
+let sidecarUp = true;
+
 async function loadDevices(){
   const r = await tryOp('runs.devices', {});
-  if (r.data?.devices?.some(d => d.live) || pickedSerial) (document.getElementById('run-local-controls') as HTMLDetailsElement).open = true;
   const led = document.getElementById('dev-led')!;
   const name = document.getElementById('dev-name')!;
   const meta = document.getElementById('dev-meta')!;
   const state = document.getElementById('dev-state')!;
+  const selection = document.getElementById('run-device') as HTMLSelectElement;
   if (r.error){
+    lastDevs = [];
+    sidecarUp = false;
     led.className = 'led o';
+    name.hidden = false;
+    selection.hidden = true;
     name.textContent = 'frida unavailable';
     meta.textContent = ' · ' + r.error.message;
     state.textContent = '';
-    sessionButtons(false);
+    sessionButtons(false, false);
     return;
   }
   const devs = (r.data && r.data.devices) || [];
-  if (!devs.length) pickedSerial = '';
-  sessionButtons(devs.length > 0);
+  lastDevs = devs;
+  sidecarUp = !r.data || r.data.sidecarAvailable !== false;
+  const activeName = activeProjectKey();
+  const activeId = (S.state as { activeProject?: string } | null)?.activeProject || null;
+  const hasLive = devs.some(x => x.live && (!x.project || !activeName || x.project === activeName || (activeId && x.project === activeId)));
   if (!devs.length){
+    pickedSerial = '';
     led.className = 'led o';
+    name.hidden = false;
+    selection.hidden = true;
     name.textContent = 'no device attached';
     meta.textContent = ' · plug one in or start an emulator';
     state.textContent = '';
+    sessionButtons(false, false);
     return;
   }
-  const selection = document.getElementById('run-device') as HTMLSelectElement;
-  selection.replaceChildren(new Option('Select a device…', ''));
-  for (const device of devs) selection.add(new Option(device.serial + ' · ' + (device.model || ''), device.serial));
+  if (!pickedSerial || !devs.some(x => x.serial === pickedSerial)){
+    const liveDev = devs.find(x => x.live);
+    pickedSerial = (liveDev || devs[0]).serial;
+  }
+  selection.replaceChildren();
+  for (const device of devs) {
+    selection.add(new Option(device.serial + (device.model ? ' · ' + device.model : ''), device.serial));
+  }
   selection.value = pickedSerial;
-  const d = devs.find(x => x.serial === pickedSerial);
-  if (!d) {
-    pickedSerial = '';
-    name.textContent = 'select a device';
-    meta.textContent = ' · no automatic selection';
-    state.textContent = '';
-    sessionButtons(false);
-    return;
-  }
-  sessionButtons(true);
-  led.className = 'led ' + (rootKind(d) === 'none' ? 'o' : 'g');
+  const many = devs.length > 1;
+  name.hidden = many;
+  selection.hidden = !many;
+  const d = devs.find(x => x.serial === pickedSerial) || devs[0];
+  pickedSerial = d.serial;
+  const canCapture = rootKind(d) !== 'none' && sidecarUp && !d.live;
+  sessionButtons(canCapture, hasLive);
+  led.className = 'led ' + (rootKind(d) === 'none' || !sidecarUp ? 'o' : 'g');
   name.textContent = d.serial;
-  meta.textContent = ' · ' + (d.model || '') + ' · Android ' + (d.android || '?') +
+  meta.textContent = ' · ' + (d.model || 'Android device') +
+    ' · Android ' + (d.android || '?') +
+    (d.abi ? ' · ' + d.abi : '') +
     ' · ' + rootLabel(d) +
-    (d.fridaServer && d.fridaServer.running ? ' · frida-server ' + (d.fridaServer.version || 'up') : ' · frida-server down');   // version is no longer asserted by the server
+    (!sidecarUp ? ' · sidecar unbuilt'
+      : d.fridaServer && d.fridaServer.running ? ' · frida-server ' + (d.fridaServer.version || 'up')
+      : rootKind(d) === 'none' ? ' · frida-server down'
+      : ' · frida-server ready on attach');
   meta.setAttribute('data-tip', rootTip(d));
   state.textContent = d.live ? 'ATTACHED' : '';
   const pkg = document.getElementById('run-pkg') as HTMLInputElement;
@@ -128,13 +153,14 @@ async function loadDevices(){
    label text (fix-review r1 M9) */
 let pickedSerial = '';
 
-/* SPAWN / ATTACH / DETACH act on a device: without one they were enabled and
-   posted the literal "no devices" as the serial (UI audit 2026-09-09) */
-function sessionButtons(on: boolean){
-  ['run-spawn', 'run-attach', 'run-detach'].forEach(function(id){
-    const b = document.getElementById(id) as HTMLButtonElement | null;
-    if (b) b.disabled = !on;
-  });
+/* SPAWN / ATTACH require a rooted selected device and ready sidecar; DETACH requires a live session */
+function sessionButtons(canCapture: boolean, hasLive = false){
+  const spawnBtn = document.getElementById('run-spawn') as HTMLButtonElement | null;
+  const attachBtn = document.getElementById('run-attach') as HTMLButtonElement | null;
+  const detachBtn = document.getElementById('run-detach') as HTMLButtonElement | null;
+  if (spawnBtn) spawnBtn.disabled = !canCapture;
+  if (attachBtn) attachBtn.disabled = !canCapture;
+  if (detachBtn) detachBtn.disabled = !hasLive;
 }
 
 async function doAttach(spawn: boolean){
@@ -144,10 +170,10 @@ async function doAttach(spawn: boolean){
   if (!serial){ state.textContent = 'no device — plug one in (⌃6 DEVICE)'; return; }
   if (!pkg){ state.textContent = 'pkg?'; return; }
   state.textContent = spawn ? 'spawning…' : 'attaching…';
-  const serverPath = (document.getElementById('run-server-path') as HTMLInputElement).value.trim();
+  const serverPath = (document.getElementById('run-server-path') as HTMLInputElement).value.trim() || '/data/local/tmp/frida-server';
   const ownershipConfirmed = (document.getElementById('run-owner-confirmed') as HTMLInputElement).checked;
-  if (!serverPath || !ownershipConfirmed) {
-    state.textContent = 'Select the installed server and confirm controller ownership; external controllers use import';
+  if (!ownershipConfirmed) {
+    state.textContent = 'Confirm controller ownership in ⚙ OPTIONS; external controllers use ⇄ BUNDLES';
     return;
   }
   const params: OpParams = { device: serial, pkg: pkg, serverPath, ownershipConfirmed };
@@ -281,7 +307,7 @@ async function loadBps(){
       '<span class="tgt dim">' + esc(bp.target) + '</span>' +
       '<span class="hits">' + (bp.hits || 0) + '</span>' +
       '<span class="tx" title="remove breakpoint">×</span>';   // P0.7: hover-× (the .tchip .tx idiom)
-    row.querySelector('input')!.addEventListener('change', async function(e){
+    row.querySelector('input')!.addEventListener('change', async function(){
       await tryOp('runs.bp.toggle', { id: bp.id });
       await loadBps();
     });
@@ -508,7 +534,7 @@ function renderPause(){
     : '⏸ PAUSE';
 }
 
-function prependHit(h: Hit, animate: boolean){
+function prependHit(h: Hit, _animate: boolean){
   hitRows.unshift(h);
   const feed = document.getElementById('hit-feed')!;
   const empty = feed.querySelector('.hitempty:not(.hitnomatch)');
@@ -866,46 +892,138 @@ async function runDiff(){
   const covA = nA + nBoth, covB = nB + nBoth, net = nB - nA;
   const netStr = net > 0 ? '+' + net : net < 0 ? '−' + Math.abs(net) : '0';   // U+2212, matching "dropped"
   p.hidden = false;
-  p.innerHTML =
-    '<div class="diff-delta"><b>' + esc(d.a) + '</b> ' + covA + ' methods · <b>' + esc(d.b) + '</b> ' + covB +
-      ' methods · <span class="d-net">Δ ' + netStr + '</span> · ' + nBoth + ' shared' +
-      ' · <span class="d-gain">+' + nB + ' new in ' + esc(d.b) + '</span> · <span class="d-loss">−' + nA + ' dropped</span></div>' +
-    '<b>only in ' + esc(d.a) + ':</b> ' + esc(names(d.onlyA)) + '<br>' +
-    '<b>only in ' + esc(d.b) + ':</b> ' + esc(names(d.onlyB)) + '<br>' +
-    '<b>both:</b> ' + esc(nBoth + ' methods');
+  const delta = document.createElement('div');
+  delta.className = 'diff-delta';
+  const bA = document.createElement('b'); bA.textContent = String(d.a || '');
+  const bB = document.createElement('b'); bB.textContent = String(d.b || '');
+  const sNet = document.createElement('span'); sNet.className = 'd-net'; sNet.textContent = 'Δ ' + netStr;
+  const sGain = document.createElement('span'); sGain.className = 'd-gain'; sGain.textContent = '+' + nB + ' new in ' + String(d.b || '');
+  const sLoss = document.createElement('span'); sLoss.className = 'd-loss'; sLoss.textContent = '−' + nA + ' dropped';
+  delta.append(bA, ' ' + covA + ' methods · ', bB, ' ' + covB + ' methods · ', sNet, ' · ' + nBoth + ' shared · ', sGain, ' · ', sLoss);
+  const bOnlyA = document.createElement('b'); bOnlyA.textContent = 'only in ' + String(d.a || '') + ':';
+  const bOnlyB = document.createElement('b'); bOnlyB.textContent = 'only in ' + String(d.b || '') + ':';
+  const bBoth = document.createElement('b'); bBoth.textContent = 'both:';
+  p.replaceChildren(
+    delta,
+    bOnlyA, ' ' + names(d.onlyA), document.createElement('br'),
+    bOnlyB, ' ' + names(d.onlyB), document.createElement('br'),
+    bBoth, ' ' + nBoth + ' methods',
+  );
 }
 
 /* ==================================================================
    INIT
 ================================================================== */
-/* preflight (audit decision 13): the rows system.doctor / provision.sh report — adb, the
-   frida sidecar, the attached devices with their root capability, the engine — with the fix
-   line for whatever is not ok, so an attach that would fail says why BEFORE the click */
+/* preflight (audit decision 13): only non-ok rows from adb, devices, frida — hidden
+   completely when all three are ok. Includes a one-click SETUP FRIDA button when the
+   frida sidecar or cached server binary is missing. */
 let preflightSeq = 0;
+function abiToFridaTag(abi?: string): string | null {
+  const a = (abi || '').trim();
+  if (a === 'arm64-v8a' || a === 'arm64' || a === 'android-arm64') return 'android-arm64';
+  if (a === 'x86_64' || a === 'android-x86_64') return 'android-x86_64';
+  if (a === 'armeabi-v7a' || a === 'armeabi' || a === 'arm' || a === 'android-arm') return 'android-arm';
+  if (a === 'x86' || a === 'android-x86') return 'android-x86';
+  return null;
+}
+
+async function setupFrida(btn?: HTMLButtonElement){
+  const state = document.getElementById('dev-state');
+  const dev = lastDevs.find(d => d.serial === pickedSerial) || lastDevs[0];
+  const archHint = dev?.abi ? ' (' + dev.abi + ')' : '';
+  if (btn){
+    btn.disabled = true;
+    btn.textContent = 'SETTING UP FRIDA' + archHint + '…';
+  }
+  if (state) state.textContent = 'Setting up Frida venv & server' + archHint + '…';
+  const r = await tryOpT('runs.setup', { device: pickedSerial || undefined, pushServer: true });
+  if (r.error){
+    if (state) state.textContent = 'setup failed: ' + r.error.message;
+    notice('Frida setup failed: ' + r.error.message, { err: true });
+    if (btn){ btn.disabled = false; btn.textContent = 'SETUP FRIDA'; }
+    return;
+  }
+  const d = r.data;
+  if (state) state.textContent = 'Frida ' + (d.frida || '') + ' ready';
+  notice('Frida ' + (d.frida || '') + ' ready' + (d.device ? ' · ' + d.device + ' (' + (d.arch || '') + ')' : ''));
+  await reloadRuns();
+}
+
 async function loadPreflight(){
   const host = document.getElementById('run-preflight');
   if (!host) return;
   const seq = ++preflightSeq;
-  const r = await tryOpT('system.doctor', { rows: 'adb,devices,frida,jeb-engine' });   // only what the row shows (b2-r2 M2)
+  const r = await tryOpT('system.doctor', { rows: 'adb,devices,frida' });
   if (seq !== preflightSeq) return;
-  host.hidden = false;
-  if (r.error){ host.innerHTML = '<span class="pf warn">preflight unavailable — ' + esc(r.error.message) + '</span>'; return; }
+  if (r.error){
+    host.hidden = false;
+    const warn = document.createElement('span');
+    warn.className = 'pf warn';
+    warn.textContent = '! preflight unavailable — ' + r.error.message;
+    host.replaceChildren(warn);
+    return;
+  }
   const data = (r.data || {}) as { rows?: { id: string; status: string; found: string; fix?: string }[] };
   const rows = data.rows || [];
   const rank = (s: string) => s === 'missing' ? 0 : s === 'warn' ? 1 : 2;
-  const want = rows.filter(x => ['adb', 'devices', 'frida', 'jeb-engine'].includes(x.id)).sort((a, b) => rank(a.status) - rank(b.status));   // not-ok first (persona pass M1)
-  host.innerHTML = want.map(function(x){
-    const g = x.status === 'ok' ? '✓' : x.status === 'warn' ? '!' : '✗';
+  const issues = rows
+    .filter(x => ['adb', 'devices', 'frida'].includes(x.id) && x.status !== 'ok')
+    .sort((a, b) => rank(a.status) - rank(b.status));
+  const fridaRow = rows.find(x => x.id === 'frida');
+  const dev = lastDevs.find(d => d.serial === pickedSerial) || lastDevs[0];
+  const devTag = abiToFridaTag(dev?.abi);
+  const missingDevArch = !!(devTag && fridaRow && !fridaRow.found.includes(devTag));
+  const needsFridaSetup = !sidecarUp || missingDevArch || !!(fridaRow && (fridaRow.status !== 'ok' || fridaRow.found.includes('no cached frida-server')));
+  if (needsFridaSetup && !issues.some(x => x.id === 'frida')) {
+    issues.push({
+      id: 'frida',
+      status: 'warn',
+      found: !sidecarUp ? 'sidecar unavailable' : missingDevArch && devTag ? 'frida-server (' + devTag + ') not cached on host' : (fridaRow?.found || 'frida setup needed'),
+      fix: 'Click SETUP FRIDA or run ./backend/runs/pull-frida.sh',
+    });
+  }
+  if (!issues.length && !needsFridaSetup){
+    host.hidden = true;
+    host.replaceChildren();
+    return;
+  }
+  host.hidden = false;
+  host.replaceChildren();
+  for (const x of issues){
+    const g = x.status === 'warn' ? '!' : '✗';
+    const span = document.createElement('span');
+    span.className = 'pf ' + x.status;
     const tip = (x.fix ? 'fix: ' + x.fix + ' — ' : '') + x.found;
-    const fix = x.status !== 'ok' && x.fix ? '<span class="fixt">— fix: ' + esc(clip(x.fix, 70)) + '</span>' : '';
-    return '<span class="pf ' + esc(x.status) + '" data-tip="' + esc(tip) + '">' + g + ' ' + esc(x.id) + ' · ' + esc(clip(x.found, 80)) + fix + '</span>';
-  }).join('');
+    span.setAttribute('data-tip', tip);
+    const b = document.createElement('b');
+    b.textContent = g + ' ' + x.id;
+    span.append(b, ' · ' + clip(x.found, 110));
+    if (x.fix) {
+      const fixSpan = document.createElement('span');
+      fixSpan.className = 'fixt';
+      fixSpan.textContent = '— fix: ' + clip(x.fix, 90);
+      span.append(' ', fixSpan);
+    }
+    host.appendChild(span);
+  }
+  if (needsFridaSetup){
+    const btn = document.createElement('button');
+    btn.className = 'mbtn';
+    btn.id = 'run-setup-frida';
+    btn.textContent = 'SETUP FRIDA';
+    btn.setAttribute('data-tip', 'Build backend/runs/venv, download matching frida-server binary, and push to the connected device');
+    btn.addEventListener('click', () => { void setupFrida(btn); });
+    host.appendChild(btn);
+  }
 }
 
 export async function reloadRuns(opts?: { preflight?: boolean }): Promise<void> {
-  const jobs = [loadDevices(), loadBps(), loadRuns()];
-  if (!opts || opts.preflight !== false) jobs.push(loadPreflight());   // on view open; a detach does not re-probe the host (b2-r2 M2)
-  await Promise.all(jobs);
+  const withPreflight = !opts || opts.preflight !== false;
+  const loadDevAndPreflight = async () => {
+    await loadDevices();
+    if (withPreflight) await loadPreflight();
+  };
+  await Promise.all([loadDevAndPreflight(), loadBps(), loadRuns()]);
   await backfillHits();
 }
 
@@ -914,9 +1032,24 @@ export function initRuns(): void {
   wired = true;
   document.getElementById('run-import')!.addEventListener('click', () => { void importBundle(); });
   document.getElementById('run-export')!.addEventListener('click', () => { void exportBundle(); });
+  const optBtn = document.getElementById('run-toggle-options');
+  const optDrawer = document.getElementById('run-options-drawer');
+  if (optBtn && optDrawer){
+    optBtn.addEventListener('click', () => {
+      optDrawer.hidden = !optDrawer.hidden;
+      optBtn.classList.toggle('on', !optDrawer.hidden);
+    });
+  }
+  const bunBtn = document.getElementById('run-toggle-bundles');
+  const bunDrawer = document.getElementById('run-bundles-drawer');
+  if (bunBtn && bunDrawer){
+    bunBtn.addEventListener('click', () => {
+      bunDrawer.hidden = !bunDrawer.hidden;
+      bunBtn.classList.toggle('on', !bunDrawer.hidden);
+    });
+  }
   document.getElementById('run-device')!.addEventListener('change', () => {
     pickedSerial = (document.getElementById('run-device') as HTMLSelectElement).value;
-    (document.getElementById('run-owner-confirmed') as HTMLInputElement).checked = false;
     void loadDevices();
   });
   document.getElementById('run-attach')!.addEventListener('click', function(){ doAttach(false); });
@@ -986,7 +1119,7 @@ export function initRuns(): void {
       const ev = d as Hit & { execId?: string; target?: string };
       if (dockRun && ev.execId === dockRun && (!ev.target || ev.target === S.currentTid)) dockTick(d);   // its run AND its target (r3 M1)
     }
-    if (d.type === 'session') { loadDevices(); loadRuns(); }
+    if (d.type === 'session' || (data as { event?: string }).event === 'session') { loadDevices(); loadRuns(); }
     if (d.type === 'removed') {                        // another client deleted runs (b2-r5 M5)
       /* execIds are per-PROJECT sequences (ex1 exists in every project), and the SSE bus is one
          global stream — a delete in project A must not clear a same-named ex<N> in the viewed

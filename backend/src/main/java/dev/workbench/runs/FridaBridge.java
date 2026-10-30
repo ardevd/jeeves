@@ -151,6 +151,7 @@ public final class FridaBridge {
                     if (l != null) l.onSessionDead(ev);
                 } else if (l != null) l.onSessionLive(ev);
                 Map<String, Object> out = new LinkedHashMap<>(ev);
+                out.put("type", "session");
                 bus.publish("runs", out);
             }
             case "native" -> {                // native bp arm outcome (mismatch/unverified/armed/armfail)
@@ -236,6 +237,10 @@ public final class FridaBridge {
 
     public Map<String, Object> devices() { return request("enumerate_devices", null, 30_000); }
 
+    public Map<String, Object> pushServer(String device, String serverPath) {
+        return request("push_server", Map.of("device", device, "serverPath", serverPath), 240_000);
+    }
+
     public Map<String, Object> provision(String device, String serverPath, boolean ownershipConfirmed, int serverPort) {
         return request("provision", Map.of("device", device, "serverPath", serverPath,
                 "ownershipConfirmed", ownershipConfirmed, "serverPort", serverPort), 90_000);
@@ -315,11 +320,11 @@ public final class FridaBridge {
     }
 
     /** Find a backend file whether launched from the repo root or backend/. */
-    static File locate(String rel) {
+    public static File locate(String rel) {
         String root = System.getenv("WORKBENCH_RUNS_ROOT");
         if (root != null && !root.isBlank()) {
             File f = new File(root, rel.startsWith("runs/") ? rel.substring(5) : rel);
-            return f.isFile() ? f.getAbsoluteFile() : null;
+            return f.exists() ? f.getAbsoluteFile() : null;
         }
         for (String base : new String[] { "backend", ".", "..", System.getProperty("user.dir") }) {
             File f = new File(base, rel);

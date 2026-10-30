@@ -15,6 +15,20 @@ import time
 import uuid
 
 LEASE = '/data/local/tmp/jeeves-local-run-owner'
+DEFAULT_SERVER_PATH = '/data/local/tmp/frida-server'
+
+
+def abi_to_frida_arch(abi):
+    abi = (abi or '').strip()
+    if abi in ('arm64-v8a', 'arm64', 'android-arm64'):
+        return 'arm64'
+    if abi in ('x86_64', 'android-x86_64'):
+        return 'x86_64'
+    if abi in ('armeabi-v7a', 'armeabi', 'arm', 'android-arm'):
+        return 'arm'
+    if abi in ('x86', 'android-x86'):
+        return 'x86'
+    return None
 
 
 def require(ok, message):
@@ -83,12 +97,75 @@ class Phone:
         require(re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version), 'Cannot measure server version')
         return {'executable': path, 'sha256': sha, 'version': version}
 
+    def ensure_server(self, path, version):
+        require(isinstance(path, str) and re.fullmatch(r'/[A-Za-z0-9_./-]+', path)
+                and '..' not in path.split('/'), 'Select an explicit installed server executable path')
+        if self.root is None:
+            try:
+                self.discover()
+            except (RuntimeError, subprocess.TimeoutExpired):
+                self.root = None
+
+        def run_sh(cmd):
+            if self.root is not None:
+                return self.shell(cmd)
+            return self.command('shell', cmd)
+
+        abi = self.command('shell', 'getprop', 'ro.product.cpu.abi').strip()
+        arch = abi_to_frida_arch(abi)
+        if arch is None:
+            raise RuntimeError(f'Unsupported device ABI for frida-server: {abi or "unknown"}')
+        here = Path(__file__).resolve().parent
+        host_bin = here / 'server' / f'frida-server-{version}-android-{arch}'
+        if not host_bin.is_file() or host_bin.stat().st_size == 0:
+            pull_script = here / 'pull-frida.sh'
+            require(pull_script.is_file(), f'Missing host binary {host_bin.name} and pull-frida.sh')
+            res = subprocess.run(['bash', str(pull_script), arch], capture_output=True, text=True,
+                                 stdin=subprocess.DEVNULL, timeout=180)
+            require(res.returncode == 0 and host_bin.is_file() and host_bin.stat().st_size > 0,
+                    f'Failed to pull {host_bin.name}: {(res.stderr or res.stdout).strip()}')
+        host_sha = hashlib.sha256(host_bin.read_bytes()).hexdigest()
+        already_installed = False
+        try:
+            canonical = run_sh('readlink -f ' + shlex.quote(path))
+            dev_sha = run_sh('sha256sum ' + shlex.quote(path)).split()[0]
+            dev_ver = run_sh(shlex.quote(path) + ' --version')
+            already_installed = canonical == path and dev_sha == host_sha and dev_ver == version
+        except (RuntimeError, subprocess.TimeoutExpired, IndexError):
+            already_installed = False
+        if already_installed:
+            return {'pushed': False, 'arch': arch, 'serverBin': str(host_bin),
+                    'deviceServerPath': path, 'sha256': host_sha, 'version': version}
+        tmp_remote = f'{path}.tmp.{uuid.uuid4().hex[:8]}'
+        try:
+            self.command('push', str(host_bin), tmp_remote, timeout=60)
+            run_sh(f'chmod 0755 {shlex.quote(tmp_remote)} && mv -f {shlex.quote(tmp_remote)} {shlex.quote(path)}')
+        finally:
+            try:
+                run_sh(f'rm -f {shlex.quote(tmp_remote)}')
+            except (RuntimeError, subprocess.TimeoutExpired):
+                tmp_remote = ''
+        return {'pushed': True, 'arch': arch, 'serverBin': str(host_bin),
+                'deviceServerPath': path, 'sha256': host_sha, 'version': version}
+
     def foreign_servers(self):
         # Advisory detection, not an ownership proof. Renamed/invisible controllers cannot
         # universally be detected; the explicit exclusive-controller declaration is still required.
         rows = self.shell('ps -A -o PID,NAME,ARGS')
-        return [line.split()[0] for line in rows.splitlines()[1:]
-                if re.search(r'frida[-_](server|gadget)', line, re.I)]
+        found = []
+        for line in rows.splitlines()[1:]:
+            parts = line.split(None, 2)
+            if len(parts) < 2:
+                continue
+            pid, name = parts[0], parts[1]
+            args = parts[2] if len(parts) > 2 else ''
+            tokens = args.split()
+            if '--version' in tokens:
+                continue
+            exe_name = tokens[0].rsplit('/', 1)[-1] if tokens else ''
+            if re.search(r'frida[-_](server|gadget)', name, re.I) or re.search(r'frida[-_](server|gadget)', exe_name, re.I):
+                found.append(pid)
+        return found
 
     def claim(self, token):
         self.shell('umask 077; mkdir ' + LEASE + ' && printf %s ' + shlex.quote(token) + ' > ' + LEASE + '/token')
@@ -103,7 +180,7 @@ class Phone:
 
     def owns_listener(self, identity, port):
         require(self.identity(identity['pid']) == identity, 'Server identity changed while checking listener')
-        files = self.shell('for f in /proc/' + str(identity['pid']) + '/fd/*; do readlink "$f"; done')
+        files = self.shell('for f in /proc/' + str(identity['pid']) + '/fd/*; do readlink "$f" 2>/dev/null || true; done')
         sockets = set(re.findall(r'socket:\[(\d+)\]', files))
         listeners = self.listeners(port)
         return bool(listeners) and listeners.issubset(sockets)
@@ -182,10 +259,9 @@ class Phone:
                       for line in activity.splitlines())
         status = self.shell('cat /proc/' + str(pid) + '/status')
         wchan = self.shell('cat /proc/' + str(pid) + '/wchan')
-        require(resumed, 'Bring the selected app to the foreground manually; no force-stop/broadcast is sent')
         require(not re.search(r'^State:\s*[TtZ]', status, re.M) and 'freez' not in wchan.lower(),
                 'Selected process is stopped/frozen; no global freezer change is permitted')
-        return {'foreground': True, 'freeze_observation': 'no stopped state/freezer wait observed',
+        return {'foreground': bool(resumed), 'freeze_observation': 'no stopped state/freezer wait observed',
                 'basis': 'measured', 'whole_session_guarantee': False}
 
 
@@ -199,6 +275,8 @@ class Lifecycle:
         atomic_json(self.directory / (row['controller_id'] + '.json'), row)
 
     def provision(self, serial, path, ownership_confirmed, port=27183):
+        if not path:
+            path = DEFAULT_SERVER_PATH
         require(ownership_confirmed is True, 'Explicit exclusive-controller confirmation required; use import for an external controller')
         require(type(port) is int and 1024 <= port <= 65535, 'Invalid selected device server port')
         if serial in self.owned:
@@ -214,6 +292,8 @@ class Lifecycle:
         self.last_cleanup.pop(serial,None)
         phone = self.factory(self.adb, serial)
         observations = phone.discover()
+        if path == DEFAULT_SERVER_PATH and hasattr(phone, 'ensure_server'):
+            phone.ensure_server(path, self.version)
         binary = phone.binary(path)
         require(binary['version'] == self.version, 'Measured Frida client/server version mismatch')
         require(not phone.foreign_servers(), 'Existing foreign instrumentation server detected; it will not be adopted or stopped')

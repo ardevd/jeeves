@@ -43,9 +43,14 @@ class RecorderTests(unittest.TestCase):
         self.assertEqual(result['completion'],'partial')
         self.assertEqual(bundle.manifest(self.root/'bundle')['capture']['loss']['known_dropped'],2)
     def test_owner_crash_tail_recovery_preserves_complete_lines(self):
-        recorder=self.recorder()
-        for row in self.events(): recorder.append(row)
-        recorder.stream.write(b'{"incomplete":');recorder.stream.flush();recorder.stream.close();recorder.stream=None
+        recorder = self.recorder()
+        for row in self.events():
+            recorder.append(row)
+        assert recorder.stream is not None
+        recorder.stream.write(b'{"incomplete":')
+        recorder.stream.flush()
+        recorder.stream.close()
+        recorder.stream = None
         result=bundle.recover_bundle(self.root)
         self.assertEqual(result['events'],4);self.assertEqual(result['completion'],'partial');self.assertEqual(result['cleanup'],'unknown')
         self.assertTrue(bundle.manifest(self.root/'bundle')['capture']['loss']['unknown_loss'])
@@ -152,25 +157,29 @@ class BackgroundTests(unittest.TestCase):
     def test_background_start_mark_stop_offline(self):
         with tempfile.TemporaryDirectory(prefix='jeeves background fixture ') as temp:
             root=Path(temp)/'owned run'
+            py = str(HERE / 'venv/bin/python') if (HERE / 'venv/bin/python').is_file() else sys.executable
             def cli(*args):
-                process=subprocess.run([sys.executable,'-I','-B',str(HERE/'local_run.py'),*map(str,args)],text=True,capture_output=True,timeout=110)
+                process=subprocess.run([py,'-I','-B',str(HERE/'local_run.py'),*map(str,args)],text=True,capture_output=True,timeout=110)
                 self.assertEqual(process.returncode,0,process.stdout+process.stderr)
                 return json.loads(process.stdout)
             started=cli('start','--template',FIXTURE,'--fixture','--seconds','5','--run',root)
             try:
                 self.assertEqual(started['state'],'ready');self.assertNotIn('token',started)
                 self.assertTrue(cli('mark','--run',root,'--text','Human fixture phase')['accepted'])
-                cli('stop','--run',root)
-                deadline=time.monotonic()+10
-                while time.monotonic()<deadline:
-                    state=cli('status','--run',root)
-                    if state['state']=='closed': break
+                cli('stop', '--run', root)
+                state = {'state': '', 'manifest_sha256': ''}
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline:
+                    state = cli('status', '--run', root)
+                    if state['state'] == 'closed':
+                        break
                     time.sleep(0.1)
-                self.assertEqual(state['state'],'closed')
-                result=bundle.validator.validate(root/'bundle')
-                self.assertEqual(result['events'],5);self.assertEqual(result['cleanup'],'not-applicable')
-                again=cli('stop','--run',root)
-                self.assertEqual(again['manifest_sha256'],state['manifest_sha256'])
+                self.assertEqual(state['state'], 'closed')
+                result = bundle.validator.validate(root / 'bundle')
+                self.assertEqual(result['events'], 5)
+                self.assertEqual(result['cleanup'], 'not-applicable')
+                again = cli('stop', '--run', root)
+                self.assertEqual(again['manifest_sha256'], state['manifest_sha256'])
             finally:
                 # The worker's five-second deadline is an additional bound; never signal another process.
                 deadline=time.monotonic()+8
