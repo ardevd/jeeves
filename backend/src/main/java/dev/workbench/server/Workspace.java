@@ -436,6 +436,122 @@ public final class Workspace {
      * bytes, modified, store key; its hash is never the executable's). `revision` — this workbench's edit history.
      * `runtime` — the compiled build and the engine that answered. Hashing runs outside the Workspace monitor.
      */
+    private final Map<String, String> pkgCacheByPath = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Extract and cache the Android package name from the target's APK manifest when available. */
+    public String targetPackage(String tid) {
+        TargetMeta tm;
+        synchronized (this) { tm = tid == null ? null : targets.get(tid); }
+        if (tm == null || tm.path() == null || tm.path().isBlank()) return null;
+        File f = new File(tm.path());
+        if (!f.isFile()) return null;
+        String key = f.getAbsolutePath() + "@" + f.lastModified();
+        String cached = pkgCacheByPath.get(key);
+        if (cached != null) return cached.isEmpty() ? null : cached;
+        String pkg = extractApkPackage(f);
+        pkgCacheByPath.put(key, pkg == null ? "" : pkg);
+        return pkg;
+    }
+
+    public static String extractApkPackage(File f) {
+        if (f == null || !f.isFile()) return null;
+        try (ZipFile z = new ZipFile(f)) {
+            java.util.zip.ZipEntry entry = z.getEntry("AndroidManifest.xml");
+            if (entry == null) return null;
+            byte[] bytes;
+            try (InputStream in = z.getInputStream(entry)) {
+                bytes = in.readNBytes(2 * 1024 * 1024);
+            }
+            if (bytes.length < 8) return null;
+            if ((bytes[0] & 0xFF) == '<') {
+                String xml = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                java.util.regex.Matcher m = java.util.regex.Pattern
+                        .compile("<manifest\\b[^>]*\\bpackage\\s*=\\s*\"([^\"]+)\"")
+                        .matcher(xml);
+                return m.find() ? m.group(1) : null;
+            }
+            if (le16(bytes, 0) != 0x0003) return null;
+            int pos = le16(bytes, 2);
+            if (pos + 28 > bytes.length || le16(bytes, pos) != 0x0001) return null;
+            int spHeader = le16(bytes, pos + 2);
+            int spSize = le32(bytes, pos + 4);
+            int strCount = le32(bytes, pos + 8);
+            int flags = le32(bytes, pos + 16);
+            boolean utf8 = (flags & (1 << 8)) != 0;
+            int strStart = pos + le32(bytes, pos + 20);
+            int offBase = pos + spHeader;
+            pos += spSize;
+            while (pos + 8 <= bytes.length) {
+                int cType = le16(bytes, pos);
+                int cHead = le16(bytes, pos + 2);
+                int cSize = le32(bytes, pos + 4);
+                if (cSize <= 0) break;
+                if (cType == 0x0102 && pos + 36 <= bytes.length) {
+                    String elem = axmlString(bytes, offBase, strStart, strCount, utf8, le32(bytes, pos + 20));
+                    if ("manifest".equals(elem)) {
+                        int attrStart = le16(bytes, pos + 24);
+                        int attrSize = le16(bytes, pos + 26);
+                        int attrCount = le16(bytes, pos + 28);
+                        int attrBase = pos + cHead + attrStart;
+                        for (int i = 0; i < attrCount; i++) {
+                            int a = attrBase + i * attrSize;
+                            if (a + 20 > bytes.length) break;
+                            String name = axmlString(bytes, offBase, strStart, strCount, utf8, le32(bytes, a + 4));
+                            if ("package".equals(name)) {
+                                int raw = le32(bytes, a + 8);
+                                int dType = bytes[a + 15] & 0xFF;
+                                int data = le32(bytes, a + 16);
+                                int vIdx = raw >= 0 ? raw : (dType == 3 ? data : -1);
+                                return axmlString(bytes, offBase, strStart, strCount, utf8, vIdx);
+                            }
+                        }
+                        return null;
+                    }
+                }
+                pos += cSize;
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private static int le16(byte[] b, int o) {
+        return (b[o] & 0xFF) | ((b[o + 1] & 0xFF) << 8);
+    }
+
+    private static int le32(byte[] b, int o) {
+        return (b[o] & 0xFF) | ((b[o + 1] & 0xFF) << 8) | ((b[o + 2] & 0xFF) << 16) | ((b[o + 3] & 0xFF) << 24);
+    }
+
+    private static String axmlString(byte[] b, int offBase, int strStart, int count, boolean utf8, int idx) {
+        if (idx < 0 || idx >= count || offBase + idx * 4 + 4 > b.length) return null;
+        int off = strStart + le32(b, offBase + idx * 4);
+        if (off < 0 || off >= b.length) return null;
+        if (utf8) {
+            int u16 = b[off++] & 0xFF;
+            if ((u16 & 0x80) != 0) off++;
+            if (off >= b.length) return null;
+            int u8 = b[off++] & 0xFF;
+            if ((u8 & 0x80) != 0) {
+                if (off >= b.length) return null;
+                u8 = ((u8 & 0x7F) << 8) | (b[off++] & 0xFF);
+            }
+            if (u8 < 0 || off + u8 > b.length) return null;
+            return new String(b, off, u8, java.nio.charset.StandardCharsets.UTF_8);
+        } else {
+            if (off + 2 > b.length) return null;
+            int u16 = le16(b, off);
+            off += 2;
+            if ((u16 & 0x8000) != 0) {
+                if (off + 2 > b.length) return null;
+                u16 = ((u16 & 0x7FFF) << 16) | le16(b, off);
+                off += 2;
+            }
+            int byteLen = u16 * 2;
+            if (byteLen < 0 || off + byteLen > b.length) return null;
+            return new String(b, off, byteLen, java.nio.charset.StandardCharsets.UTF_16LE);
+        }
+    }
+
     public Map<String, Object> targetIdentity(String tid) {
         TargetMeta tm; String storeKey; int rev;
         synchronized (this) {

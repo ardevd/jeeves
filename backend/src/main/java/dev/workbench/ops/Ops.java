@@ -217,8 +217,13 @@ public final class Ops {
         r.register(new Op("target.recent", "", false, Cost.cheap,
                 req -> ws.recentTargets(req.num("limit", 9))));   // the launcher's RECENT TARGETS zone (audit decision 18)
         r.register(new Op("target.info", "", false, Cost.cheap, req -> {
+            String tid = ws.resolveTargetIdOrActive(req.str("target"));
             Map<String, Object> info = new LinkedHashMap<>(engine(ws, req).info());
-            info.put("identity", ws.targetIdentity(ws.resolveTargetIdOrActive(req.str("target"))));   // executable · database · revision · runtime, apart
+            if (info.get("package") == null) {
+                String pkg = ws.targetPackage(tid);
+                if (pkg != null && !pkg.isBlank()) info.put("package", pkg);
+            }
+            info.put("identity", ws.targetIdentity(tid));   // executable · database · revision · runtime, apart
             return info;
         }));
         /* host-fs listing for the launcher's BROWSE pane: server and browser share

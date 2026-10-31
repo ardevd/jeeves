@@ -77,6 +77,45 @@ function fmtRunTs(ts: string | number | undefined){
 ================================================================== */
 let lastDevs: import('../types.js').Device[] = [];
 let sidecarUp = true;
+let autoPkg = '';
+let autoPkgTid = '';
+
+async function syncTargetPkg(): Promise<void> {
+  const pkgEl = document.getElementById('run-pkg') as HTMLInputElement | null;
+  if (!pkgEl) return;
+  const tid = S.currentTid || '';
+  const cur = pkgEl.value.trim();
+  if (cur && (cur !== autoPkg || (tid && tid === autoPkgTid))) return;
+  let resolved = '';
+  const ti = await tryOpT('target.info', {});
+  if (ti.data && ti.data.package) {
+    resolved = ti.data.package;
+  }
+  if (!resolved) {
+    const liveDev = lastDevs.find(d => d.live && d.package && (!tid || !d.target || d.target === tid));
+    if (liveDev && liveDev.package) resolved = liveDev.package;
+  }
+  if (!resolved) {
+    const prevRun = lastRuns.find(r => r.package && (!tid || !r.target || r.target === tid));
+    if (prevRun && prevRun.package) resolved = prevRun.package;
+  }
+  if (!resolved && tid) {
+    const sr = await tryOpT('symbol.search', { query: 'BuildConfig', kind: 'class' });
+    const rows = Array.isArray(sr.data) ? sr.data : [];
+    for (const row of rows) {
+      if (row.name !== 'BuildConfig' || !row.addr) continue;
+      const dec = await tryOpT('code.decompile', { symbol: row.addr });
+      const text = (dec.data && dec.data.text) || '';
+      const m = text.match(/\bAPPLICATION_ID\s*=\s*"([^"]+)"/);
+      if (m && m[1]) { resolved = m[1]; break; }
+    }
+  }
+  if (resolved && (!pkgEl.value.trim() || pkgEl.value.trim() === autoPkg)) {
+    pkgEl.value = resolved;
+    autoPkg = resolved;
+    autoPkgTid = tid;
+  }
+}
 
 async function loadDevices(){
   const r = await tryOp('runs.devices', {});
@@ -142,11 +181,7 @@ async function loadDevices(){
       : ' · frida-server ready on attach');
   meta.setAttribute('data-tip', rootTip(d));
   state.textContent = d.live ? 'ATTACHED' : '';
-  const pkg = document.getElementById('run-pkg') as HTMLInputElement;
-  if (!pkg.value){
-    const ti = await tryOpT('target.info', {});
-    if (ti.data && ti.data.package) pkg.value = ti.data.package;
-  }
+  void syncTargetPkg();
 }
 
 /* the device the session buttons act on — kept here, not scraped from the
@@ -1024,7 +1059,7 @@ export async function reloadRuns(opts?: { preflight?: boolean }): Promise<void> 
     if (withPreflight) await loadPreflight();
   };
   await Promise.all([loadDevAndPreflight(), loadBps(), loadRuns()]);
-  await backfillHits();
+  await Promise.all([syncTargetPkg(), backfillHits()]);
 }
 
 export function initRuns(): void {

@@ -420,6 +420,15 @@ def _running_pid(dev, package, serial=None):
     return None
 
 
+def _prepare_spawn(serial, package):
+    adb("shell", "am", "force-stop", package, serial=serial, timeout=10)
+    rc, out, _ = adb("shell", "dumpsys", "activity", "activities", serial=serial, timeout=10)
+    if rc == 0 and out:
+        pat = re.compile(r"Task\{[^}]*\s#(\d+)\s[^}]*\bA=\d+:" + re.escape(package) + r"\b")
+        for tid in set(pat.findall(out)):
+            adb("shell", "am", "stack", "remove", tid, serial=serial, timeout=5)
+
+
 def op_attach(params):
     serial = params["device"]
     package = params["package"]
@@ -435,8 +444,7 @@ def op_attach(params):
     dev = _frida_device(serial)
     pid = _running_pid(dev, package, serial)
     if spawn:
-        if pid:
-            raise RuntimeError("App already running; explicit attach is required, no force-stop is performed")
+        _prepare_spawn(serial, package)
         pid = dev.spawn([package])
     elif not pid:
         raise RuntimeError("Selected app is not running; start it explicitly, no automatic spawn or replay")

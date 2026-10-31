@@ -29,6 +29,7 @@ final class JadxSession implements AutoCloseable {
     private volatile String state = "idle";
     private volatile String error;
     private volatile int classCount;
+    private volatile String packageName;
     private volatile boolean closing;
 
     private static final int CODE_DATA_FORMAT = 1;
@@ -54,6 +55,7 @@ final class JadxSession implements AutoCloseable {
         this.artifact = Objects.requireNonNull(artifact);
         this.codeDataFile = codeDataFile;
         this.onReady = onReady;
+        this.packageName = dev.workbench.server.Workspace.extractApkPackage(artifact);
         this.codeData.setRenames(new ArrayList<>());
         this.codeData.setComments(new ArrayList<>());
     }
@@ -385,6 +387,7 @@ final class JadxSession implements AutoCloseable {
     Map<String, Object> status() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("state", state); result.put("classes", classCount);
+        if (packageName != null && !packageName.isBlank()) result.put("package", packageName);
         if (error != null) result.put("error", error);
         return result;
     }
